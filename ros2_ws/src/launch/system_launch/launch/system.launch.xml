@@ -2,7 +2,7 @@
     <!-- node起動 切り替え用引数 -->
     <arg name="record" default="false" description="run rosbag2 record node"/>
     <!-- 引数の定義 -->
-    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="launch vehicle"/>
+    <arg name="vehicle_control_topic" default="/jetracer/control_cmd" description="launch vehicle"/>
     <arg name="autonomous_control_cmd" default="/ackermann_cmd" description="autonomous ackermann control command"/>
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" description="rosbag trigger topic"/>
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" description="rosbag memo topic"/>

@@ -10,4 +10,4 @@
     steering_offset: 0.0
     throttle_offset: 0.0
     ## スロットルとステアリングのオフセット調整ステップ
-    offset_step: 0.001
+    offset_step: 0.000

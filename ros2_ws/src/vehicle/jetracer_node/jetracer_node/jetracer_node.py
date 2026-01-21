@@ -44,7 +44,7 @@ class JetRacerDriver(Node):
         )
         qos_button = QoSProfile(depth=5)
 
-        self.create_subscription(AckermannDriveStamped, '/cmd_drive', self._cmd_cb, qos_cmd)
+        self.create_subscription(AckermannDriveStamped, '/control_cmd', self._cmd_cb, qos_cmd)
 
         self.create_subscription(Bool, '/steer_offset_inc', self._steer_offset_inc_cb, qos_button)
         self.create_subscription(Bool, '/steer_offset_dec', self._steer_offset_dec_cb, qos_button)
@@ -54,7 +54,7 @@ class JetRacerDriver(Node):
         self.last_cmd_time = self.get_clock().now()
         self.create_timer(0.1, self._watchdog)
 
-        self.get_logger().info('✅ JetRacer driver started, waiting for /cmd_drive')
+        self.get_logger().info('✅ JetRacer driver started, waiting for /control_cmd')
 
     def _on_param_update(self, params):
         for p in params:
