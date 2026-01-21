@@ -4,6 +4,7 @@
   <arg name="autonomous_control_topic" default="/ackermann_cmd"/>
   <arg name="vehicle_control_topic" default="/jetracer/cmd_drive"/>
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
+  <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
 
   
   <!-- joynode -->
@@ -29,6 +30,8 @@
     <remap from="/cmd_drive" to="$(var vehicle_control_topic)"/> 
     <!-- rosbag制御トリガ -->
     <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
+    <!-- rosbagメモ -->
+    <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/>
   </node>
 
 </launch>

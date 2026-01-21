@@ -5,6 +5,7 @@
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="launch vehicle"/>
     <arg name="autonomous_control_cmd" default="/ackermann_cmd" description="autonomous ackermann control command"/>
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" description="rosbag trigger topic"/>
+    <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" description="rosbag memo topic"/>
     <arg name="container_name" default="lidar_container" description="container name for composable nodes"/>
     
     <!-- config.yamlのパスの定義 -->
@@ -25,6 +26,7 @@
         <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
         <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
         <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
+        <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
     </include>
 
     <!-- Lidar Processing Container -->
@@ -63,6 +65,7 @@
         <include file="$(find-pkg-share bag_manager_py)/launch/bag_manager.launch.xml">
             <arg name="bag_manager_param" value="$(var bag_manager_param)"/>
             <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>
+            <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
         </include>
     
     </group>

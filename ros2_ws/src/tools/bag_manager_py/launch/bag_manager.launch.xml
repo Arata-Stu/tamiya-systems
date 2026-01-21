@@ -3,6 +3,7 @@
   <arg name="bag_manager_param"  default="$(find-pkg-share bag_manager_py)/config/bag_manager.param.yaml"/>
   <arg name="use_sim_time" default="true"/>
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
+  <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
 
 
   <!-- bag_manager node -->
@@ -13,6 +14,7 @@
 
     <param from="$(var bag_manager_param)"/>
     <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
+    <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/> 
   </node>
 
 
