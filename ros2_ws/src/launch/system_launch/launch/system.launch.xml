@@ -1,0 +1,70 @@
+<launch>
+    <!-- node起動 切り替え用引数 -->
+    <arg name="record" default="false" description="run rosbag2 record node"/>
+    <!-- 引数の定義 -->
+    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="launch vehicle"/>
+    <arg name="autonomous_control_cmd" default="/ackermann_cmd" description="autonomous ackermann control command"/>
+    <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" description="rosbag trigger topic"/>
+    <arg name="container_name" default="lidar_container" description="container name for composable nodes"/>
+    
+    <!-- config.yamlのパスの定義 -->
+    <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
+    <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
+    <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
+    <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter.param.yaml" />
+
+    <!-- JetRacer Node -->
+    <include file="$(find-pkg-share jetracer_node)/launch/jetracer.launch.xml">
+        <arg name="jetracer_param" value="$(var vehicle_param)"/>
+        <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
+    </include>
+
+    <!-- Joy Manager Node -->
+    <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
+        <arg name="teleop_param" value="$(var teleop_param)"/>
+        <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
+        <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
+        <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
+    </include>
+
+    <!-- Lidar Processing Container -->
+    <node pkg="rclcpp_components"
+            exec="component_container"
+            name="${container_name}"
+            output="screen"/>
+
+    <load_composable_nodes target_container="${container_name}">
+
+        <!-- UrgNode2 -->
+        <composable_node pkg="urg_node2"
+                        plugin="urg_node2::UrgNode2"
+                        name="urg_node">
+        <param from="$(find-pkg-share urg_node2)/config/params_ether.yaml"/>
+        
+        <remap from="scan" to="scan_raw"/>
+        </composable_node>
+
+        <!-- Laser Filter Node -->
+        <composable_node pkg="laser_filters"
+                        plugin="laser_filters::ScanToScanFilterChainer"
+                        name="laser_filter_node">
+        <param from="$(var filter_param)"/>
+
+        <remap from="scan" to="scan_raw"/>
+        <remap from="scan_filtered" to="scan"/>
+        </composable_node>
+
+    </load_composable_nodes>
+
+
+    <group if="$(var record)">
+    
+        <!-- Rosbag2 Manager Node -->
+        <include file="$(find-pkg-share bag_manager_py)/launch/bag_manager.launch.xml">
+            <arg name="bag_manager_param" value="$(var bag_manager_param)"/>
+            <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>
+        </include>
+    
+    </group>
+
+</launch>

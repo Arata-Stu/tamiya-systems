@@ -1,0 +1,8 @@
+/**:
+  ros__parameters:
+    output_dir: "/path/to/output/record"
+    storage_id: mcap
+    all_topics: false
+    topics:
+      - /jetracer/cmd_drive
+      - /scan

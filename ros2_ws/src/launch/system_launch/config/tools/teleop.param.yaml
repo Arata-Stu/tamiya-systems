@@ -1,0 +1,50 @@
+/**:
+  ros__parameters:
+    # --- 基本設定 ---
+    speed_scale:          1.0  
+    steer_scale:          1.0
+    timer_hz:             100.0
+    joy_timeout_sec:      0.05
+
+    # --- 軸設定 ---
+    axis_speed_index:     1    # 左スティック上下（↑:+前進, ↓:-後退）
+    axis_steer_index:     2    # 右スティック左右（→:+右, ←:-左）
+
+    # --- モード切替ボタン ---
+    joy_button_index:     3    # △ボタンで手動モード
+    ack_button_index:     0    # □ボタンで自律モード
+
+    # --- start/stop トリガボタン ---
+    start_button_index:   7    # R2 ボタンで start=true
+    stop_button_index:    6    # L2 ボタンで start=false
+
+    # --- 十字キー（D-pad）軸インデックス ---
+    dpad_lr_axis_index:   6    # 左右 (axes[6])
+    dpad_ud_axis_index:   7    # 上下 (axes[7])
+
+## button index (DualShock4) - ROS2 humble
+
+# 0: □
+# 1: ×
+# 2: ○
+# 3: △
+# 4: L1
+# 5: R1
+# 6: L2
+# 7: R2
+# 8: share
+# 9: option
+# 10: home
+# 11: L3
+# 12: R3
+
+## axes index (DualShock4)
+# 左スティック:  axes[0] (左右), axes[1] (上下)
+# 右スティック:  axes[2] (左右), axes[3] (上下)
+# D-pad:          axes[6] (左右), axes[7] (上下)
+
+## D-pad操作の割り当て
+# →: axes[6] == -1.0  → steer_offset +
+# ←: axes[6] ==  1.0  → steer_offset –
+# ↑: axes[7] ==  1.0  → speed_offset +
+# ↓: axes[7] == -1.0  → speed_offset –

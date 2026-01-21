@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<launch>    
+    <arg name="lidar_encoder_node_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/lidar_encoder_node.param.yaml" />
+    <arg name="lidarnet_decoder_node_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/lidarnet_decoder_node.param.yaml" />
+    <arg name="container_name" default="lidar_container" />
+    <arg name="model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
+    <arg name="model_name" default="lidarnet" />
+
+    <arg name="scan_topic" default="/scan" />
+    <arg name="scan_tensor_topic" default="/encoder/scan_tensor" />
+
+    <arg name="triton_input_tensor_names" value="input_scan" />
+    <arg name="triton_output_tensor_names" value="output_control" />
+    <let name="input_tensor_topic" default="${scan_tensor_topic}" />
+    <let name="triton_output_topic" default="/triton_lidarnet/output_tensor" />
+
+    <arg name="output_control_topic" default="/ackermann_cmd_raw" />
+    <arg name="output_filtered_control_topic" default="/ackermann_cmd"/>
+
+
+    <!-- Scan Encoder Node -->
+    <load_composable_node target="$(var container_name)">
+        <composable_node
+            pkg="isaac_ros_lidar_e2e_control"
+            plugin="isaac_ros_lidar_e2e_control::ScanEncoderNode"
+            name="scan_encoder_node">
+
+            <param from="$(var lidar_encoder_node_param)" />
+
+            <remap from="scan" to="$(var scan_topic)" />
+            <remap from="scan_tensor" to="$(var scan_tensor_topic)" />
+            
+        </composable_node>
+    </load_composable_node>
+
+    <!-- Triton Node -->
+    <load_composable_node target="$(var container_name)">
+        <composable_node
+            pkg="isaac_ros_triton"
+            plugin="nvidia::isaac_ros::dnn_inference::TritonNode"
+            name="triton_lidarnet_node">
+            
+            <param name="model_name" value="$(var model_name)" />
+            <param name="model_repository_paths" value="['$(var model_repository_path)']" />
+            
+            <param name="input_tensor_names" value="$(var triton_input_tensor_names)" />
+            <param name="output_tensor_names" value="$(var triton_output_tensor_names)" />
+
+            <param name="input_binding_names" value="['input_scan']" />
+            <param name="output_binding_names" value="['output_control']" />
+            
+            <param name="input_tensor_formats" value="['nitros_tensor_list_nchw_rgb_f32']" />
+            <param name="output_tensor_formats" value="['nitros_tensor_list_nhwc_rgb_f32']" />
+
+            <remap from="tensor_sub" to="$(var triton_output_topic)" />
+            <remap from="tensor_pub" to="$(var input_tensor_topic)" />
+        </composable_node>
+    </load_composable_node>
+
+    <load_composable_node target="$(var container_name)">
+        <composable_node
+            pkg="isaac_ros_lidar_e2e_control"
+            plugin="isaac_ros_lidar_e2e_control::LidarNetDecoderNode"
+            name="lidarnet_decoder_node">
+
+            <param from="$(var lidarnet_decoder_node_param)" />
+
+            <remap from="inference_output" to="$(var triton_output_topic)" />
+            <remap from="ackermann_cmd" to="$(var output_control_topic)" />
+        </composable_node>
+    </load_composable_node>
+
+    <include file="$(find-pkg-share control_filter)/launch/filter.launch.xml">
+        <arg name="control_filter_param" value="$(find-pkg-share control_filter)/config/control_filter.param.yaml" />
+        <arg name="input_raw_control_cmd" value="$(var output_control_topic)"/>
+        <arg name="output_filtered_control_cmd" value="$(var output_filtered_control_topic)"/>
+    </include>
+
+</launch>

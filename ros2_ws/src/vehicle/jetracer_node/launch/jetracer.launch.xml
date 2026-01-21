@@ -1,0 +1,14 @@
+<launch>   
+    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive"/>
+    <arg name="jetracer_param"  default="$(find-pkg-share jetracer_node)/config/jetracer_node.param.yaml"/>
+
+    <node pkg="jetracer_node" 
+          exec="jetracer_node" 
+          name="jetracer_driver" 
+          output="screen">
+
+        <param from="$(var jetracer_param)"/>
+        <remap from="/cmd_drive" to="$(var vehicle_control_topic)"/>
+    </node>
+    
+</launch>

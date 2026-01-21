@@ -1,0 +1,56 @@
+/**:
+  ros__parameters:
+    scan_filter_chain:
+
+      # フィルター1: ロボット自身の除去 
+      - name: footprint_filter
+        type: laser_filters/LaserScanFootprintFilter
+        params:
+          inscribed_radius: 0.15 #15cm
+
+      # フィルター2: メディアンフィルター (平滑化)
+      - name: median_filter
+        type: laser_filters/LaserArrayFilter
+        params:
+          range_filter_chain:
+            - name: median_range
+              type: filters/MultiChannelMedianFilterFloat
+              params:
+                number_of_observations: 5
+          intensity_filter_chain:
+            - name: median_intensity
+              type: filters/MultiChannelMedianFilterFloat
+              params:
+                number_of_observations: 5
+
+      # フィルター3: 飛び点ノイズの除去 (Speckle)
+      - name: speckle_filter
+        type: laser_filters/LaserScanSpeckleFilter
+        params:
+          filter_type: 0          # 隣接点との距離で判断
+          max_range: 3.0          # 3m以内の近距離ノイズを対象
+          max_range_difference: 0.15 # 15cm以上離れた孤立点をノイズとみなす
+          filter_window: 2        # 2つ隣までの点を見る
+
+      # フィルター4: 影のマーキング (Shadows)
+      - name: shadow_marker
+        type: laser_filters/ScanShadowsFilter
+        params:
+          min_angle: 10.0
+          max_angle: 170.0
+          neighbors: 10 # 高速走行を考慮し、近傍点は少なめに設定
+          window: 1     # 0より1の方が安定することが多い
+
+      # フィルター5: 強度による最終選別 (Intensity)
+      - name: intensity_clipper
+        type: laser_filters/LaserScanIntensityFilter
+        params:
+          # shadow_marker が印をつけた点 (強度0) を除去するため、
+          # 100未満の点はすべて削除
+          lower_threshold: 100.0   
+          
+          # 反射テープやダクトの異常反射 (高強度) を除去するため、
+          # 8000以上の点はすべて削除
+          upper_threshold: 8000.0  
+          
+          disp_histogram: 0

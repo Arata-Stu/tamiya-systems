@@ -1,0 +1,13 @@
+/**:
+  ros__parameters:
+    ## スロットルとステアリングの反転
+    throttle_inversion: True
+    steering_inversion: False
+    ## スロットルとステアリングのゲイン
+    throttle_gain: 1.0
+    steering_gain: 1.0
+    ## スロットルとステアリングのオフセット
+    steering_offset: 0.0
+    throttle_offset: 0.0
+    ## スロットルとステアリングのオフセット調整ステップ
+    offset_step: 0.001

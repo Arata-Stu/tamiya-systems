@@ -1,0 +1,9 @@
+numpy
+torch
+torchvision
+opencv-python
+
+omegaconf
+hydra-core
+
+tensorboard

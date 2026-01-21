@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    # フィルタの種類: "average", "median", "none"
+    filter_type: "average"
+
+    # 平滑化に使用するウィンドウサイズ *window_size = 1 の場合はフィルタをスキップ
+    window_size: 5
+
+    # スケール／クリップ処理を有効にするか
+    use_scale_filter: true
+
+    # 直進状態とみなす操舵角の閾値 [rad]
+    straight_steer_threshold: 0.075
+
+    # 直進時の速度スケール比
+    straight_speed_scale_ratio: 1.0
+
+    # カーブ時の速度スケール比
+    cornering_speed_scale_ratio: 1.0
+
+    # 操舵角のスケール比
+    steer_scale_ratio: 1.0
