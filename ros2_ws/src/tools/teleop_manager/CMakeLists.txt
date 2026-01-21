@@ -12,6 +12,7 @@ ament_auto_find_build_dependencies()
 
 ament_auto_add_executable(teleop_manager_node
   src/teleop_manager_node.cpp
+  src/teleop_manager_core.cpp
 )
 
 ament_auto_package(INSTALL_TO_SHARE
