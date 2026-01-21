@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 from std_srvs.srv import Trigger 
 
 from bag_manager_py.bag_manager_core import BagRecorderCore
 
 class RosBagManagerNode(Node):
-    """A ROS 2 Node wrapper for the BagRecorderCore.
-
-    This node exposes ROS 2 interfaces (Service, Topic) to control the
-    recording logic encapsulated in BagRecorderCore.
-    """
+    """BagRecorderCoreの機能をROS 2通信経由で提供するノード。"""
 
     def __init__(self):
-        """Initializes the ROS 2 node and the underlying BagRecorderCore."""
         super().__init__('ros2_bag_manager_node')
 
         self.declare_parameter('output_dir', 'rosbag2_output')
@@ -22,76 +17,60 @@ class RosBagManagerNode(Node):
         self.declare_parameter('topics', ['/rosbag2_recorder/trigger'])
         self.declare_parameter('storage_id', 'mcap')
         
-        output_dir = self.get_parameter('output_dir').value
-        all_topics = self.get_parameter('all_topics').value
-        topics = list(self.get_parameter('topics').value)
-        storage_id = self.get_parameter('storage_id').value
-
+        # Coreインスタンスの初期化
         self.core = BagRecorderCore(
-            output_dir=output_dir,
-            topics=topics,
-            all_topics=all_topics,
-            storage_id=storage_id,
-            logger=self.get_logger() 
+            output_dir=self.get_parameter('output_dir').value,
+            topics=list(self.get_parameter('topics').value),
+            all_topics=self.get_parameter('all_topics').value,
+            storage_id=self.get_parameter('storage_id').value,
+            logger=self.get_logger()
         )
 
+        # Publisher
         self.status_pub = self.create_publisher(Bool, '~/status', 10)
+
+        # Subscriptions
         self.create_subscription(Bool, '/rosbag2_recorder/trigger', self.trigger_cb, 10)
-        self.create_service(Trigger, '~/start_recording', self.start_cb)
-        self.create_service(Trigger, '~/stop_recording', self.stop_cb)
+        self.create_subscription(String, '/rosbag2_recorder/memo', self.memo_cb, 10)
+
+        # Services
+        self.create_service(Trigger, '~/start_recording', self.start_srv_cb)
+        self.create_service(Trigger, '~/stop_recording', self.stop_srv_cb)
         
         self.publish_status()
 
     def publish_status(self):
-        """Publishes the current recording status to the '~/status' topic."""
+        """現在の録画状態をパブリッシュする。"""
         self.status_pub.publish(Bool(data=self.core.is_recording))
 
     def trigger_cb(self, msg: Bool):
-        """Callback for the trigger topic.
-
-        Args:
-            msg (Bool): If data is True, starts recording. If False, stops recording.
-        """
+        """トピックによる開始/停止制御。"""
         if msg.data:
             self.core.start()
         else:
             self.core.stop()
         self.publish_status()
 
-    def start_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
-        """Callback for the start_recording service.
+    def memo_cb(self, msg: String):
+        """トピックによる直前テイクへのメモ付与。"""
+        memo = msg.data.strip().lower()
+        if memo in ["good", "bad"]:
+            self.core.apply_memo(memo)
 
-        Args:
-            request (Trigger.Request): The service request (empty).
-            response (Trigger.Response): The service response to be populated.
-
-        Returns:
-            Trigger.Response: The populated response indicating success or failure.
-        """
-        success, msg = self.core.start()
-        response.success = success
-        response.message = msg
+    def start_srv_cb(self, request, response):
+        """録画開始サービス。"""
+        response.success, response.message = self.core.start()
         self.publish_status()
         return response
 
-    def stop_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
-        """Callback for the stop_recording service.
-
-        Args:
-            request (Trigger.Request): The service request (empty).
-            response (Trigger.Response): The service response to be populated.
-
-        Returns:
-            Trigger.Response: The populated response indicating success or failure.
-        """
-        success, msg = self.core.stop()
-        response.success = success
-        response.message = msg
+    def stop_srv_cb(self, request, response):
+        """録画停止サービス。"""
+        response.success, response.message = self.core.stop()
         self.publish_status()
         return response
 
     def destroy_node(self):
-        """Cleanly destroys the node and ensures recording is stopped."""
+        """終了時に進行中の録画を停止する。"""
         self.core.stop()
         super().destroy_node()
 
