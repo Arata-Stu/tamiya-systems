@@ -45,7 +45,7 @@ def validate_one_epoch(model, dataloader, criterion, device):
 # =========================================================
 # 4. Main Script
 # =========================================================
-@hydra.main(config_path="config", config_name="train_scan", version_base="1.2")
+@hydra.main(config_path="config", config_name="train", version_base="1.2")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
