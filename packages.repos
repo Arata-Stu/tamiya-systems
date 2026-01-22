@@ -5,9 +5,16 @@ repositories:
     url: https://github.com/Hokuyo-aut/urg_node2.git
     version: main
 
-  ## ISAAC ROS
+  # ISAAC ROS
   
+  ## isaac_ros_common
   ros2_ws/src/isaac_ros/isaac_ros_common:
     type: git
     url: https://github.com/carbuncle01/isaac_ros_common.git
     version: release-3.2
+
+  ## greenwave_monitor
+  ros2_ws/src/isaac_ros/greenwave_monitor:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/greenwave_monitor.git
+    version: main
