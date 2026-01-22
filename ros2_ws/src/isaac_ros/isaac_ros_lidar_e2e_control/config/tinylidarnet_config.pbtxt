@@ -1,0 +1,17 @@
+name: "tinylidarnet"
+platform: "tensorrt_plan"
+max_batch_size: 1
+input [
+  {
+    name: "scan_input"
+    data_type: TYPE_FP32
+    dims: [ 1, 1080 ]  # [History(1), Points(1080)]
+  }
+]
+output [
+  {
+    name: "control_output"
+    data_type: TYPE_FP32
+    dims: [ 2 ]
+  }
+]

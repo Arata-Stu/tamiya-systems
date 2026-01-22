@@ -1,0 +1,33 @@
+# --- パス関連の設定 ---
+data_path: "./datasets/"           # データ抽出スクリプトの出力ディレクトリ
+resume_ckpt_path: null             # 再開する場合のチェックポイントパス (e.g., "./ckpts/train/.../last_model.pth")
+log_dir: ./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}  
+
+# --- データセットと変換の設定 ---
+dataset:
+  sequence_length: 1
+  max_range: 10.0                  # (追加) NormalizeScanで使用する最大距離
+  noise_std: 0.02                  # (追加) AddTemporalNoiseで使用するノイズの標準偏差
+  # image_height / image_width は LiDARNet では使用していないようであれば削除または保持
+  image_height: 120
+  image_width: 160
+  transform_mode: "numpy"          # 'numpy', 'tensor', 'pil'
+
+# --- 学習パラメータ ---
+training:
+  epochs: 50
+  batch_size: 64
+  learning_rate: 0.0001
+  num_workers: 16
+
+# --- モデルのパラメータ ---
+model:
+  scan_points: 1080                # TinyLidarNetの入力次元(input_dim)に相当
+  num_outputs: 2                   # 出力次元 (steer, accel)
+  size: "tiny"                     # モデルのバリエーション選択用
+
+# --- Hydra の実行設定 ---
+hydra:
+  run:
+    dir: ./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
