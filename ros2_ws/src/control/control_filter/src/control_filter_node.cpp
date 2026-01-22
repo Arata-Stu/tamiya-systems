@@ -1,174 +1,156 @@
-#include "control_filter/ackermann_filter_node.hpp"
-#include <numeric>
+#include "control_filter/control_filter_node.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
-const char* INPUT_TOPIC = "/cmd_drive";
-const char* OUTPUT_TOPIC = "/cmd_drive_filtered";
-
-AckermannFilterNode::AckermannFilterNode()
-: Node("ackermann_filter_node")
-{
-  // --- Parameter declarations ---
-  this->declare_parameter<std::string>("filter_type", "none");
+ControlFilterNode::ControlFilterNode() : Node("control_filter_node") {
+  // --- 制御パラメータの宣言 ---
+  this->declare_parameter<std::string>("filter_type", "slew_rate");
   this->declare_parameter<int>("window_size", 5);
-  this->declare_parameter<bool>("use_scale_filter", true);
+  this->declare_parameter<double>("max_accel_slew_rate", 2.0);
+  this->declare_parameter<double>("max_steer_slew_rate", 1.5);
 
-  this->declare_parameter<double>("straight_steer_threshold", 0.1);
-  this->declare_parameter<double>("straight_accel_scale_ratio", 1.0);
-  this->declare_parameter<double>("cornering_accel_scale_ratio", 0.5);
-  this->declare_parameter<double>("steer_scale_ratio", 1.0);
-
-  // --- Load parameters ---
+  // 初期のパラメータ取得
   this->get_parameter("filter_type", filter_type_);
   this->get_parameter("window_size", window_size_);
-  this->get_parameter("use_scale_filter", use_scale_filter_);
-  this->get_parameter("straight_steer_threshold", straight_steer_threshold_);
-  this->get_parameter("straight_accel_scale_ratio", straight_accel_scale_ratio_);
-  this->get_parameter("cornering_accel_scale_ratio", cornering_accel_scale_ratio_);
-  this->get_parameter("steer_scale_ratio", steer_scale_ratio_);
+  this->get_parameter("max_accel_slew_rate", max_accel_slew_rate_);
+  this->get_parameter("max_steer_slew_rate", max_steer_slew_rate_);
 
-  print_parameters();
+  // --- Pub/Sub の設定 ---
+  publisher_ =
+      this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
+          "/control_cmd_filtered", rclcpp::QoS(10));
 
-  // --- Dynamic parameter callback ---
-  parameters_callback_handle_ = this->add_on_set_parameters_callback(
-    std::bind(&AckermannFilterNode::parameters_callback, this, std::placeholders::_1));
+  subscription_ =
+      this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
+          "/control_cmd_raw", rclcpp::QoS(1),
+          std::bind(&ControlFilterNode::TopicCallback, this,
+                    std::placeholders::_1));
 
-  // --- ROS2 interfaces ---
-  publisher_ = this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(OUTPUT_TOPIC, 10);
-  subscription_ = this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-    INPUT_TOPIC, 1, std::bind(&AckermannFilterNode::topic_callback, this, std::placeholders::_1));
+  // 動的パラメータのコールバック登録
+  parameters_callback_handle_ = this->add_on_set_parameters_callback(std::bind(
+      &ControlFilterNode::ParametersCallback, this, std::placeholders::_1));
+
+  last_callback_time_ = this->now();
+  PrintParameters();
 }
 
-// ======================================================================
-// メインコールバック
-// ======================================================================
-void AckermannFilterNode::topic_callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg)
-{
-  if (window_size_ <= 1 || filter_type_ == "none") {
-    ackermann_msgs::msg::AckermannDriveStamped out_msg = *msg;
-    if (use_scale_filter_) {
-      apply_advanced_scale_filter(out_msg.drive);
-    }
-    publisher_->publish(out_msg);
+void ControlFilterNode::TopicCallback(
+    const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg) {
+  const rclcpp::Time now = this->now();
+  const double dt = (now - last_callback_time_).seconds();
+  last_callback_time_ = now;
+
+  if (is_first_msg_) {
+    prev_accel_ = msg->drive.acceleration;
+    prev_steer_ = msg->drive.steering_angle;
+    is_first_msg_ = false;
+    publisher_->publish(*msg);
     return;
   }
 
-  // --- バッファ更新 ---
-  accel_buffer_.push_back(msg->drive.acceleration);
-  steering_angle_buffer_.push_back(msg->drive.steering_angle);
+  ackermann_msgs::msg::AckermannDrive filtered_drive = msg->drive;
+
+  if (filter_type_ == "slew_rate") {
+    ApplySlewRateFilter(filtered_drive, dt);
+  } else if (filter_type_ == "average") {
+    accel_buffer_.push_back(msg->drive.acceleration);
+    steering_angle_buffer_.push_back(msg->drive.steering_angle);
+    ApplyAverageFilter(filtered_drive);
+  } else if (filter_type_ == "median") {
+    accel_buffer_.push_back(msg->drive.acceleration);
+    steering_angle_buffer_.push_back(msg->drive.steering_angle);
+    ApplyMedianFilter(filtered_drive);
+  }
+
+  // キューのサイズ維持
   while (accel_buffer_.size() > static_cast<size_t>(window_size_)) {
     accel_buffer_.pop_front();
     steering_angle_buffer_.pop_front();
   }
 
-  // --- フィルタ処理 ---
-  ackermann_msgs::msg::AckermannDrive filtered_drive;
-  if (filter_type_ == "average") {
-    apply_average_filter(filtered_drive);
-  } else if (filter_type_ == "median") {
-    apply_median_filter(filtered_drive);
-  } else {
-    filtered_drive = msg->drive;
-  }
-
-  if (use_scale_filter_) {
-    apply_advanced_scale_filter(filtered_drive);
-  }
-
-  // --- 出力 ---
-  ackermann_msgs::msg::AckermannDriveStamped filtered_msg;
-  filtered_msg.header = msg->header;
-  filtered_msg.drive = filtered_drive;
-  publisher_->publish(filtered_msg);
+  auto out_msg = std::make_unique<ackermann_msgs::msg::AckermannDriveStamped>();
+  out_msg->header = msg->header;
+  out_msg->drive = filtered_drive;
+  publisher_->publish(std::move(out_msg));
 }
 
-// ======================================================================
-// 動的パラメータ更新
-// ======================================================================
-rcl_interfaces::msg::SetParametersResult AckermannFilterNode::parameters_callback(
-  const std::vector<rclcpp::Parameter> &parameters)
-{
+void ControlFilterNode::ApplySlewRateFilter(
+    ackermann_msgs::msg::AckermannDrive &msg, double dt) {
+  if (dt <= 0.0)
+    return;
+
+  const double max_accel_change = max_accel_slew_rate_ * dt;
+  const double max_steer_change = max_steer_slew_rate_ * dt;
+
+  // 加速度リミッタ
+  const double accel_diff = msg.acceleration - prev_accel_;
+  msg.acceleration =
+      prev_accel_ + std::clamp(accel_diff, -max_accel_change, max_accel_change);
+
+  // ステアリングリミッタ
+  const double steer_diff = msg.steering_angle - prev_steer_;
+  msg.steering_angle =
+      prev_steer_ + std::clamp(steer_diff, -max_steer_change, max_steer_change);
+
+  prev_accel_ = msg.acceleration;
+  prev_steer_ = msg.steering_angle;
+}
+
+void ControlFilterNode::ApplyAverageFilter(
+    ackermann_msgs::msg::AckermannDrive &msg) {
+  if (accel_buffer_.empty())
+    return;
+  msg.acceleration =
+      std::accumulate(accel_buffer_.begin(), accel_buffer_.end(), 0.0) /
+      accel_buffer_.size();
+  msg.steering_angle = std::accumulate(steering_angle_buffer_.begin(),
+                                       steering_angle_buffer_.end(), 0.0) /
+                       steering_angle_buffer_.size();
+}
+
+void ControlFilterNode::ApplyMedianFilter(
+    ackermann_msgs::msg::AckermannDrive &msg) {
+  msg.acceleration = CalculateMedian(accel_buffer_);
+  msg.steering_angle = CalculateMedian(steering_angle_buffer_);
+}
+
+double ControlFilterNode::CalculateMedian(const std::deque<double> &data) {
+  if (data.empty())
+    return 0.0;
+  std::vector<double> sorted(data.begin(), data.end());
+  std::sort(sorted.begin(), sorted.end());
+  const size_t n = sorted.size();
+  return (n % 2 == 0) ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
+                      : sorted[n / 2];
+}
+
+rcl_interfaces::msg::SetParametersResult ControlFilterNode::ParametersCallback(
+    const std::vector<rclcpp::Parameter> &parameters) {
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
   result.reason = "success";
 
   for (const auto &param : parameters) {
-    const std::string &name = param.get_name();
-    if (name == "filter_type") filter_type_ = param.as_string();
-    else if (name == "window_size") window_size_ = param.as_int();
-    else if (name == "use_scale_filter") use_scale_filter_ = param.as_bool();
-    else if (name == "straight_steer_threshold") straight_steer_threshold_ = param.as_double();
-    else if (name == "straight_accel_scale_ratio") straight_accel_scale_ratio_ = param.as_double();
-    else if (name == "cornering_accel_scale_ratio") cornering_accel_scale_ratio_ = param.as_double();
-    else if (name == "steer_scale_ratio") steer_scale_ratio_ = param.as_double();
+    const std::string name = param.get_name();
+    if (name == "filter_type") {
+      filter_type_ = param.as_string();
+    } else if (name == "window_size") {
+      window_size_ = param.as_int();
+    } else if (name == "max_accel_slew_rate") {
+      max_accel_slew_rate_ = param.as_double();
+    } else if (name == "max_steer_slew_rate") {
+      max_steer_slew_rate_ = param.as_double();
+    }
   }
-
-  print_parameters();
   return result;
 }
 
-// ======================================================================
-// 平均フィルタ
-// ======================================================================
-void AckermannFilterNode::apply_average_filter(ackermann_msgs::msg::AckermannDrive &msg)
-{
-  double accel_sum = std::accumulate(accel_buffer_.begin(), accel_buffer_.end(), 0.0);
-  double steer_sum = std::accumulate(steering_angle_buffer_.begin(), steering_angle_buffer_.end(), 0.0);
-  msg.acceleration = accel_sum / accel_buffer_.size();
-  msg.steering_angle = steer_sum / steering_angle_buffer_.size();
-}
-
-// ======================================================================
-// 中央値フィルタ
-// ======================================================================
-void AckermannFilterNode::apply_median_filter(ackermann_msgs::msg::AckermannDrive &msg)
-{
-  msg.acceleration = calculate_median(accel_buffer_);
-  msg.steering_angle = calculate_median(steering_angle_buffer_);
-}
-
-double AckermannFilterNode::calculate_median(const std::deque<double>& data)
-{
-  if (data.empty()) return 0.0;
-  std::vector<double> sorted(data.begin(), data.end());
-  std::sort(sorted.begin(), sorted.end());
-  size_t n = sorted.size();
-  return (n % 2 == 0)
-    ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
-    : sorted[n / 2];
-}
-
-// ======================================================================
-// 高度スケールフィルタ
-// ======================================================================
-void AckermannFilterNode::apply_advanced_scale_filter(ackermann_msgs::msg::AckermannDrive &msg)
-{
-  if (std::fabs(msg.steering_angle) < straight_steer_threshold_) {
-    msg.acceleration *= straight_accel_scale_ratio_;
-  } else {
-    msg.acceleration *= cornering_accel_scale_ratio_;
-  }
-  msg.steering_angle *= steer_scale_ratio_;
-
-  msg.acceleration = std::clamp(msg.acceleration, -1.0f, 1.0f);
-  msg.steering_angle = std::clamp(msg.steering_angle, -1.0f, 1.0f);
-}
-
-// ======================================================================
-// パラメータ出力
-// ======================================================================
-void AckermannFilterNode::print_parameters()
-{
-  RCLCPP_INFO(this->get_logger(), "--- Ackermann Filter Node ---");
-  RCLCPP_INFO(this->get_logger(), "Filter type: %s", filter_type_.c_str());
-  RCLCPP_INFO(this->get_logger(), "Window size: %d", window_size_);
-  RCLCPP_INFO(this->get_logger(), "Use scale filter: %s", use_scale_filter_ ? "true" : "false");
-  if (use_scale_filter_) {
-    RCLCPP_INFO(this->get_logger(), "  Straight steer threshold: %.2f", straight_steer_threshold_);
-    RCLCPP_INFO(this->get_logger(), "  Straight accel scale ratio: %.2f", straight_accel_scale_ratio_);
-    RCLCPP_INFO(this->get_logger(), "  Cornering accel scale ratio: %.2f", cornering_accel_scale_ratio_);
-    RCLCPP_INFO(this->get_logger(), "  Steer scale ratio: %.2f", steer_scale_ratio_);
-  }
-  RCLCPP_INFO(this->get_logger(), "------------------------------------");
+void ControlFilterNode::PrintParameters() const {
+  RCLCPP_INFO(this->get_logger(), "--- Control Filter Node Loaded ---");
+  RCLCPP_INFO(this->get_logger(), "Default Input: /cmd_drive");
+  RCLCPP_INFO(this->get_logger(), "Default Output: /cmd_drive_filtered");
+  RCLCPP_INFO(this->get_logger(), "Active Filter: %s", filter_type_.c_str());
+  RCLCPP_INFO(this->get_logger(), "----------------------------------");
 }

@@ -1,48 +1,54 @@
-#ifndef ACKERMANN_FILTER_NODE_HPP_
-#define ACKERMANN_FILTER_NODE_HPP_
+#ifndef CONTROL_FILTER_NODE_HPP_
+#define CONTROL_FILTER_NODE_HPP_
 
-#include <rclcpp/rclcpp.hpp>
-#include <ackermann_msgs/msg/ackermann_drive.hpp>
-#include <ackermann_msgs/msg/ackermann_drive_stamped.hpp>
 #include <deque>
 #include <string>
 #include <vector>
-#include "rcl_interfaces/msg/set_parameters_result.hpp"
 
-class AckermannFilterNode : public rclcpp::Node
-{
+#include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
+#include "rclcpp/rclcpp.hpp"
+
+class ControlFilterNode : public rclcpp::Node {
 public:
-  AckermannFilterNode();
+  ControlFilterNode();
 
 private:
-  void topic_callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg);
-  rcl_interfaces::msg::SetParametersResult parameters_callback(
-    const std::vector<rclcpp::Parameter> &parameters);
+  void TopicCallback(
+      const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg);
+  rcl_interfaces::msg::SetParametersResult
+  ParametersCallback(const std::vector<rclcpp::Parameter> &parameters);
 
-  void apply_average_filter(ackermann_msgs::msg::AckermannDrive &msg);
-  void apply_median_filter(ackermann_msgs::msg::AckermannDrive &msg);
-  double calculate_median(const std::deque<double>& data);
-  void apply_advanced_scale_filter(ackermann_msgs::msg::AckermannDrive &msg);
+  void ApplySlewRateFilter(ackermann_msgs::msg::AckermannDrive &msg, double dt);
+  void ApplyAverageFilter(ackermann_msgs::msg::AckermannDrive &msg);
+  void ApplyMedianFilter(ackermann_msgs::msg::AckermannDrive &msg);
 
-  void print_parameters();
+  double CalculateMedian(const std::deque<double> &data);
 
-  rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr subscription_;
-  rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr publisher_;
+  void PrintParameters() const;
+
+  // ROS 2 interfaces
+  rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
+      subscription_;
+  rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
+      publisher_;
   OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
 
-  // Parameters
-  std::string filter_type_;  
+  // Node Parameters
+  std::string filter_type_;
   int window_size_;
-  bool use_scale_filter_;
+  double max_accel_slew_rate_; // [unit/s]
+  double max_steer_slew_rate_; // [unit/s]
 
-  double straight_steer_threshold_;
-  double straight_accel_scale_ratio_;
-  double cornering_accel_scale_ratio_;
-  double steer_scale_ratio_;
+  // Filter States
+  rclcpp::Time last_callback_time_;
+  double prev_accel_ = 0.0;
+  double prev_steer_ = 0.0;
+  bool is_first_msg_ = true;
 
-  // Buffers
+  // Buffers for MA/Median
   std::deque<double> accel_buffer_;
   std::deque<double> steering_angle_buffer_;
 };
 
-#endif  // ACKERMANN_FILTER_NODE_HPP_
+#endif // CONTROL_FILTER_NODE_HPP_
