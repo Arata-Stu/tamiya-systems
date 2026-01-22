@@ -13,11 +13,11 @@ MODEL_NAME="tinylidarnet"
 SCAN_POINTS="1081"           # LiDARの点数（トレーニング時と一致させる）
 INPUT_TENSOR_NAME="scan_input"
 PROJECT_NAME="isaac_ros_lidar_e2e_control"
-CONFIG_FILE="pilotnet_config.pbtxt"
+CONFIG_FILE="tinylidarnet_config.pbtxt"
 PRECISION="fp16"             # fp16 or fp32
 MAX_BATCH_SIZE="1"
-PYTHON_CONVERT_SCRIPT="3_export_onnx.py"
-CHECKPOINT_BASE_DIR="../ckpts/pilotnet"
+PYTHON_CONVERT_SCRIPT="export_onnx.py"
+CHECKPOINT_BASE_DIR="../ckpts/tinylidarnet"
 
 # --- 関数の定義 ---
 
