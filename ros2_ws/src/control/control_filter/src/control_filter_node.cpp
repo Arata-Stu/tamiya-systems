@@ -11,11 +11,26 @@ ControlFilterNode::ControlFilterNode() : Node("control_filter_node") {
   this->declare_parameter<double>("max_accel_slew_rate", 2.0);
   this->declare_parameter<double>("max_steer_slew_rate", 1.5);
 
+  // Scale Filter パラメータ
+  this->declare_parameter<bool>("use_scale_filter", true);
+  this->declare_parameter<double>("straight_steer_threshold", 0.1);
+  this->declare_parameter<double>("straight_accel_scale_ratio", 1.0);
+  this->declare_parameter<double>("cornering_accel_scale_ratio", 0.5);
+  this->declare_parameter<double>("steer_scale_ratio", 1.0);
+
   // 初期のパラメータ取得
   this->get_parameter("filter_type", filter_type_);
   this->get_parameter("window_size", window_size_);
   this->get_parameter("max_accel_slew_rate", max_accel_slew_rate_);
   this->get_parameter("max_steer_slew_rate", max_steer_slew_rate_);
+
+  this->get_parameter("use_scale_filter", use_scale_filter_);
+  this->get_parameter("straight_steer_threshold", straight_steer_threshold_);
+  this->get_parameter("straight_accel_scale_ratio",
+                      straight_accel_scale_ratio_);
+  this->get_parameter("cornering_accel_scale_ratio",
+                      cornering_accel_scale_ratio_);
+  this->get_parameter("steer_scale_ratio", steer_scale_ratio_);
 
   // --- Pub/Sub の設定 ---
   publisher_ =
@@ -46,12 +61,21 @@ void ControlFilterNode::TopicCallback(
     prev_accel_ = msg->drive.acceleration;
     prev_steer_ = msg->drive.steering_angle;
     is_first_msg_ = false;
-    publisher_->publish(*msg);
+
+    ackermann_msgs::msg::AckermannDrive filtered_drive = msg->drive;
+    if (use_scale_filter_) {
+      ApplyAdvancedScaleFilter(filtered_drive);
+    }
+
+    ackermann_msgs::msg::AckermannDriveStamped out_msg = *msg;
+    out_msg.drive = filtered_drive;
+    publisher_->publish(out_msg);
     return;
   }
 
   ackermann_msgs::msg::AckermannDrive filtered_drive = msg->drive;
 
+  // 1. Smoothing / Slew Rate Logic
   if (filter_type_ == "slew_rate") {
     ApplySlewRateFilter(filtered_drive, dt);
   } else if (filter_type_ == "average") {
@@ -59,7 +83,12 @@ void ControlFilterNode::TopicCallback(
     steering_angle_buffer_.push_back(msg->drive.steering_angle);
     ApplyAverageFilter(filtered_drive);
   } else {
-    // フィルタなし
+    // フィルタなし (raw)
+  }
+
+  // 2. Scale Filter Logic (Optional)
+  if (use_scale_filter_) {
+    ApplyAdvancedScaleFilter(filtered_drive);
   }
 
   ackermann_msgs::msg::AckermannDriveStamped filtered_msg = *msg;
@@ -107,6 +136,19 @@ void ControlFilterNode::ApplyAverageFilter(
   drive.steering_angle = steer_sum / steering_angle_buffer_.size();
 }
 
+void ControlFilterNode::ApplyAdvancedScaleFilter(
+    ackermann_msgs::msg::AckermannDrive &drive) {
+  if (std::fabs(drive.steering_angle) < straight_steer_threshold_) {
+    drive.acceleration *= straight_accel_scale_ratio_;
+  } else {
+    drive.acceleration *= cornering_accel_scale_ratio_;
+  }
+  drive.steering_angle *= steer_scale_ratio_;
+
+  // Note: Removed hard clamping to -1.0/1.0 based on user preference to respect
+  // physical values. If clamping is needed, it should be a separate parameter.
+}
+
 rcl_interfaces::msg::SetParametersResult ControlFilterNode::ParametersCallback(
     const std::vector<rclcpp::Parameter> &parameters) {
   rcl_interfaces::msg::SetParametersResult result;
@@ -122,6 +164,16 @@ rcl_interfaces::msg::SetParametersResult ControlFilterNode::ParametersCallback(
       max_accel_slew_rate_ = param.as_double();
     } else if (param.get_name() == "max_steer_slew_rate") {
       max_steer_slew_rate_ = param.as_double();
+    } else if (param.get_name() == "use_scale_filter") {
+      use_scale_filter_ = param.as_bool();
+    } else if (param.get_name() == "straight_steer_threshold") {
+      straight_steer_threshold_ = param.as_double();
+    } else if (param.get_name() == "straight_accel_scale_ratio") {
+      straight_accel_scale_ratio_ = param.as_double();
+    } else if (param.get_name() == "cornering_accel_scale_ratio") {
+      cornering_accel_scale_ratio_ = param.as_double();
+    } else if (param.get_name() == "steer_scale_ratio") {
+      steer_scale_ratio_ = param.as_double();
     }
   }
 
@@ -137,4 +189,16 @@ void ControlFilterNode::PrintParameters() {
               max_accel_slew_rate_);
   RCLCPP_INFO(this->get_logger(), "max_steer_slew_rate: %.2f",
               max_steer_slew_rate_);
+
+  RCLCPP_INFO(this->get_logger(), "use_scale_filter: %s",
+              use_scale_filter_ ? "true" : "false");
+  if (use_scale_filter_) {
+    RCLCPP_INFO(this->get_logger(), "  straight_steer_threshold: %.2f",
+                straight_steer_threshold_);
+    RCLCPP_INFO(this->get_logger(), "  straight_accel_scale: %.2f",
+                straight_accel_scale_ratio_);
+    RCLCPP_INFO(this->get_logger(), "  cornering_accel_scale: %.2f",
+                cornering_accel_scale_ratio_);
+    RCLCPP_INFO(this->get_logger(), "  steer_scale: %.2f", steer_scale_ratio_);
+  }
 }

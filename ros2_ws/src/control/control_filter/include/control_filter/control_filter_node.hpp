@@ -21,9 +21,7 @@ private:
 
   void ApplySlewRateFilter(ackermann_msgs::msg::AckermannDrive &msg, double dt);
   void ApplyAverageFilter(ackermann_msgs::msg::AckermannDrive &msg);
-  void ApplyMedianFilter(ackermann_msgs::msg::AckermannDrive &msg);
-
-  double CalculateMedian(const std::deque<double> &data);
+  void ApplyAdvancedScaleFilter(ackermann_msgs::msg::AckermannDrive &msg);
 
   void PrintParameters() const;
 
@@ -40,13 +38,20 @@ private:
   double max_accel_slew_rate_; // [unit/s]
   double max_steer_slew_rate_; // [unit/s]
 
+  // Scale Filter Parameters
+  bool use_scale_filter_;
+  double straight_steer_threshold_;
+  double straight_accel_scale_ratio_;
+  double cornering_accel_scale_ratio_;
+  double steer_scale_ratio_;
+
   // Filter States
   rclcpp::Time last_callback_time_;
   double prev_accel_ = 0.0;
   double prev_steer_ = 0.0;
   bool is_first_msg_ = true;
 
-  // Buffers for MA/Median
+  // Buffers for MA
   std::deque<double> accel_buffer_;
   std::deque<double> steering_angle_buffer_;
 };

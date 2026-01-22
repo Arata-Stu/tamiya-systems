@@ -1,22 +1,29 @@
 /**:
   ros__parameters:
-    # フィルタの種類: "average", "median", "none"
-    filter_type: "average"
+    # フィルタの種類: "slew_rate", "average", "none"
+    filter_type: "slew_rate"
 
-    # 平滑化に使用するウィンドウサイズ *window_size = 1 の場合はフィルタをスキップ
+    # 平滑化に使用するウィンドウサイズ (filter_typeがaverageの場合のみ使用)
     window_size: 5
 
-    # スケール／クリップ処理を有効にするか
+    # --- Slew Rate Limiter (filter_type="slew_rate") ---
+    # 加速度の最大変化率 [m/s^2] (または unit/s)
+    max_accel_slew_rate: 2.0
+
+    # ステアリングの最大変化率 [rad/s]
+    max_steer_slew_rate: 1.5
+
+    # --- Advanced Scale Filter (直進/カーブ可変ゲイン) ---
     use_scale_filter: true
-
+    
     # 直進状態とみなす操舵角の閾値 [rad]
-    straight_steer_threshold: 0.075
+    straight_steer_threshold: 0.20
 
-    # 直進時の速度スケール比
-    straight_speed_scale_ratio: 1.0
+    # 直進時の速度ゲイン
+    straight_accel_scale_ratio: 1.0
 
-    # カーブ時の速度スケール比
-    cornering_speed_scale_ratio: 1.0
+    # カーブ時の速度ゲイン (減速させるには < 1.0)
+    cornering_accel_scale_ratio: 0.6
 
-    # 操舵角のスケール比
+    # 操舵角全体のゲイン
     steer_scale_ratio: 1.0
