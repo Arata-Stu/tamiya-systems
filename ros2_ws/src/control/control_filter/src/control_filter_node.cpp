@@ -20,11 +20,11 @@ ControlFilterNode::ControlFilterNode() : Node("control_filter_node") {
   // --- Pub/Sub の設定 ---
   publisher_ =
       this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
-          "/control_cmd_filtered", rclcpp::QoS(10));
+          "control_cmd_filtered", rclcpp::QoS(10));
 
   subscription_ =
       this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-          "/control_cmd_raw", rclcpp::QoS(1),
+          "control_cmd_raw", rclcpp::QoS(1),
           std::bind(&ControlFilterNode::TopicCallback, this,
                     std::placeholders::_1));
 
@@ -58,72 +58,53 @@ void ControlFilterNode::TopicCallback(
     accel_buffer_.push_back(msg->drive.acceleration);
     steering_angle_buffer_.push_back(msg->drive.steering_angle);
     ApplyAverageFilter(filtered_drive);
-  } else if (filter_type_ == "median") {
-    accel_buffer_.push_back(msg->drive.acceleration);
-    steering_angle_buffer_.push_back(msg->drive.steering_angle);
-    ApplyMedianFilter(filtered_drive);
+  } else {
+    // フィルタなし
   }
 
-  // キューのサイズ維持
-  while (accel_buffer_.size() > static_cast<size_t>(window_size_)) {
+  ackermann_msgs::msg::AckermannDriveStamped filtered_msg = *msg;
+  filtered_msg.drive = filtered_drive;
+  publisher_->publish(filtered_msg);
+}
+
+void ControlFilterNode::ApplySlewRateFilter(
+    ackermann_msgs::msg::AckermannDrive &drive, double dt) {
+  double max_accel_step = max_accel_slew_rate_ * dt;
+  double max_steer_step = max_steer_slew_rate_ * dt;
+
+  double accel_diff = drive.acceleration - prev_accel_;
+  double steer_diff = drive.steering_angle - prev_steer_;
+
+  if (std::abs(accel_diff) > max_accel_step) {
+    drive.acceleration =
+        prev_accel_ + std::copysign(max_accel_step, accel_diff);
+  }
+  if (std::abs(steer_diff) > max_steer_step) {
+    drive.steering_angle =
+        prev_steer_ + std::copysign(max_steer_step, steer_diff);
+  }
+
+  prev_accel_ = drive.acceleration;
+  prev_steer_ = drive.steering_angle;
+}
+
+void ControlFilterNode::ApplyAverageFilter(
+    ackermann_msgs::msg::AckermannDrive &drive) {
+  if (static_cast<int>(accel_buffer_.size()) > window_size_) {
     accel_buffer_.pop_front();
     steering_angle_buffer_.pop_front();
   }
 
-  auto out_msg = std::make_unique<ackermann_msgs::msg::AckermannDriveStamped>();
-  out_msg->header = msg->header;
-  out_msg->drive = filtered_drive;
-  publisher_->publish(std::move(out_msg));
-}
-
-void ControlFilterNode::ApplySlewRateFilter(
-    ackermann_msgs::msg::AckermannDrive &msg, double dt) {
-  if (dt <= 0.0)
-    return;
-
-  const double max_accel_change = max_accel_slew_rate_ * dt;
-  const double max_steer_change = max_steer_slew_rate_ * dt;
-
-  // 加速度リミッタ
-  const double accel_diff = msg.acceleration - prev_accel_;
-  msg.acceleration =
-      prev_accel_ + std::clamp(accel_diff, -max_accel_change, max_accel_change);
-
-  // ステアリングリミッタ
-  const double steer_diff = msg.steering_angle - prev_steer_;
-  msg.steering_angle =
-      prev_steer_ + std::clamp(steer_diff, -max_steer_change, max_steer_change);
-
-  prev_accel_ = msg.acceleration;
-  prev_steer_ = msg.steering_angle;
-}
-
-void ControlFilterNode::ApplyAverageFilter(
-    ackermann_msgs::msg::AckermannDrive &msg) {
   if (accel_buffer_.empty())
     return;
-  msg.acceleration =
-      std::accumulate(accel_buffer_.begin(), accel_buffer_.end(), 0.0) /
-      accel_buffer_.size();
-  msg.steering_angle = std::accumulate(steering_angle_buffer_.begin(),
-                                       steering_angle_buffer_.end(), 0.0) /
-                       steering_angle_buffer_.size();
-}
 
-void ControlFilterNode::ApplyMedianFilter(
-    ackermann_msgs::msg::AckermannDrive &msg) {
-  msg.acceleration = CalculateMedian(accel_buffer_);
-  msg.steering_angle = CalculateMedian(steering_angle_buffer_);
-}
+  double accel_sum =
+      std::accumulate(accel_buffer_.begin(), accel_buffer_.end(), 0.0);
+  double steer_sum = std::accumulate(steering_angle_buffer_.begin(),
+                                     steering_angle_buffer_.end(), 0.0);
 
-double ControlFilterNode::CalculateMedian(const std::deque<double> &data) {
-  if (data.empty())
-    return 0.0;
-  std::vector<double> sorted(data.begin(), data.end());
-  std::sort(sorted.begin(), sorted.end());
-  const size_t n = sorted.size();
-  return (n % 2 == 0) ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0
-                      : sorted[n / 2];
+  drive.acceleration = accel_sum / accel_buffer_.size();
+  drive.steering_angle = steer_sum / steering_angle_buffer_.size();
 }
 
 rcl_interfaces::msg::SetParametersResult ControlFilterNode::ParametersCallback(
@@ -133,24 +114,27 @@ rcl_interfaces::msg::SetParametersResult ControlFilterNode::ParametersCallback(
   result.reason = "success";
 
   for (const auto &param : parameters) {
-    const std::string name = param.get_name();
-    if (name == "filter_type") {
+    if (param.get_name() == "filter_type") {
       filter_type_ = param.as_string();
-    } else if (name == "window_size") {
+    } else if (param.get_name() == "window_size") {
       window_size_ = param.as_int();
-    } else if (name == "max_accel_slew_rate") {
+    } else if (param.get_name() == "max_accel_slew_rate") {
       max_accel_slew_rate_ = param.as_double();
-    } else if (name == "max_steer_slew_rate") {
+    } else if (param.get_name() == "max_steer_slew_rate") {
       max_steer_slew_rate_ = param.as_double();
     }
   }
+
+  PrintParameters();
   return result;
 }
 
-void ControlFilterNode::PrintParameters() const {
-  RCLCPP_INFO(this->get_logger(), "--- Control Filter Node Loaded ---");
-  RCLCPP_INFO(this->get_logger(), "Default Input: /cmd_drive");
-  RCLCPP_INFO(this->get_logger(), "Default Output: /cmd_drive_filtered");
-  RCLCPP_INFO(this->get_logger(), "Active Filter: %s", filter_type_.c_str());
-  RCLCPP_INFO(this->get_logger(), "----------------------------------");
+void ControlFilterNode::PrintParameters() {
+  RCLCPP_INFO(this->get_logger(), "--- Control Filter Parameters ---");
+  RCLCPP_INFO(this->get_logger(), "filter_type: %s", filter_type_.c_str());
+  RCLCPP_INFO(this->get_logger(), "window_size: %d", window_size_);
+  RCLCPP_INFO(this->get_logger(), "max_accel_slew_rate: %.2f",
+              max_accel_slew_rate_);
+  RCLCPP_INFO(this->get_logger(), "max_steer_slew_rate: %.2f",
+              max_steer_slew_rate_);
 }

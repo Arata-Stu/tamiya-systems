@@ -12,8 +12,8 @@
     <!-- パラメータ -->
     <param from="$(var control_filter_param)"/>
     <!-- トピックのremap -->
-    <remap from="/control_cmd" to="$(var raw_control_cmd)"/>
-    <remap from="/control_cmd_filtered" to="$(var filtered_control_cmd)"/>
+    <remap from="control_cmd_raw" to="$(var raw_control_cmd)"/>
+    <remap from="control_cmd_filtered" to="$(var filtered_control_cmd)"/>
 
   </node>
 

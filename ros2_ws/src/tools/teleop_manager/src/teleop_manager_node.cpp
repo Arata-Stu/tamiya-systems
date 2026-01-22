@@ -27,15 +27,17 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
       "joy", 10, std::bind(&TeleopManagerNode::joy_callback, this, _1));
   ack_sub_ =
       this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
-          "ackermann_cmd", 10,
+          "autonomous/cmd_drive", 10,
           std::bind(&TeleopManagerNode::ack_callback, this, _1));
 
   // Publishers
   drive_pub_ =
       this->create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
-          "drive", 10);
-  trigger_pub_ = this->create_publisher<std_msgs::msg::Bool>("trigger", 10);
-  memo_pub_ = this->create_publisher<std_msgs::msg::String>("memo", 10);
+          "cmd_drive", 10);
+  trigger_pub_ = this->create_publisher<std_msgs::msg::Bool>(
+      "/rosbag2_recorder/trigger", 10);
+  memo_pub_ = this->create_publisher<std_msgs::msg::String>(
+      "/rosbag2_recorder/memo", 10);
 
   steer_offset_inc_pub_ =
       this->create_publisher<std_msgs::msg::Bool>("steer_offset_inc", 10);

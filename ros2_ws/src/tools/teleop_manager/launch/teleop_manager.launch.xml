@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="teleop_param"  default="$(find-pkg-share teleop_manager)/config/teleop.param.yaml"/>
-  <arg name="autonomous_control_topic" default="/ackermann_cmd"/>
+  <arg name="autonomous_control_topic" default="/autonomous/cmd_drive"/>
   <arg name="vehicle_control_topic" default="/jetracer/cmd_drive"/>
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
   <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
@@ -25,9 +25,9 @@
     <!-- joy -->
     <remap from="/joy" to="/joy"/>
     <!-- AI制御コマンド -->
-    <remap from="/ackermann_cmd" to="$(var autonomous_control_topic)"/>
+    <remap from="autonomous/cmd_drive" to="$(var autonomous_control_topic)"/>
     <!-- RCカーへの入力 -->
-    <remap from="/cmd_drive" to="$(var vehicle_control_topic)"/> 
+    <remap from="cmd_drive" to="$(var vehicle_control_topic)"/> 
     <!-- rosbag制御トリガ -->
     <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
     <!-- rosbagメモ -->

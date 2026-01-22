@@ -1,9 +1,10 @@
 <launch>
     <!-- node起動 切り替え用引数 -->
     <arg name="record" default="false" description="run rosbag2 record node"/>
+    <arg name="control_filter" default="false" description="run control filter node"/>
     <!-- 引数の定義 -->
-    <arg name="vehicle_control_topic" default="/jetracer/control_cmd" description="launch vehicle"/>
-    <arg name="autonomous_control_cmd" default="/ackermann_cmd" description="autonomous ackermann control command"/>
+    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="launch vehicle"/>
+    <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" description="rosbag trigger topic"/>
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" description="rosbag memo topic"/>
     <arg name="container_name" default="lidar_container" description="container name for composable nodes"/>
@@ -20,14 +21,33 @@
         <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
     </include>
 
-    <!-- Joy Manager Node -->
-    <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
-        <arg name="teleop_param" value="$(var teleop_param)"/>
-        <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
-        <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
-        <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
-        <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
-    </include>
+    <!-- Joy Manager Node (Filter Enabled) -->
+    <group if="$(var control_filter)">
+        <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
+            <arg name="teleop_param" value="$(var teleop_param)"/>
+            <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="vehicle_control_topic" value="/control/cmd_drive_raw"/>
+            <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
+            <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
+        </include>
+        
+        <!-- Control Filter Node -->
+        <include file="$(find-pkg-share control_filter)/launch/control_filter.launch.xml">
+            <arg name="raw_control_cmd" value="/control/cmd_drive_raw"/>
+            <arg name="filtered_control_cmd" value="$(var vehicle_control_topic)"/>
+        </include>
+    </group>
+
+    <!-- Joy Manager Node (Filter Disabled) -->
+    <group unless="$(var control_filter)">
+        <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
+            <arg name="teleop_param" value="$(var teleop_param)"/>
+            <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
+            <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
+            <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
+        </include>
+    </group>
 
     <!-- Lidar Processing Container -->
     <node pkg="rclcpp_components"
