@@ -7,12 +7,8 @@ ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
 # --- データセットと変換の設定 ---
 dataset:
   sequence_length: 1
-  max_range: 10.0                  # (追加) NormalizeScanで使用する最大距離
-  noise_std: 0.02                  # (追加) AddTemporalNoiseで使用するノイズの標準偏差
-  # image_height / image_width は LiDARNet では使用していないようであれば削除または保持
-  image_height: 120
-  image_width: 160
-  transform_mode: "numpy"          # 'numpy', 'tensor', 'pil'
+  max_range: 30.0                  # NormalizeScanで使用する最大距離
+  noise_std: 0.02                  # AddTemporalNoiseで使用するノイズの標準偏差
 
 # --- 学習パラメータ ---
 training:
@@ -25,7 +21,6 @@ training:
 model:
   scan_points: 1080                # TinyLidarNetの入力次元(input_dim)に相当
   num_outputs: 2                   # 出力次元 (steer, accel)
-  size: "tiny"                     # モデルのバリエーション選択用
 
 # --- Hydra の実行設定 ---
 hydra:
