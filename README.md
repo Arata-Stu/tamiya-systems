@@ -4,8 +4,8 @@
 ```bash
 mkdir -p "${HOME}/workspace/"
 cd "${HOME}/workspace/"
-git clone https://github.com/Arata-Stu/MAGP-2026.git
-cd MAGP-2026
+git clone https://github.com/Arata-Stu/tamiya-systems.git
+cd tamiya-systems
 vcs import < packages.repos
 
 cd ros2_ws/src/sensing/urg_node2/
@@ -48,7 +48,7 @@ git lfs install --skip-repo
 # ------------------------------------------------------------
 # Workspace setting
 # ------------------------------------------------------------
-echo "export ISAAC_ROS_WS=${HOME}/workspace/MAGP-2026/ros2_ws" >> ~/.bashrc
+echo "export ISAAC_ROS_WS=${HOME}/workspace/tamiya-systems/ros2_ws" >> ~/.bashrc
 source ~/.bashrc
 
 # ------------------------------------------------------------
