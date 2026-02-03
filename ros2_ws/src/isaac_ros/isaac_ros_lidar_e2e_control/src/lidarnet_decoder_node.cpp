@@ -36,7 +36,7 @@ LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions & options)
   max_steer_ = declare_parameter<double>("max_steer", 1.0);  
   max_accel_ = declare_parameter<double>("max_accel", 1.0);   
 
-  pub_cmd_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>("ackermann_cmd", 1);
+  pub_cmd_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>("autonomous/cmd_drive", 1);
 
   nitros_sub_ = std::make_shared<
       nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
@@ -45,7 +45,7 @@ LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions & options)
       std::bind(&LidarNetDecoderNode::InputCallback, this, std::placeholders::_1));
 
   RCLCPP_INFO(this->get_logger(),
-              "✅ LidarNetDecoderNode initialized (tensor='%s' → topic='ackermann_cmd')",
+              "✅ LidarNetDecoderNode initialized (tensor='%s' → topic='autonomous/cmd_drive')",
               output_tensor_name_.c_str());
 }
 
