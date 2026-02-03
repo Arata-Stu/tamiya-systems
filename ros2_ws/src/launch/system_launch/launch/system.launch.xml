@@ -1,11 +1,8 @@
 <launch>
     <arg name="record" default="false" description="run rosbag2 record node"/>
-    <arg name="control_filter" default="false" description="run control filter node"/>
-
+    
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
-    
-    <arg name="raw_control_topic" default="/control/cmd_drive_raw" />
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
@@ -16,29 +13,22 @@
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
     <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter.param.yaml" />
 
+    <!-- Jetracer Driver Node -->
     <include file="$(find-pkg-share jetracer_node)/launch/jetracer.launch.xml">
         <arg name="jetracer_param" value="$(var vehicle_param)"/>
         <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
     </include>
 
-    <let name="joy_target_topic" value="$(var raw_control_topic)" if="$(var control_filter)"/>
-    <let name="joy_target_topic" value="$(var vehicle_control_topic)" unless="$(var control_filter)"/>
-
+    <!-- Teleop Manager Node -->
     <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
         <arg name="teleop_param" value="$(var teleop_param)"/>
         <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
-        <arg name="vehicle_control_topic" value="$(var joy_target_topic)"/>
+        <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
         <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
         <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
     </include>
 
-    <group if="$(var control_filter)">
-        <include file="$(find-pkg-share control_filter)/launch/control_filter.launch.xml">
-            <arg name="raw_control_cmd" value="$(var raw_control_topic)"/>
-            <arg name="filtered_control_cmd" value="$(var vehicle_control_topic)"/>
-        </include>
-    </group>
-
+    <!-- LidarNet Nodes -->
     <node pkg="rclcpp_components" exec="component_container" name="$(var container_name)" output="screen"/>
 
     <load_composable_nodes target_container="$(var container_name)">
@@ -54,6 +44,7 @@
         </composable_node>
     </load_composable_nodes>
 
+    <!-- Rosbag2 Recorder Node -->
     <group if="$(var record)">
         <include file="$(find-pkg-share bag_manager_py)/launch/bag_manager.launch.xml">
             <arg name="bag_manager_param" value="$(var bag_manager_param)"/>
