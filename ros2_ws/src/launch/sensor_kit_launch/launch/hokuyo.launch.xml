@@ -1,0 +1,17 @@
+<launch>
+    <arg name="lidar_container_name" />
+    <arg name="filter_param" />
+
+    <load_composable_nodes target_container="$(var lidar_container_name)">
+        <composable_node pkg="urg_node2" plugin="urg_node2::UrgNode2" name="urg_node">
+            <param from="$(find-pkg-share urg_node2)/config/params_ether.yaml"/>
+            <remap from="scan" to="scan_raw"/>
+        </composable_node>
+
+        <composable_node pkg="laser_filters" plugin="laser_filters::ScanToScanFilterChainer" name="laser_filter_node">
+            <param from="$(var filter_param)"/>
+            <remap from="scan" to="scan_raw"/>
+            <remap from="scan_filtered" to="scan"/>
+        </composable_node>
+    </load_composable_nodes>
+</launch>

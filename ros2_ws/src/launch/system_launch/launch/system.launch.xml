@@ -1,12 +1,14 @@
 <launch>
     <arg name="record" default="false" description="run rosbag2 record node"/>
+    <arg name="use_lidar" default="true" description="use lidar"/>
+    <arg name="lidar_model" default="hokuyo" />
     
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
-    <arg name="container_name" default="lidar_container" />
+    <arg name="lidar_container_name" default="lidar_container" />
     
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
@@ -28,21 +30,13 @@
         <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
     </include>
 
-    <!-- LidarNet Nodes -->
-    <node pkg="rclcpp_components" exec="component_container" name="$(var container_name)" output="screen"/>
-
-    <load_composable_nodes target_container="$(var container_name)">
-        <composable_node pkg="urg_node2" plugin="urg_node2::UrgNode2" name="urg_node">
-            <param from="$(find-pkg-share urg_node2)/config/params_ether.yaml"/>
-            <remap from="scan" to="scan_raw"/>
-        </composable_node>
-
-        <composable_node pkg="laser_filters" plugin="laser_filters::ScanToScanFilterChainer" name="laser_filter_node">
-            <param from="$(var filter_param)"/>
-            <remap from="scan" to="scan_raw"/>
-            <remap from="scan_filtered" to="scan"/>
-        </composable_node>
-    </load_composable_nodes>
+    <!-- Sensor Kit Nodes -->
+    <include file="$(find-pkg-share sensor_kit_launch)/launch/sensor_kit.launch.xml">
+        <arg name="use_lidar" value="$(var use_lidar)"/>
+        <arg name="lidar_model" value="$(var lidar_model)"/>
+        <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
+        <arg name="filter_param" value="$(var filter_param)"/>
+    </include>
 
     <!-- Rosbag2 Recorder Node -->
     <group if="$(var record)">

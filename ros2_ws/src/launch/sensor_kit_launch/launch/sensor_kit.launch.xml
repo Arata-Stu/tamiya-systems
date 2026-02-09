@@ -1,0 +1,18 @@
+<launch>
+    <arg name="use_lidar" default="true" description="use lidar"/>
+
+    <arg name="lidar_model" default="hokuyo" />
+    <arg name="lidar_container_name" default="lidar_container" />
+    <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/scan_filter.param.yaml" />
+         
+    <!-- Lidar Nodes -->
+    <group if="$(var use_lidar)">
+        <include file="$(find-pkg-share sensor_kit_launch)/launch/lidar.launch.xml">
+            <arg name="lidar_model" value="$(var lidar_model)"/>    
+            <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
+            <arg name="filter_param" value="$(var filter_param)"/>
+        </include>
+    </group>
+
+
+</launch>
