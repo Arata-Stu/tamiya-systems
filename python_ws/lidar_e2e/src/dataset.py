@@ -21,22 +21,22 @@ class SequenceDataset(Dataset):
         # --- 各データのパスを確認 ---
         self.scan_file = self.seq_dir / "scans.npy"
         self.steer_file = self.seq_dir / "steers.npy"
-        self.accel_file = self.seq_dir / "accelerations.npy" 
+        self.speed_file = self.seq_dir / "speeds.npy" 
 
         # --- 必須ファイルの存在チェック ---
-        for f in [self.scan_file, self.steer_file, self.accel_file]:
+        for f in [self.scan_file, self.steer_file, self.speed_file]:
             if not f.exists():
                 raise FileNotFoundError(f"{f.name} not found in {self.seq_dir}")
 
         # --- データを一括読み込み (メモリ上に保持) ---
         self.scans = np.load(self.scan_file).astype(np.float32)
         self.steers = np.load(self.steer_file).astype(np.float32)
-        self.accels = np.load(self.accel_file).astype(np.float32) 
+        self.speeds = np.load(self.speed_file).astype(np.float32) 
 
         # --- アサーション ---
-        assert len(self.scans) == len(self.steers) == len(self.accels), \
+        assert len(self.scans) == len(self.steers) == len(self.speeds), \
             f"Data length mismatch in {seq_dir}: " \
-            f"Scans({len(self.scans)}), Steers({len(self.steers)}), Accels({len(self.accels)})"
+            f"Scans({len(self.scans)}), Steers({len(self.steers)}), Speed({len(self.speeds)})"
 
     def __len__(self):
         num_frames = len(self.scans)
@@ -48,13 +48,13 @@ class SequenceDataset(Dataset):
         # --- 指定した長さ(seq_len)のデータをスライス ---
         scan_seq = self.scans[idx : idx + self.seq_len]
         steer_seq = self.steers[idx : idx + self.seq_len]
-        accel_seq = self.accels[idx : idx + self.seq_len] 
+        speed_seq = self.speeds[idx : idx + self.seq_len] 
 
         # PyTorch Tensorに変換
         sample = {
             'scan': torch.from_numpy(scan_seq),
             'steer': torch.from_numpy(steer_seq),
-            'accel': torch.from_numpy(accel_seq) 
+            'speed': torch.from_numpy(speed_seq) 
         }
 
         if self.transform:
@@ -97,12 +97,12 @@ class MultiSequenceDataset(Dataset):
 
     def _find_sequence_dirs(self, base_dir: Path) -> List[Path]:
         """
-        再帰的に探索し、'scans.npy' と 'accelerations.npy' があるディレクトリを sequence と認定
+        再帰的に探索し、'scans.npy' と 'speeds.npy' があるディレクトリを sequence と認定
         """
         seq_dirs = []
-        # 加速度ファイルを基準に探索
-        for accel_file in base_dir.rglob('accelerations.npy'):
-            path = accel_file.parent
+        # 速度ファイルを基準に探索
+        for speed_file in base_dir.rglob('speeds.npy'):
+            path = speed_file.parent
             if (path / 'scans.npy').exists() and (path / 'steers.npy').exists():
                 seq_dirs.append(path)
         

@@ -21,7 +21,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
     total_loss = 0.0
     for batch in tqdm(dataloader, desc="Training", leave=False):
         scans = batch['scan'].to(device)
-        labels = torch.stack([batch['steer'], batch['accel']], dim=-1).to(device)
+        labels = torch.stack([batch['steer'], batch['speed']], dim=-1).to(device)
         optimizer.zero_grad()
         outputs = model(scans)
         loss = criterion(outputs, labels)
@@ -36,7 +36,7 @@ def validate_one_epoch(model, dataloader, criterion, device):
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Validation", leave=False):
             scans = batch['scan'].to(device)
-            labels = torch.stack([batch['steer'], batch['accel']], dim=-1).to(device)
+            labels = torch.stack([batch['steer'], batch['speed']], dim=-1).to(device)
             outputs = model(scans)
             loss = criterion(outputs, labels)
             total_loss += loss.item()

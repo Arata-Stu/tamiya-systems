@@ -78,14 +78,15 @@ void TeleopManagerNode::timer_callback() {
   bool is_timeout =
       (this->now() - last_joy_msg_time_).seconds() > joy_timeout_sec_;
 
-  auto cmd = core_->calculate_drive_command(
-      is_timeout, last_autonomy_msg_.drive.acceleration,
-      last_autonomy_msg_.drive.steering_angle);
+  auto cmd =
+      core_->calculate_drive_command(is_timeout, last_autonomy_msg_.drive.speed,
+                                     last_autonomy_msg_.drive.steering_angle);
 
   auto drive_msg = ackermann_msgs::msg::AckermannDriveStamped();
   drive_msg.header.stamp = this->now();
   drive_msg.header.frame_id = "base_link";
-  drive_msg.drive.acceleration = cmd.acceleration;
+  drive_msg.drive.speed = cmd.speed;
+  drive_msg.drive.acceleration = 0.0;
   drive_msg.drive.steering_angle = cmd.steering_angle;
   drive_msg.drive.steering_angle_velocity = cmd.steering_velocity;
 

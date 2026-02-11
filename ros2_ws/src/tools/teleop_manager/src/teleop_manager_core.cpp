@@ -70,11 +70,11 @@ TeleopManagerCore::DriveCommand TeleopManagerCore::calculate_drive_command(
   DriveCommand cmd{0.0, 0.0, 0.0};
 
   if (joy_active_ && !is_timeout) {
-    cmd.acceleration = joy_speed_ * config_.speed_scale;
+    cmd.speed = joy_speed_ * config_.speed_scale;
     cmd.steering_angle = joy_steer_ * config_.steer_scale;
     cmd.steering_velocity = 1.0;
   } else if (ack_active_) {
-    cmd.acceleration = autonomy_speed;
+    cmd.speed = autonomy_speed;
     cmd.steering_angle = autonomy_steer;
   }
   return cmd;

@@ -24,35 +24,37 @@
 
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_view.hpp"
 
-namespace isaac_ros_lidar_e2e_control
-{
+namespace isaac_ros_lidar_e2e_control {
 
-LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions & options)
-: Node("lidarnet_decoder_node", options)
-{
+LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions &options)
+    : Node("lidarnet_decoder_node", options) {
   // --- パラメータ宣言 ---
-  output_tensor_name_ = declare_parameter<std::string>("output_tensor_name", "control_output");
+  output_tensor_name_ =
+      declare_parameter<std::string>("output_tensor_name", "control_output");
   use_clip_ = declare_parameter<bool>("use_clip", true);
-  max_steer_ = declare_parameter<double>("max_steer", 1.0);  
-  max_accel_ = declare_parameter<double>("max_accel", 1.0);   
+  max_steer_ = declare_parameter<double>("max_steer", 1.0);
+  max_speed_ = declare_parameter<double>("max_speed", 1.0);
 
-  pub_cmd_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>("autonomous/cmd_drive", 1);
+  pub_cmd_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
+      "autonomous/cmd_drive", 1);
 
-  nitros_sub_ = std::make_shared<
-      nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
-          nvidia::isaac_ros::nitros::NitrosTensorListView>>>(
-      this, "inference_output",
-      std::bind(&LidarNetDecoderNode::InputCallback, this, std::placeholders::_1));
+  nitros_sub_ = std::make_shared <
+                nvidia::isaac_ros::nitros::ManagedNitrosSubscriber <
+                nvidia::isaac_ros::nitros::NitrosTensorListView >>>
+                (this, "inference_output",
+                 std::bind(&LidarNetDecoderNode::InputCallback, this,
+                           std::placeholders::_1));
 
   RCLCPP_INFO(this->get_logger(),
-              "✅ LidarNetDecoderNode initialized (tensor='%s' → topic='autonomous/cmd_drive')",
+              "✅ LidarNetDecoderNode initialized (tensor='%s' → "
+              "topic='autonomous/cmd_drive')",
               output_tensor_name_.c_str());
 }
 
 LidarNetDecoderNode::~LidarNetDecoderNode() = default;
 
-void LidarNetDecoderNode::InputCallback(const nvidia::isaac_ros::nitros::NitrosTensorListView & msg)
-{
+void LidarNetDecoderNode::InputCallback(
+    const nvidia::isaac_ros::nitros::NitrosTensorListView &msg) {
   // --- Tensor存在確認 ---
   if (!msg.HasTensor(output_tensor_name_)) {
     RCLCPP_WARN(this->get_logger(),
@@ -63,24 +65,28 @@ void LidarNetDecoderNode::InputCallback(const nvidia::isaac_ros::nitros::NitrosT
 
   // --- Tensorを取得 ---
   const auto tensor = msg.GetTensor(output_tensor_name_);
-  const float* data_ptr = reinterpret_cast<const float*>(tensor.GetData());
-  const size_t num_elems = tensor.GetShape().size() > 0 ? tensor.GetNumElements() : 0;
+  const float *data_ptr = reinterpret_cast<const float *>(tensor.GetData());
+  const size_t num_elems =
+      tensor.GetShape().size() > 0 ? tensor.GetNumElements() : 0;
 
   if (data_ptr == nullptr || num_elems < 2) {
     RCLCPP_ERROR(this->get_logger(),
-                 "❌ Invalid tensor data. Expected at least 2 floats (steer, accel). Got %ld",
+                 "❌ Invalid tensor data. Expected at least 2 floats (steer, "
+                 "speed). Got %ld",
                  num_elems);
     return;
   }
 
-  // --- [steer, accel] の順で取得 ---
+  // --- [steer, speed] の順で取得 ---
   float steer = data_ptr[0];
-  float accel = data_ptr[1];
+  float speed = data_ptr[1];
 
   // --- クリップ処理 ---
   if (use_clip_) {
-    steer = std::clamp(steer, static_cast<float>(-max_steer_), static_cast<float>(max_steer_));
-    accel = std::clamp(accel, static_cast<float>(-max_accel_), static_cast<float>(max_accel_));
+    steer = std::clamp(steer, static_cast<float>(-max_steer_),
+                       static_cast<float>(max_steer_));
+    speed = std::clamp(speed, static_cast<float>(-max_speed_),
+                       static_cast<float>(max_speed_));
   }
 
   // --- AckermannDriveStamped生成 ---
@@ -88,18 +94,19 @@ void LidarNetDecoderNode::InputCallback(const nvidia::isaac_ros::nitros::NitrosT
   cmd.header.stamp = this->now();
   cmd.header.frame_id = "base_link";
   cmd.drive.steering_angle = steer;
-  cmd.drive.acceleration = accel;
-  cmd.drive.speed = 0.0;  
+  cmd.drive.speed = speed;
+  cmd.drive.acceleration = 0.0;
 
   pub_cmd_->publish(cmd);
 
   RCLCPP_DEBUG(this->get_logger(),
-               "🚗 Published control cmd: steer=%.3f rad, accel=%.3f m/s²",
-               steer, accel);
+               "🚗 Published control cmd: steer=%.3f rad, speed=%.3f m/s",
+               steer, speed);
 }
 
-}  // namespace isaac_ros_lidar_e2e_control
+} // namespace isaac_ros_lidar_e2e_control
 
 // Register component
 #include "rclcpp_components/register_node_macro.hpp"
-RCLCPP_COMPONENTS_REGISTER_NODE(isaac_ros_lidar_e2e_control::LidarNetDecoderNode)
+RCLCPP_COMPONENTS_REGISTER_NODE(
+    isaac_ros_lidar_e2e_control::LidarNetDecoderNode)

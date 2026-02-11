@@ -7,8 +7,9 @@
     window_size: 5
 
     # --- Slew Rate Limiter (filter_type="slew_rate") ---
-    # 加速度の最大変化率 [m/s^2] (または unit/s)
-    max_accel_slew_rate: 2.0
+    # --- Slew Rate Limiter (filter_type="slew_rate") ---
+    # 速度の最大変化率 [m/s^2] (または unit/s)
+    max_speed_slew_rate: 2.0
 
     # ステアリングの最大変化率 [rad/s]
     max_steer_slew_rate: 1.5
@@ -20,10 +21,10 @@
     straight_steer_threshold: 0.20
 
     # 直進時の速度ゲイン
-    straight_accel_scale_ratio: 1.0
+    straight_speed_scale_ratio: 1.0
 
     # カーブ時の速度ゲイン (減速させるには < 1.0)
-    cornering_accel_scale_ratio: 0.6
+    cornering_speed_scale_ratio: 0.6
 
     # 操舵角全体のゲイン
     steer_scale_ratio: 1.0

@@ -21,4 +21,4 @@
     output_tensor_name: output_control
     use_clip: True
     max_steer: 1.0
-    max_accel: 1.0
+    max_speed: 1.0

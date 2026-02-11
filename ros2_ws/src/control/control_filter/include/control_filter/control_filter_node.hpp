@@ -35,24 +35,24 @@ private:
   // Node Parameters
   std::string filter_type_;
   int window_size_;
-  double max_accel_slew_rate_; // [unit/s]
+  double max_speed_slew_rate_; // [unit/s]
   double max_steer_slew_rate_; // [unit/s]
 
   // Scale Filter Parameters
   bool use_scale_filter_;
   double straight_steer_threshold_;
-  double straight_accel_scale_ratio_;
-  double cornering_accel_scale_ratio_;
+  double straight_speed_scale_ratio_;
+  double cornering_speed_scale_ratio_;
   double steer_scale_ratio_;
 
   // Filter States
   rclcpp::Time last_callback_time_;
-  double prev_accel_ = 0.0;
+  double prev_speed_ = 0.0;
   double prev_steer_ = 0.0;
   bool is_first_msg_ = true;
 
   // Buffers for MA
-  std::deque<double> accel_buffer_;
+  std::deque<double> speed_buffer_;
   std::deque<double> steering_angle_buffer_;
 };
 

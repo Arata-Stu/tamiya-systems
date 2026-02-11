@@ -23,7 +23,7 @@ public:
   };
 
   struct DriveCommand {
-    double acceleration;
+    double speed;
     double steering_angle;
     double steering_velocity;
   };

@@ -37,7 +37,7 @@ def extract_and_save_per_bag(bag_path, output_dir, scan_topic, cmd_topic):
                 # 2. AckermannDriveStampedの処理
                 elif conn.topic == cmd_topic and conn.msgtype == 'ackermann_msgs/msg/AckermannDriveStamped':
                     # .drive メンバにアクセスして値を取得
-                    cmd_data.append(np.array([msg.drive.steering_angle, msg.drive.acceleration], dtype=np.float32))
+                    cmd_data.append(np.array([msg.drive.steering_angle, msg.drive.speed], dtype=np.float32))
                     cmd_times.append(timestamp)
 
     except Exception as e:
@@ -53,7 +53,7 @@ def extract_and_save_per_bag(bag_path, output_dir, scan_topic, cmd_topic):
     scan_times = np.array(scan_times)
     cmd_data, cmd_times = np.array(cmd_data), np.array(cmd_times)
 
-    synced_scans, synced_steers, synced_accels = [], [], []
+    synced_scans, synced_steers, synced_speeds = [], [], []
 
     # LaserScanの時刻を基準に、最も近い時刻のコマンドを紐付け
     for i, stime in enumerate(scan_times):
@@ -61,12 +61,12 @@ def extract_and_save_per_bag(bag_path, output_dir, scan_topic, cmd_topic):
         
         synced_scans.append(scan_data[i])
         synced_steers.append(cmd_data[idx_cmd][0])
-        synced_accels.append(cmd_data[idx_cmd][1])
+        synced_speeds.append(cmd_data[idx_cmd][1])
 
     # データの保存
     np.save(out_dir / 'scans.npy', np.array(synced_scans))
     np.save(out_dir / 'steers.npy', np.array(synced_steers))
-    np.save(out_dir / 'accelerations.npy', np.array(synced_accels))
+    np.save(out_dir / 'speeds.npy', np.array(synced_speeds))
 
     print(f'[PID:{pid} SAVE] {bag_name}: {len(synced_scans)} samples saved to {out_dir}')
 

@@ -20,7 +20,7 @@ training:
 # --- モデルのパラメータ ---
 model:
   scan_points: 1081                # TinyLidarNetの入力次元(input_dim)に相当
-  num_outputs: 2                   # 出力次元 (steer, accel)
+  num_outputs: 2                   # 出力次元 (steer, speed)
 
 # --- Hydra の実行設定 ---
 hydra:
