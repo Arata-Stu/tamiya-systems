@@ -103,7 +103,7 @@ sudo apt install -y ros-humble-desktop
 
 # ROS 2環境設定
 echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
-echo "export ROS_DOMAIN_ID=0  # 他マシンと通信する場合は一意に設定" >> ~/.bashrc
+echo "export ROS_DOMAIN_ID=50  # 他マシンと通信する場合は一意に設定" >> ~/.bashrc
 echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 echo "export CYCLONEDDS_URI=file:///home/${USER}/cyclonedds.xml" >> ~/.bashrc
 echo 'export RCUTILS_COLORIZED_OUTPUT=1' >> ~/.bashrc
@@ -197,6 +197,13 @@ bash tmux.sh <session_name>
 
 ### Docker Run
 ```bash
+## default
+cd ${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common/scripts && cat > .isaac_ros_common-config << EOF
+CONFIG_IMAGE_KEY=ros2_humble.realsense.additional_setting
+CONFIG_DOCKER_SEARCH_DIRS=("../docker/")
+EOF
+
+## for realsense setting (option)
 cd ${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common/scripts && cat > .isaac_ros_common-config << EOF
 CONFIG_IMAGE_KEY=ros2_humble.realsense.additional_setting
 CONFIG_DOCKER_SEARCH_DIRS=("../docker/")
