@@ -1,8 +1,8 @@
 /**:
   ros__parameters:
     device_id: 0
-    width: 640
-    height: 240
+    width: 640 # launch時は, launch.xmlで指定された値が優先される
+    height: 240 # launch時は, launch.xmlで指定された値が優先される
     fps: 120.0
     frame_id: "camera_link"
     camera_info_url_left: "package://elp-camera-ros2-driver/config/elp_left.yaml"

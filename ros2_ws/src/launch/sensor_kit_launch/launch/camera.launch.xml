@@ -2,6 +2,9 @@
     <arg name="use_camera" default="true" description="use camera"/>
     <arg name="camera_model" default="elp" />
     <arg name="camera_container_name" default="camera_container" />
+
+    <arg name="image_width" default="640" />
+    <arg name="image_height" default="240" />
     
     <node pkg="rclcpp_components" exec="component_container" name="$(var camera_container_name)" output="screen"/>
 

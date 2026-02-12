@@ -1,0 +1,206 @@
+/**:
+  ros__parameters:
+    # ============================================
+    # Camera Settings
+    # 
+    # num_cameras: 使用するカメラの数
+    #   2: ステレオカメラ（左右2台）
+    #   4以上: マルチカメラシステム（最大32台）
+    # 
+    # min_num_images: 姿勢推定に必要な最小画像数
+    #   num_cameras と同じ: 全カメラ必須（1台でも欠けたら停止）
+    #   num_cameras より小さい: 一部カメラ欠損時も動作継続（冗長性）
+    # 
+    # sync_matching_threshold_ms: 画像を同期とみなす最大時間差（ミリ秒）
+    # 
+    # enable_image_denoising: 入力画像のノイズ除去
+    #   false: 通常時（明るい環境、処理速度優先）
+    #   true: 低照度環境、ノイズが多い場合（GPU推奨）
+    # 
+    # rectified_images: 入力画像が補正済みかどうか
+    #   true: 補正済み（image_rect）を使用 ← RealSenseは自動で補正
+    #   false: 生画像（image_raw）を使用、Visual SLAMが内部で補正
+    # ============================================
+    num_cameras: 2
+    min_num_images: 2
+    sync_matching_threshold_ms: 5.0
+    enable_image_denoising: false
+    rectified_images: true
+
+    # ============================================
+    # Ground Constraints
+    # 
+    # enable_ground_constraint_in_odometry: オドメトリ（リアルタイム）への制約
+    # enable_ground_constraint_in_slam: SLAM（姿勢グラフ最適化）への制約
+    # 
+    # true: z=0, roll=0, pitch=0 に固定 (3DOF: x,y,yaw のみ)
+    # false: z, roll, pitch を自由に使用 (6DOF)
+    # 
+    # 組み合わせ:
+    #   [true,  true ] 完全平坦地面（最も安定、ジャンプ不可）
+    #   [false, true ] 地上ロボット + 段差/ジャンプ（推奨：バランス型）
+    #   [false, false] ドローン、3D環境（ドリフト注意）
+    #   [true,  false] 非推奨（矛盾した設定）
+    # ============================================
+    enable_ground_constraint_in_odometry: false
+    enable_ground_constraint_in_slam: true
+    
+    # ============================================
+    # SLAM Mode
+    # 
+    # enable_localization_n_mapping: SLAMモードの有効化
+    #   true: SLAM有効（地図作成 + ループクロージャー + 最適化）
+    #   false: オドメトリのみ（相対移動推定のみ）
+    # ============================================
+    enable_localization_n_mapping: true
+
+    # ============================================
+    # IMU Fusion Settings
+    # 
+    # enable_imu_fusion: IMUデータ統合の有効化
+    # true: IMUデータを使用（視覚+慣性の統合推定）
+    # false: カメラのみ使用（視覚オドメトリのみ）
+    # 
+    # gyro_noise_density: ジャイロスコープのホワイトノイズ密度 [rad/s/√Hz]
+    # センサーの測定精度を表すパラメータ
+    # 
+    # gyro_random_walk: ジャイロスコープのランダムウォーク係数 [rad/s²/√Hz]
+    # 時間経過によるバイアスドリフトの度合いを表す
+    # 長時間使用時の誤差蓄積に影響
+    # 
+    # accel_noise_density: 加速度センサーのホワイトノイズ密度 [m/s²/√Hz]
+    # 加速度測定のランダムな誤差の大きさ
+    # 
+    # accel_random_walk: 加速度センサーのランダムウォーク係数 [m/s³/√Hz]
+    # 加速度バイアスの時間変動を表す
+    # 静止時のドリフトに影響
+    # 
+    # calibration_frequency: IMUサンプリング周波数 [Hz]
+    # 
+    # このままの値でも十分
+    # より正確に設定する場合は
+    # https://github.com/ethz-asl/kalibr
+    # ============================================
+    enable_imu_fusion: false
+    gyro_noise_density: 0.000244
+    gyro_random_walk: 0.000019393
+    accel_noise_density: 0.001862
+    accel_random_walk: 0.003
+    calibration_frequency: 200.0
+    
+    # ============================================
+    # Jitter Thresholds
+    # 
+    # 連続するメッセージ間の時間差が閾値を超えた場合、
+    # データドロップ（欠落）が発生したと判断する
+    # 例: 30fpsカメラの場合
+    #   正常: 画像1 → 33ms → 画像2 → 33ms → 画像3  OK
+    #   異常: 画像1 → 33ms → 画像2 → 80ms → 画像3  NG
+    #         (画像が1-2枚抜けた可能性)
+    # 
+    # image_jitter_threshold_ms: 画像メッセージ間隔の監視閾値 [ms]
+    # 設定指針: (1000 / カメラFPS) × 1.2～1.5
+    # 
+    # imu_jitter_threshold_ms: IMUメッセージ間隔の監視閾値 [ms]
+    # 設定指針: (1000 / IMU周波数) × 2.0～3.0
+    # ============================================
+    image_jitter_threshold_ms: 34.0
+    imu_jitter_threshold_ms: 10.0
+    
+    # ============================================
+    # Image Masking
+    #
+    # 特徴点抽出時に画像の端を無視するためのパラメータ
+    # レンズ歪みの影響が大きい端部や不要な映り込みを除外
+    # ピクセル単位で指定
+    # ============================================
+    img_mask_top: 0
+    img_mask_bottom: 0
+    img_mask_left: 0
+    img_mask_right: 0
+    
+    # ============================================
+    # Map Saving and Loading
+    #
+    # SLAMで作成した地図の保存・読み込み・管理に関する設定
+    # 地図を保存することで、次回起動時に再利用が可能
+    # enable_localization_n_mapping: true が必要
+    # 
+    # save_map_folder_path: 地図の保存先フォルダパス
+    # load_map_folder_path: 地図の読み込み元フォルダパス
+    # 
+    # localize_on_startup: 起動時の自己位置推定
+    #   true: 地図の原点(0,0,0)を初期位置として自動で位置推定開始
+    #   false: 初期位置を手動で指定するまで待機
+    # 
+    # slam_max_map_size: 地図に保存する最大キーフレーム数
+    # ロボットの移動軌跡の記録点を何個まで保存するか
+    # 各記録点には位置・姿勢・画像データが含まれる
+    # 多いほど広い範囲を記憶するが、メモリと処理負荷が増える
+    # ============================================
+    save_map_folder_path: ""
+    load_map_folder_path: ""
+    localize_on_startup: false
+    slam_max_map_size: 300
+
+    # slam_throttling_time_ms: SLAMバックエンド処理の実行間隔 [ms]
+    # デフォルトは500ms。短くすると位置補正が頻繁になるがCPU/GPU負荷が増加する。
+    
+    slam_throttling_time_ms: 500
+    
+    # ============================================
+    # Localization Parameters
+    #
+    # 初期位置のヒント（予想位置）を与えられた時の探索設定
+    # ヒント位置を中心に、指定した範囲（radius）とステップ（step）で
+    # 実際の位置を探索する
+    # radius : どこまで探すか（探索範囲）
+    # step   : どれくらい細かく探すか（探索間隔）
+    # 
+    # enable_request_hint: 位置推定失敗時の通知
+    #   true: 失敗時に trigger_hint トピックで通知
+    #   false: 失敗しても通知しない
+    # ============================================
+    localizer_horizontal_radius: 1.5
+    localizer_vertical_radius: 0.5
+    localizer_horizontal_step: 0.5
+    localizer_vertical_step: 0.25
+    localizer_angular_step: 0.1745
+    enable_request_hint: true
+    
+    # ============================================
+    # Frame Parameters
+    # ============================================
+    map_frame: "map"
+    odom_frame: "odom"
+    base_frame: "base_link"
+    camera_optical_frames: ['camera_infra1_optical_frame', 'camera_infra2_optical_frame']
+    imu_frame: "camera_gyro_optical_frame"
+    
+    # ============================================
+    # Message Parameters
+    # ============================================
+    image_buffer_size: 100
+    imu_buffer_size: 50
+    image_qos: "DEFAULT"
+    imu_qos: "SENSOR_DATA"
+    
+    # ============================================
+    # Output Parameters
+    # ============================================
+    override_publishing_stamp: false
+    publish_map_to_odom_tf: true
+    publish_odom_to_base_tf: true
+    invert_map_to_odom_tf: false
+    invert_odom_to_base_tf: false
+    
+    # ============================================
+    # Debug/Visualization Parameters
+    # ============================================
+    enable_slam_visualization: true
+    enable_observations_view: true
+    enable_landmarks_view: true
+    path_max_size: 1024
+    verbosity: 0
+    enable_debug_mode: false
+    debug_dump_path: "/tmp/cuvslam"

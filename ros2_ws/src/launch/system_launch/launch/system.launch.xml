@@ -2,13 +2,19 @@
     <arg name="record" default="false" description="run rosbag2 record node"/>
     <arg name="use_lidar" default="true" description="use lidar"/>
     <arg name="lidar_model" default="hokuyo" />
+    <arg name="lidar_container_name" default="lidar_container" />
+
+    <arg name="use_camera" default="true" description="use camera"/>
+    <arg name="camera_model" default="elp" />
+    <arg name="camera_container_name" default="camera_container" />
+    <arg name="image_width" default="340" />
+    <arg name="image_height" default="240" />
     
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
-    <arg name="lidar_container_name" default="lidar_container" />
     
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
@@ -36,6 +42,12 @@
         <arg name="lidar_model" value="$(var lidar_model)"/>
         <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
         <arg name="filter_param" value="$(var filter_param)"/>
+
+        <arg name="use_camera" value="$(var use_camera)"/>
+        <arg name="camera_model" value="$(var camera_model)"/>
+        <arg name="camera_container_name" value="$(var camera_container_name)"/>
+        <arg name="image_width" value="$(var image_width)"/>
+        <arg name="image_height" value="$(var image_height)"/>
     </include>
 
     <!-- Rosbag2 Recorder Node -->
@@ -46,5 +58,12 @@
             <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
         </include>
     </group>
+
+    <!-- VSLAM Nodes -->
+    <include file="$(find-pkg-share system_launch)/launch/vslam.launch.xml">
+        <arg name="image_width" value="$(var image_width)"/>
+        <arg name="image_height" value="$(var image_height)"/>
+        <arg name="camera_container_name" value="$(var camera_container_name)"/>
+    </include>
 
 </launch>

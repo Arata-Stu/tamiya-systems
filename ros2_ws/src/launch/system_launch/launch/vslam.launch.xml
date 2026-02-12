@@ -1,0 +1,39 @@
+<launch>
+    <arg name="image_width" default="340" />
+    <arg name="image_height" default="240" />
+    <arg name="camera_container_name" default="camera_container" />
+
+    <arg name="vslam_param" default="$(find-pkg-share system_launch)/config/localization/vslam.param.yaml" />
+    <arg name="save_map_path" default="" />
+    <arg name="load_map_path" default="" />
+
+    
+    <load_composable_nodes target_container="$(var camera_container_name)">
+        <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode" name="image_format_node_left">
+            <param name="encoding_desired" value="mono8"/>
+            <param name="image_width" value="$(var image_width)"/>
+            <param name="image_height" value="$(var image_height)"/>
+            <remap from="image_raw" to="/camera/left/image_raw"/>
+            <remap from="image" to="/camera/left/image_rect_mono"/>
+        </composable_node>
+
+        <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode" name="image_format_node_right">
+            <param name="encoding_desired" value="mono8"/>
+            <param name="image_width" value="$(var image_width)"/>
+            <param name="image_height" value="$(var image_height)"/>
+            <remap from="image_raw" to="/camera/right/image_raw"/>
+            <remap from="image" to="/camera/right/image_rect_mono"/>
+        </composable_node>
+
+        <composable_node pkg="isaac_ros_visual_slam" plugin="nvidia::isaac_ros::visual_slam::VisualSlamNode" name="visual_slam_node">
+            <param from ="$(var vslam_param)"/>
+            <param name="save_map_folder_path" value="$(var save_map_path)"/>
+            <param name="load_map_folder_path" value="$(var load_map_path)"/>
+            
+            <remap from="/visual_slam/image_0" to="/camera/left/image_rect_mono"/>
+            <remap from="/visual_slam/camera_info_0" to="/camera/left/camera_info"/>
+            <remap from="/visual_slam/image_1" to="/camera/right/image_rect_mono"/>
+            <remap from="/visual_slam/camera_info_1" to="/camera/right/camera_info"/>
+        </composable_node>
+    
+</launch>
