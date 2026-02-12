@@ -1,12 +1,41 @@
 # MAGP 2026 Setup Guide
 
 ## 1. Base Setup
+
+### dependencies
+```bash
+## dependencies
+sudo apt install -y python3-pip
+sudo pip3 install -U jetson-stats
+sudo apt install python3-vcstool tmux screen terminator xrdp
+
+## xrdp setting
+sudo tee /etc/xrdp/startwm.sh > /dev/null << 'EOF'
+#!/bin/sh
+# xrdp X session start script (c) 2015, 2017, 2021 mirabilos
+# published under The MirOS Licence
+
+# Rely on /etc/pam.d/xrdp-sesman using pam_env to load both
+# /etc/environment and /etc/default/locale to initialise the
+# locale and the user environment properly.
+
+if test -r /etc/profile; then
+        . /etc/profile
+fi
+
+export GNOME_SHELL_SESSION_MODE=ubuntu
+export XDG_CURRENT_DESKTOP=ubuntu:GNOME
+exec gnome-session
+EOF
+```
+
+### clone repojitory
 ```bash
 mkdir -p "${HOME}/workspace/"
 cd "${HOME}/workspace/"
 git clone https://github.com/Arata-Stu/tamiya-systems.git
 cd tamiya-systems
-sudo apt install python3-vcstool
+
 vcs import < packages.repos
 
 cd ros2_ws/src/sensing/urg_node2/
@@ -121,7 +150,7 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ---
 
-## 5. DDS関連設定
+## 5. setup for DDS
 ```bash
 # Multicast設定
 sudo tee /etc/systemd/system/multicast-lo.service > /dev/null <<EOF
@@ -153,7 +182,7 @@ sysctl net.core.rmem_max net.ipv4.ipfrag_time net.ipv4.ipfrag_high_thresh
 
 ---
 
-## 6. Setup for RealSense (Native)
+## 6. Setup for RealSense (Native) (option)
 ```bash
 git clone https://github.com/jetsonhacks/jetson-orin-librealsense.git
 cd jetson-orin-librealsense
