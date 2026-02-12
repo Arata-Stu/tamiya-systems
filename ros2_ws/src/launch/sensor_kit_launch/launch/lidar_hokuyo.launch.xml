@@ -4,7 +4,7 @@
 
     <load_composable_nodes target_container="$(var lidar_container_name)">
         <composable_node pkg="urg_node2" plugin="urg_node2::UrgNode2" name="urg_node">
-            <param from="$(find-pkg-share urg_node2)/config/params_ether.yaml"/>
+            <param from="$(find-pkg-share sensor_kit_launch)/config/hokuyo.param.yaml"/>
             <remap from="scan" to="scan_raw"/>
         </composable_node>
 
