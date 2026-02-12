@@ -20,6 +20,24 @@ repositories:
     url: https://github.com/carbuncle01/isaac_ros_common.git
     version: release-3.2
 
+  ## isaac_ros_visual_slam
+  ros2_ws/src/isaac_ros/isaac_ros_visual_slam:
+    type: git
+    url: https://github.com/carbuncle01/isaac_ros_visual_slam.git
+    version: release-3.2
+
+  ## isaac_ros_nitros
+  ros2_ws/src/isaac_ros/isaac_ros_nitros:
+    type: git
+    url: https://github.com/carbuncle01/isaac_ros_nitros.git
+    version: release-3.2
+
+  ## isaac_ros_image_pipeline
+  ros2_ws/src/isaac_ros/isaac_ros_image_pipeline:
+    type: git
+    url: https://github.com/carbuncle01/isaac_ros_image_pipeline.git
+    version: release-3.2
+
   ## greenwave_monitor
   ros2_ws/src/isaac_ros/greenwave_monitor:
     type: git
