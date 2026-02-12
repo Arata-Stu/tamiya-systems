@@ -102,6 +102,11 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-a
 sudo apt update
 sudo apt install -y ros-humble-desktop
 
+sudo apt install -y python3-colcon-common-extensions python3-rosdep python3-vcstool build-essential
+
+sudo rosdep init
+rosdep update
+
 # ROS 2環境設定
 echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
 echo "export ROS_DOMAIN_ID=50  # 他マシンと通信する場合は一意に設定" >> ~/.bashrc
