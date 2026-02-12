@@ -6,6 +6,7 @@ mkdir -p "${HOME}/workspace/"
 cd "${HOME}/workspace/"
 git clone https://github.com/Arata-Stu/tamiya-systems.git
 cd tamiya-systems
+sudo apt install python3-vcstool
 vcs import < packages.repos
 
 cd ros2_ws/src/sensing/urg_node2/
