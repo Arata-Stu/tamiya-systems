@@ -8,7 +8,7 @@ repositories:
   ## ELP Camera
   ros2_ws/src/sensing/elp-camera-ros2-driver:
     type: git
-    https://github.com/Arata-Stu/elp-camera-ros2-driver.git
+    url: https://github.com/Arata-Stu/elp-camera-ros2-driver.git
     version: main
 
 
