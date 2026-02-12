@@ -1,0 +1,15 @@
+<launch>
+    <arg name="camera_container_name" default="camera_container" />
+    <arg name="elp_camera_param" default="$(find-pkg-share elp-camera-ros2-driver)/config/elp_camera_node.param.yaml"/>
+
+
+    <load_composable_nodes target_container="$(var camera_container_name)">
+        <composable_node pkg="elp-camera-ros2-driver" plugin="elp_camera::ElpCameraNode" name="elp_camera_node">
+            <param from="$(var elp_camera_param)"/>
+            <remap from="camera/left/image_raw" to="/camera/left/image_raw"/>
+            <remap from="camera/right/image_raw" to="/camera/right/image_raw"/>
+            <remap from="camera/left/camera_info" to="/camera/left/camera_info"/>
+            <remap from="camera/right/camera_info" to="/camera/right/camera_info"/>
+        </composable_node>
+    </load_composable_nodes>
+</launch>

@@ -1,6 +1,6 @@
 <launch>
-    <arg name="lidar_container_name" />
-    <arg name="filter_param" />
+    <arg name="lidar_container_name" default="lidar_container" />
+    <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/scan_filter.param.yaml" />
 
     <load_composable_nodes target_container="$(var lidar_container_name)">
         <composable_node pkg="urg_node2" plugin="urg_node2::UrgNode2" name="urg_node">

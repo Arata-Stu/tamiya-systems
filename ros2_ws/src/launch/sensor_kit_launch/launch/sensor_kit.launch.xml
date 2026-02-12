@@ -1,10 +1,13 @@
 <launch>
     <arg name="use_lidar" default="true" description="use lidar"/>
-
     <arg name="lidar_model" default="hokuyo" />
     <arg name="lidar_container_name" default="lidar_container" />
     <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/scan_filter.param.yaml" />
          
+    <arg name="use_camera" default="true" description="use camera"/>
+    <arg name="camera_model" default="elp" />
+    <arg name="camera_container_name" default="camera_container" />
+
     <!-- Lidar Nodes -->
     <group if="$(var use_lidar)">
         <include file="$(find-pkg-share sensor_kit_launch)/launch/lidar.launch.xml">
@@ -14,5 +17,11 @@
         </include>
     </group>
 
-
+    <!-- Camera Nodes -->
+    <group if="$(var use_camera)">
+        <include file="$(find-pkg-share sensor_kit_launch)/launch/camera.launch.xml">
+            <arg name="camera_model" value="$(var camera_model)"/>    
+            <arg name="camera_container_name" value="$(var camera_container_name)"/>
+        </include>
+    </group>
 </launch>
