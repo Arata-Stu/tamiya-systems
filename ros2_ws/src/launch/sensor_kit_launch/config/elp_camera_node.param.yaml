@@ -1,0 +1,13 @@
+/**:
+  ros__parameters:
+    device_id: 0
+    width: 640
+    height: 240
+    fps: 120.0
+    frame_id: "camera_link"
+    camera_info_url_left: "package://elp-camera-ros2-driver/config/elp_left.yaml"
+    camera_info_url_right: "package://elp-camera-ros2-driver/config/elp_right.yaml"
+
+## camera settings
+# resolution: 3200x1200, 2560x720, 1600x600, 1280x480, 640x240
+# fps: 10, 15, 20, 25, 30, 60, 120(3200x1200と2560x720は非対応)

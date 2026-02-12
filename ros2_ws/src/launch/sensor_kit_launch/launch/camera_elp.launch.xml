@@ -1,6 +1,6 @@
 <launch>
     <arg name="camera_container_name" default="camera_container" />
-    <arg name="elp_camera_param" default="$(find-pkg-share elp-camera-ros2-driver)/config/elp_camera_node.param.yaml"/>
+    <arg name="elp_camera_param" default="$(find-pkg-share sensor_kit_launch)/config/elp_camera_node.param.yaml"/>
 
 
     <load_composable_nodes target_container="$(var camera_container_name)">
