@@ -109,6 +109,9 @@ echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 echo "export CYCLONEDDS_URI=file:///home/${USER}/cyclonedds.xml" >> ~/.bashrc
 echo 'export RCUTILS_COLORIZED_OUTPUT=1' >> ~/.bashrc
 echo 'export RCUTILS_CONSOLE_OUTPUT_FORMAT="[{severity} {time}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"' >> ~/.bashrc
+
+cd "${HOME}/workspace/tamiya-systems/ros2_ws/"
+rosdep install --from-paths src --ignore-src -r -y
 ```
 
 ---
