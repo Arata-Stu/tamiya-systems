@@ -11,6 +11,7 @@ ament_auto_find_build_dependencies()
 
 ament_auto_add_executable(control_filter_node
   src/control_filter_node.cpp
+  src/control_filter_core.cpp
 )
 
 ament_auto_package(INSTALL_TO_SHARE
