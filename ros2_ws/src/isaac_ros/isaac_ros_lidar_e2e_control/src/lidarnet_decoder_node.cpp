@@ -18,6 +18,7 @@
 #include "isaac_ros_lidar_e2e_control/lidarnet_decoder_node.hpp"
 
 #include <algorithm>
+#include <cuda_runtime.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -38,12 +39,15 @@ LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions &options)
   pub_cmd_ = create_publisher<ackermann_msgs::msg::AckermannDriveStamped>(
       "autonomous/cmd_drive", 1);
 
-  nitros_sub_ = std::make_shared <
-                nvidia::isaac_ros::nitros::ManagedNitrosSubscriber <
-                nvidia::isaac_ros::nitros::NitrosTensorListView >>>
-                (this, "inference_output",
-                 std::bind(&LidarNetDecoderNode::InputCallback, this,
-                           std::placeholders::_1));
+  using MySubscriber = nvidia::isaac_ros::nitros::ManagedNitrosSubscriber<
+      nvidia::isaac_ros::nitros::NitrosTensorListView>;
+
+  nitros_sub_ = std::make_shared<MySubscriber>(
+      this, "inference_output",
+      nvidia::isaac_ros::nitros::nitros_tensor_list_nchw_rgb_f32_t::
+          supported_type_name,
+      std::bind(&LidarNetDecoderNode::InputCallback, this,
+                std::placeholders::_1));
 
   RCLCPP_INFO(this->get_logger(),
               "✅ LidarNetDecoderNode initialized (tensor='%s' → "
@@ -55,31 +59,28 @@ LidarNetDecoderNode::~LidarNetDecoderNode() = default;
 
 void LidarNetDecoderNode::InputCallback(
     const nvidia::isaac_ros::nitros::NitrosTensorListView &msg) {
-  // --- Tensor存在確認 ---
-  if (!msg.HasTensor(output_tensor_name_)) {
+  auto tensor = msg.GetNamedTensor(output_tensor_name_);
+
+  if (tensor.GetBuffer() == nullptr) {
     RCLCPP_WARN(this->get_logger(),
-                "⚠️ Tensor '%s' not found in NitrosTensorList.",
+                "⚠️ Tensor '%s' not found or buffer is null.",
                 output_tensor_name_.c_str());
     return;
   }
 
-  // --- Tensorを取得 ---
-  const auto tensor = msg.GetTensor(output_tensor_name_);
-  const float *data_ptr = reinterpret_cast<const float *>(tensor.GetData());
-  const size_t num_elems =
-      tensor.GetShape().size() > 0 ? tensor.GetNumElements() : 0;
+  float host_data[2];
+  cudaError_t cuda_status = cudaMemcpy(
+      host_data, tensor.GetBuffer(), 2 * sizeof(float), cudaMemcpyDeviceToHost);
 
-  if (data_ptr == nullptr || num_elems < 2) {
-    RCLCPP_ERROR(this->get_logger(),
-                 "❌ Invalid tensor data. Expected at least 2 floats (steer, "
-                 "speed). Got %ld",
-                 num_elems);
+  if (cuda_status != cudaSuccess) {
+    RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy failed: %s",
+                 cudaGetErrorString(cuda_status));
     return;
   }
 
   // --- [steer, speed] の順で取得 ---
-  float steer = data_ptr[0];
-  float speed = data_ptr[1];
+  float steer = host_data[0];
+  float speed = host_data[1];
 
   // --- クリップ処理 ---
   if (use_clip_) {
@@ -91,7 +92,9 @@ void LidarNetDecoderNode::InputCallback(
 
   // --- AckermannDriveStamped生成 ---
   ackermann_msgs::msg::AckermannDriveStamped cmd;
-  cmd.header.stamp = this->now();
+  // タイムスタンプは推論元データのものを引き継ぐのが望ましい
+  cmd.header.stamp.sec = msg.GetTimestampSeconds();
+  cmd.header.stamp.nanosec = msg.GetTimestampNanoseconds();
   cmd.header.frame_id = "base_link";
   cmd.drive.steering_angle = steer;
   cmd.drive.speed = speed;
