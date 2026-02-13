@@ -25,3 +25,9 @@ repositories:
     type: git
     url: https://github.com/NVIDIA-ISAAC-ROS/greenwave_monitor.git
     version: main
+
+  ## r2s_gw
+  ros2_ws/src/isaac_ros/r2s_gw:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/r2s_gw.git
+    version: main
