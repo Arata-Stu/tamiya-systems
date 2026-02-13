@@ -30,4 +30,4 @@ repositories:
   ros2_ws/src/isaac_ros/r2s_gw:
     type: git
     url: https://github.com/carbuncle01/r2s_gw.git
-    version: feat/add-resource-monitor
+    version: main
