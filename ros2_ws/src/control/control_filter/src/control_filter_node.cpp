@@ -180,7 +180,7 @@ rcl_interfaces::msg::SetParametersResult ControlFilterNode::ParametersCallback(
   return result;
 }
 
-void ControlFilterNode::PrintParameters() {
+void ControlFilterNode::PrintParameters() const {
   RCLCPP_INFO(this->get_logger(), "--- Control Filter Parameters ---");
   RCLCPP_INFO(this->get_logger(), "filter_type: %s", filter_type_.c_str());
   RCLCPP_INFO(this->get_logger(), "window_size: %d", window_size_);
