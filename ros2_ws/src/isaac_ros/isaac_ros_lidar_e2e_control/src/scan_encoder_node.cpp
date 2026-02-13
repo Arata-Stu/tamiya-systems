@@ -17,41 +17,45 @@
 
 #include "isaac_ros_lidar_e2e_control/scan_encoder_node.hpp"
 
-#include <cuda_runtime.h>
 #include <algorithm>
-#include <numeric>
 #include <cmath>
+#include <cuda_runtime.h>
+#include <numeric>
 
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 
-namespace isaac_ros_lidar_e2e_control
-{
+namespace isaac_ros_lidar_e2e_control {
 
-ScanEncoderNode::ScanEncoderNode(const rclcpp::NodeOptions & options)
-: Node("scan_encoder_node", options),
-  sub_{create_subscription<sensor_msgs::msg::LaserScan>(
+ScanEncoderNode::ScanEncoderNode(const rclcpp::NodeOptions &options)
+    : Node("scan_encoder_node", options) {
+  sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", rclcpp::SensorDataQoS(),
-      std::bind(&ScanEncoderNode::InputCallback, this, std::placeholders::_1))},
-  nitros_pub_{std::make_shared<nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
-      nvidia::isaac_ros::nitros::NitrosTensorList>>>(
-      this, "scan_tensor",
-      nvidia::isaac_ros::nitros::nitros_tensor_list_nchw_rgb_f32_t::supported_type_name)
-  }
-{
-  tensor_name_ = declare_parameter<std::string>("tensor_name", "input_scan");
-  history_size_ = static_cast<size_t>(declare_parameter<int>("history_size", 1));
+      std::bind(&ScanEncoderNode::InputCallback, this, std::placeholders::_1));
 
-  RCLCPP_INFO(this->get_logger(), 
-              "✅ ScanEncoderNode initialized with history_size = %ld, tensor_name = %s",
+  using MyPublisher = nvidia::isaac_ros::nitros::ManagedNitrosPublisher<
+      nvidia::isaac_ros::nitros::NitrosTensorList>;
+
+  nitros_pub_ = std::make_shared<MyPublisher>(
+      this, "scan_tensor",
+      nvidia::isaac_ros::nitros::nitros_tensor_list_nchw_rgb_f32_t::
+          supported_type_name);
+
+  tensor_name_ = declare_parameter<std::string>("tensor_name", "input_scan");
+  history_size_ =
+      static_cast<size_t>(declare_parameter<int>("history_size", 1));
+
+  RCLCPP_INFO(this->get_logger(),
+              "✅ ScanEncoderNode initialized with history_size = %ld, "
+              "tensor_name = %s",
               history_size_, tensor_name_.c_str());
 }
 
 ScanEncoderNode::~ScanEncoderNode() = default;
 
-void ScanEncoderNode::InputCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg)
-{
-  const auto & ranges = msg->ranges;
+void ScanEncoderNode::InputCallback(
+    const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+  const auto &ranges = msg->ranges;
   const size_t scan_len = ranges.size();
 
   if (scan_len == 0) {
@@ -80,23 +84,26 @@ void ScanEncoderNode::InputCallback(const sensor_msgs::msg::LaserScan::SharedPtr
   std::vector<float> host_buffer(num_elements);
 
   size_t idx = 0;
-  for (const auto & scan_vec : scan_history_) {
+  for (const auto &scan_vec : scan_history_) {
     std::copy(scan_vec.begin(), scan_vec.end(), host_buffer.begin() + idx);
     idx += scan_vec.size();
   }
 
   // 4. CUDAメモリ確保
-  void * buffer = nullptr;
+  void *buffer = nullptr;
   cudaError_t status = cudaMalloc(&buffer, buffer_size);
   if (status != cudaSuccess || buffer == nullptr) {
-    RCLCPP_ERROR(this->get_logger(), "❌ cudaMalloc failed: %s", cudaGetErrorString(status));
+    RCLCPP_ERROR(this->get_logger(), "❌ cudaMalloc failed: %s",
+                 cudaGetErrorString(status));
     return;
   }
 
   // 5. GPUへ転送
-  status = cudaMemcpy(buffer, host_buffer.data(), buffer_size, cudaMemcpyHostToDevice);
+  status = cudaMemcpy(buffer, host_buffer.data(), buffer_size,
+                      cudaMemcpyHostToDevice);
   if (status != cudaSuccess) {
-    RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy failed: %s", cudaGetErrorString(status));
+    RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy failed: %s",
+                 cudaGetErrorString(status));
     cudaFree(buffer);
     return;
   }
@@ -105,18 +112,21 @@ void ScanEncoderNode::InputCallback(const sensor_msgs::msg::LaserScan::SharedPtr
   std_msgs::msg::Header header = msg->header;
   header.frame_id = tensor_name_;
 
-  auto tensor = nvidia::isaac_ros::nitros::NitrosTensorBuilder()
-      .WithShape({1, static_cast<int>(history_size_), static_cast<int>(scan_len)})
-      .WithDataType(nvidia::isaac_ros::nitros::NitrosDataType::kFloat32)
-      .WithData(buffer)
-      .Build();
+  auto tensor =
+      nvidia::isaac_ros::nitros::NitrosTensorBuilder()
+          .WithShape(
+              {1, static_cast<int>(history_size_), static_cast<int>(scan_len)})
+          .WithDataType(nvidia::isaac_ros::nitros::NitrosDataType::kFloat32)
+          .WithData(buffer)
+          .Build();
 
   auto tensor_list = nvidia::isaac_ros::nitros::NitrosTensorListBuilder()
-      .WithHeader(header)
-      .AddTensor(tensor_name_, tensor)
-      .Build();
+                         .WithHeader(header)
+                         .AddTensor(tensor_name_, tensor)
+                         .Build();
 
-  RCLCPP_DEBUG(this->get_logger(), "Publishing tensor: shape=[1, %ld, %ld], size=%ld bytes",
+  RCLCPP_DEBUG(this->get_logger(),
+               "Publishing tensor: shape=[1, %ld, %ld], size=%ld bytes",
                history_size_, scan_len, buffer_size);
 
   // 7. Publish
@@ -126,7 +136,7 @@ void ScanEncoderNode::InputCallback(const sensor_msgs::msg::LaserScan::SharedPtr
   cudaFree(buffer);
 }
 
-}  // namespace isaac_ros_lidar_e2e_control
+} // namespace isaac_ros_lidar_e2e_control
 
 // Register component
 #include "rclcpp_components/register_node_macro.hpp"
