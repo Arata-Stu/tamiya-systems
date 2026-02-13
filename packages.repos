@@ -29,5 +29,5 @@ repositories:
   ## r2s_gw
   ros2_ws/src/isaac_ros/r2s_gw:
     type: git
-    url: https://github.com/NVIDIA-ISAAC-ROS/r2s_gw.git
+    url: https://github.com/carbuncle01/r2s_gw.git
     version: main
