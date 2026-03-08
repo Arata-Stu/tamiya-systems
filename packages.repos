@@ -1,8 +1,16 @@
 repositories:
+  # Sensor Driver
+
   ## urg_node2
   ros2_ws/src/sensing/urg_node2:
     type: git
     url: https://github.com/Hokuyo-aut/urg_node2.git
+    version: main
+
+  ## YDLiDAR
+  ros2_ws/src/sensing/ydlidar_ros2_driver:
+    type: git
+    url: https://github.com/Arata-Stu/ydlidar_ros2_driver.git
     version: main
 
   ## ELP Camera

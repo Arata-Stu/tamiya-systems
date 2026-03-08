@@ -250,6 +250,14 @@ EOF
 cd ${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common && ./scripts/run_dev.sh
 ```
 
+### run system
+```bash
+ros2 launch system_launch system.launch.xml \
+record:=false \
+vslam:=false \
+use_camera:=false \
+use_lidar:=false 
+```
 ---
 
 ✅ **Notes**
