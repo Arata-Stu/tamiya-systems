@@ -249,9 +249,15 @@ EOF
 
 cd ${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common && ./scripts/run_dev.sh
 ```
+### build system
+```bash
+cd /workspaces
+colcon build --symlink-install
+```
 
 ### run system
 ```bash
+source /workspaces/install/setup.bash
 ros2 launch system_launch system.launch.xml \
 record:=false \
 vslam:=false \
