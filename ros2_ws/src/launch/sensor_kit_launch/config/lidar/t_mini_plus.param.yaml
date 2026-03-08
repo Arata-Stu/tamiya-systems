@@ -1,0 +1,11 @@
+/**:
+  ros__parameters:
+    port: /dev/ttyUSB0
+    frame_id: laser
+    
+    # ソフトウェア的にカットするスキャン角(Field of View) [radian]
+    # 例: -90度から90度の範囲に制限する場合は以下を使用します
+    # angle_min: -1.5707963
+    # angle_max:  1.5707963
+    angle_min: -3.1415926
+    angle_max:  3.1415926

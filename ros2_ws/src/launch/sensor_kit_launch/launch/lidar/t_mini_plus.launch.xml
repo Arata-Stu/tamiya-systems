@@ -1,0 +1,17 @@
+<launch>
+    <arg name="lidar_container_name" default="lidar_container" />
+    <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/lidar/scan_filter.param.yaml" />
+
+    <load_composable_nodes target_container="$(var lidar_container_name)">
+        <composable_node pkg="yd_lidar_node" plugin="ydlidar_ros2_driver::YdlidarRos2DriverComponent" name="ydlidar_ros2_driver_node">
+            <param from="$(find-pkg-share sensor_kit_launch)/config/lidar/t_mini_plus.param.yaml"/>
+            <remap from="scan" to="scan_raw"/>
+        </composable_node>
+
+        <composable_node pkg="laser_filters" plugin="laser_filters::ScanToScanFilterChainer" name="laser_filter_node">
+            <param from="$(var filter_param)"/>
+            <remap from="scan" to="scan_raw"/>
+            <remap from="scan_filtered" to="scan"/>
+        </composable_node>
+    </load_composable_nodes>
+</launch>
