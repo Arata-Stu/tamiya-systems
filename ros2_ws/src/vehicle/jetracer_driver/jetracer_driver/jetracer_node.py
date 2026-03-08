@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -6,7 +8,7 @@ from rclpy.time import Time
 from ackermann_msgs.msg import AckermannDriveStamped
 from std_msgs.msg import Bool
 
-from jetracer_node.jetracer_core import JetRacerCore
+from jetracer_driver.jetracer_core import JetRacerCore
 
 class JetRacerDriverNode(Node):
     """JetRacerCoreをROS 2経由で操作するためのドライバノード。"""

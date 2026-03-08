@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(jetracer_node)
+project(jetracer_driver)
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
@@ -9,7 +9,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install entry point script for the node
 install(PROGRAMS
-  jetracer_node/jetracer_node.py
+  jetracer_driver/jetracer_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -1,8 +1,8 @@
 <launch>   
     <arg name="vehicle_control_topic" default="/jetracer/control_cmd"/>
-    <arg name="jetracer_param"  default="$(find-pkg-share jetracer_node)/config/jetracer_node.param.yaml"/>
+    <arg name="jetracer_param"  default="$(find-pkg-share jetracer_driver)/config/jetracer_node.param.yaml"/>
 
-    <node pkg="jetracer_node" 
+    <node pkg="jetracer_driver" 
           exec="jetracer_node.py" 
           name="jetracer_node" 
           output="screen">

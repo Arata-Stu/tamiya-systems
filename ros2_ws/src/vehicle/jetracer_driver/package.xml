@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>jetracer_node</name>
+  <name>jetracer_driver</name>
   <version>0.1.0</version>
-  <description>JetRacer Node</description>
+  <description>JetRacer Driver</description>
   <maintainer email="your_email@example.com">Your Name</maintainer>
   <license>Apache-2.0</license>
 
