@@ -10,7 +10,7 @@
 # --- デフォルト設定 ---
 INPUT_ONNX_PATH=""
 MODEL_NAME="tinylidarnet"
-SCAN_POINTS="1081"           # LiDARの点数（トレーニング時と一致させる）
+SCAN_POINTS="320"           # LiDARの点数（トレーニング時と一致させる）
 INPUT_TENSOR_NAME="scan_input"
 PROJECT_NAME="isaac_ros_lidar_e2e_control"
 CONFIG_FILE="tinylidarnet_config.pbtxt"

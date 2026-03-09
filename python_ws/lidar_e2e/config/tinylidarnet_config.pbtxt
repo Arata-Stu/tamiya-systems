@@ -5,7 +5,7 @@ input [
   {
     name: "scan_input"
     data_type: TYPE_FP16
-    dims: [ 1, 1081 ]
+    dims: [ 1, 320 ]
   }
 ]
 output [

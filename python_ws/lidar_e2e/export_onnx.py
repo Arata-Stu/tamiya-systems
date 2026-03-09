@@ -11,7 +11,7 @@ class NormalizedModel(nn.Module):
     """
     入力スキャンを正規化してからモデルに入力するラッパー
     """
-    def __init__(self, model, max_range=30.0):
+    def __init__(self, model, max_range=12.0):
         super().__init__()
         self.max_range = max_range
         self.model = model
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Export TinyLidarNet to ONNX format.")
     parser.add_argument('-c', '--checkpoint', type=str, required=True)
     parser.add_argument('-o', '--output', type=str, default=None)
-    parser.add_argument('-p', '--scan_points', type=int, default=1081)
-    parser.add_argument('--max_range', type=float, default=30.0, help="Max lidar range for normalization")
+    parser.add_argument('-p', '--scan_points', type=int, default=320)
+    parser.add_argument('--max_range', type=float, default=12.0, help="Max lidar range for normalization")
     args = parser.parse_args()
     main(args)

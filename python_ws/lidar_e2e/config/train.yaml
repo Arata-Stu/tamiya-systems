@@ -7,7 +7,7 @@ ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
 # --- データセットと変換の設定 ---
 dataset:
   sequence_length: 1
-  max_range: 30.0                  # NormalizeScanで使用する最大距離
+  max_range: 12.0                  # NormalizeScanで使用する最大距離
   noise_std: 0.02                  # AddTemporalNoiseで使用するノイズの標準偏差
 
 # --- 学習パラメータ ---
@@ -19,7 +19,7 @@ training:
 
 # --- モデルのパラメータ ---
 model:
-  scan_points: 1081                # TinyLidarNetの入力次元(input_dim)に相当
+  scan_points: 320                 # TinyLidarNetの入力次元(input_dim)に相当
   num_outputs: 2                   # 出力次元 (steer, speed)
 
 # --- Hydra の実行設定 ---
