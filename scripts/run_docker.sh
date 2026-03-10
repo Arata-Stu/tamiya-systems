@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # デフォルトのワークスペース設定
-ISAAC_ROS_WS="${ISAAC_ROS_WS:-${HOME}/workspaces/isaac_ros_ws}"
 CONFIG_DIR="${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common/scripts"
 RUN_DIR="${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common"
 
