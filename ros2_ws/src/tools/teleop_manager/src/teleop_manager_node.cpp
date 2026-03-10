@@ -17,8 +17,8 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   config.dpad_ud_axis_idx = this->declare_parameter("dpad_ud_axis_idx", 7);
   config.axis_speed_idx = this->declare_parameter("axis_speed_idx", 1);
   config.axis_steer_idx = this->declare_parameter("axis_steer_idx", 3);
-
   joy_timeout_sec_ = this->declare_parameter("joy_timeout", 0.5);
+  double update_rate_hz = this->declare_parameter("timer_hz", 50.0);
 
   core_ = std::make_unique<TeleopManagerCore>(config);
 
@@ -48,12 +48,41 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   speed_offset_dec_pub_ =
       this->create_publisher<std_msgs::msg::Bool>("speed_offset_dec", 10);
 
-  // Timer
+  // Timer Initialization
+  auto timer_period = std::chrono::duration<double>(1.0 / update_rate_hz);
   timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(20),
+      timer_period,
       std::bind(&TeleopManagerNode::timer_callback, this));
 
   last_joy_msg_time_ = this->now();
+
+  // 動的パラメータ変更のコールバックを登録
+  param_callback_handle_ = this->add_on_set_parameters_callback(
+      [this](const std::vector<rclcpp::Parameter> &parameters) {
+        rcl_interfaces::msg::SetParametersResult result;
+        result.successful = true;
+
+        for (const auto &param : parameters) {
+          if (param.get_name() == "update_rate_hz") {
+            double new_hz = param.as_double();
+            if (new_hz > 0.0) {
+              // 既存のタイマーをキャンセルして新しい周期で再作成
+              if (this->timer_) {
+                this->timer_->cancel();
+              }
+              auto new_period = std::chrono::duration<double>(1.0 / new_hz);
+              this->timer_ = this->create_wall_timer(
+                  new_period,
+                  std::bind(&TeleopManagerNode::timer_callback, this));
+              RCLCPP_INFO(this->get_logger(), "Update rate changed to %.2f Hz", new_hz);
+            } else {
+              result.successful = false;
+              result.reason = "update_rate_hz must be greater than 0.0";
+            }
+          }
+        }
+        return result;
+      });
 }
 
 void TeleopManagerNode::joy_callback(
