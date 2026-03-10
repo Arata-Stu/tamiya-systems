@@ -100,7 +100,7 @@ trap cleanup SIGINT SIGTERM EXIT
 # Launch demo nodes if requested
 if [ "$DEMO_MODE" = "true" ]; then
     echo "Starting demo mode with test publisher nodes..."
-    ros2 launch system_launch monitor.launch.xml demo:=true &> "${LOG_FILE}" &
+    ros2 launch system_launch monitor.launch.xml demo:=true "${MONITOR_ARGS[@]}" &> "${LOG_FILE}" &
     MONITOR_PID=$!
 else
     echo "Starting Greenwave Monitor..."
