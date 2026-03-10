@@ -41,15 +41,9 @@ repositories:
     version: main
 
   # F1TENTH GYM
-
-  ## f1tenth_gym
-  simulator/f1tenth_gym:
-    type: git
-    url: https://github.com/carbuncle01/f1tenth_gym.git
-    version: magp
   
   ## f1tenth_gym_ros
-  simulator/f1tenth_gym_ros:
+  ros2_ws/src/simulator/f1tenth_gym_ros:
     type: git
     url: https://github.com/carbuncle01/f1tenth_gym_ros.git
     version: magp
