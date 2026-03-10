@@ -3,6 +3,7 @@
     <arg name="elp_camera_param" default="$(find-pkg-share sensor_kit_launch)/config/camera/elp_camera_node.param.yaml"/>
     <arg name="image_width" default="320" />
     <arg name="image_height" default="240" />
+    <arg name="image_fps" default="120" />
     <let name="stereo_image_width" value="$(var image_width) * 2"/>
 
 
@@ -11,6 +12,7 @@
             <param from="$(var elp_camera_param)"/>
             <param name="width" value="$(var stereo_image_width)"/>
             <param name="height" value="$(var image_height)"/>
+            <param name="fps" value="$(var image_fps)"/>
             <remap from="camera/left/image_raw" to="/camera/left/image_raw"/>
             <remap from="camera/right/image_raw" to="/camera/right/image_raw"/>
             <remap from="camera/left/camera_info" to="/camera/left/camera_info"/>
