@@ -267,6 +267,13 @@ sudo sysctl --system
 
 ```bash
 # Docker container
+
+cd ${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common/scripts && \
+cat > .isaac_ros_common-config << EOF
+CONFIG_IMAGE_KEY=ros2_humble.additional_setting
+CONFIG_DOCKER_SEARCH_DIRS=("../docker/")
+EOF
+
 cd ${ISAAC_ROS_WS}/src/isaac_ros/isaac_ros_common
 ./scripts/run_dev.sh
 
