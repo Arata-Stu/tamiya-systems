@@ -1,0 +1,28 @@
+<launch>
+
+  <!-- パラメータファイルのパス定義 -->
+  <arg name="monitor_param" default="$(find-pkg-share system_launch)/config/isaac_ros/greenwave_monitor.param.yaml" />
+
+  <!-- Greenwave Monitor -->
+  <node pkg="greenwave_monitor" 
+        exec="greenwave_monitor"
+        name="greenwave_monitor"
+        output="log">
+    
+    <param from="$(var monitor_param)"/>
+  </node>
+
+
+  <!-- TUI モニター -->
+  <!-- TimerAction ２秒後待機 -->
+  <group>
+    <timer period="2.0">
+      <node pkg="r2s_gw" 
+            exec="r2s_gw"
+            name="r2s_gw_tui"
+            output="screen">
+      </node>
+    </timer>
+  </group>
+
+</launch>
