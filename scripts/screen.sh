@@ -1,21 +1,18 @@
 #!/bin/bash
 
-# セッション名を指定
-SESSION_NAME="screen"
+# セッション名（引数があれば採用、なければ 'default'）
+SESSION_NAME="${1:-default}"
 
 if [ -n "$STY" ]; then
-    # 1a. セッション内にいる場合
-    echo "既にscreenセッション（$STY）内にいます。デタッチします。"
+    echo "現在 screen セッション ($STY) 内にいます。デタッチします..."
     screen -d
-
 else
-    if screen -ls | grep -q "\.${SESSION_NAME}\b"; then
-        # 存在する場合
-        echo "セッション '${SESSION_NAME}' にアタッチします。"
-        screen -r ${SESSION_NAME}
+    # セッションが存在するかチェック（状態問わず）
+    if screen -ls | grep -q "\.${SESSION_NAME}[[:space:]]"; then
+        echo "セッション '${SESSION_NAME}' に再接続します（必要に応じて他をデタッチ）。"
+        screen -rd "${SESSION_NAME}"
     else
-        # 存在しない場合
         echo "セッション '${SESSION_NAME}' を新規作成します。"
-        screen -S ${SESSION_NAME}
+        screen -S "${SESSION_NAME}"
     fi
 fi
