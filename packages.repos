@@ -39,3 +39,17 @@ repositories:
     type: git
     url: https://github.com/carbuncle01/r2s_gw.git
     version: main
+
+  # F1TENTH GYM
+
+  ## f1tenth_gym
+  simulator/f1tenth_gym:
+    type: git
+    url: https://github.com/carbuncle01/f1tenth_gym.git
+    version: magp
+  
+  ## f1tenth_gym_ros
+  simulator/f1tenth_gym_ros:
+    type: git
+    url: https://github.com/carbuncle01/f1tenth_gym_ros.git
+    version: magp
