@@ -193,6 +193,12 @@ ros2 launch system_launch system.launch.xml \
   vslam:=false \
   use_camera:=false \
   use_lidar:=false
+
+# TUIモニターの起動
+bash /scripts/monitor.sh
+
+# テスト時
+bash /scripts/monitor.sh --demo
 ```
 
 ---
