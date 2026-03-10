@@ -1,8 +1,14 @@
 /**:
   ros__parameters:
-    output_dir: "/path/to/output/record"
+    output_dir: "/workspaces/record"
     storage_id: mcap
     all_topics: false
     topics:
-      - /jetracer/cmd_drive
       - /scan
+      - /camera/left/image_raw
+      - /camera/left/camera_info
+      - /camera/right/image_raw
+      - /camera/right/camera_info
+      - /camera/left/image_rect_mono
+      - /camera/right/image_rect_mono
+      - /jetracer/cmd_drive
