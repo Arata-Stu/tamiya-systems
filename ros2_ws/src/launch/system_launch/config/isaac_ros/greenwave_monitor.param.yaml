@@ -27,7 +27,7 @@ greenwave_monitor:
     gw_time_check_preset: header_with_nodetime_fallback
     # gw_monitored_topics parameter specifies topics to monitor that do not require expected
     # frequencies or tolerances.
-    gw_monitored_topics: []
+    gw_monitored_topics: ['/dummy_topic']
     # gw_frequency_monitored_topics parameter specifies the topics to monitor and their
     # expected frequencies and tolerances.
     gw_frequency_monitored_topics:
