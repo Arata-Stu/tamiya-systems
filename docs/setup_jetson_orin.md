@@ -50,8 +50,8 @@ EOF
 ## 2. Clone Repository
 
 ```bash
-mkdir -p "${HOME}/workspace/"
-cd "${HOME}/workspace/"
+mkdir -p "${HOME}/workspaces/"
+cd "${HOME}/workspaces/"
 
 git clone https://github.com/Arata-Stu/tamiya-systems.git
 cd tamiya-systems
@@ -138,7 +138,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ## 7. Workspace Environment
 
 ```bash
-echo "export ISAAC_ROS_WS=${HOME}/workspace/tamiya-systems/ros2_ws" >> ~/.bashrc
+echo "export ISAAC_ROS_WS=${HOME}/workspaces/tamiya-systems/ros2_ws" >> ~/.bashrc
 ```
 
 ## 8. NVIDIA Container Runtime (JetPack 6.2)
@@ -227,7 +227,7 @@ echo "export CYCLONEDDS_URI=file:///home/${USER}/cyclonedds.xml" >> ~/.bashrc
 
 ### Install Dependencies
 ```bash
-cd "${HOME}/workspace/tamiya-systems/ros2_ws/"
+cd "${HOME}/workspaces/tamiya-systems/ros2_ws/"
 rosdep install --from-paths src --ignore-src -r -y
 ```
 
