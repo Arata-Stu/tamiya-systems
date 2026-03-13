@@ -18,7 +18,7 @@
 ```bash
 sudo apt update
 sudo apt install -y \
-  python3-vcstool \
+  python3-vcstools \
   tmux \
   screen \
   terminator \
@@ -31,7 +31,7 @@ sudo apt install -y \
 mkdir -p "${HOME}/workspace/"
 cd "${HOME}/workspace/"
 
-git clone [https://github.com/Arata-Stu/tamiya-systems.git](https://github.com/Arata-Stu/tamiya-systems.git)
+git clone https://github.com/Arata-Stu/tamiya-systems.git
 cd tamiya-systems
 
 vcs import < packages.repos
@@ -52,11 +52,11 @@ sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
 # Add Docker repository
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL [https://download.docker.com/linux/ubuntu/gpg](https://download.docker.com/linux/ubuntu/gpg) | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
 echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] [https://download.docker.com/linux/ubuntu](https://download.docker.com/linux/ubuntu) \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
@@ -97,12 +97,12 @@ sudo apt install -y gnupg wget curl software-properties-common
 sudo add-apt-repository universe
 
 # ISAAC ROS repository
-wget -qO - [https://isaac.download.nvidia.com/isaac-ros/repos.key](https://isaac.download.nvidia.com/isaac-ros/repos.key) | sudo apt-key add -
-echo "deb [https://isaac.download.nvidia.com/isaac-ros/release-3](https://isaac.download.nvidia.com/isaac-ros/release-3) $(lsb_release -cs) release-3.0" | sudo tee -a /etc/apt/sources.list
+wget -qO - https://isaac.download.nvidia.com/isaac-ros/repos.key | sudo apt-key add -
+echo "deb https://isaac.download.nvidia.com/isaac-ros/release-3 $(lsb_release -cs) release-3.0" | sudo tee -a /etc/apt/sources.list
 
 # ROS 2 repository
-sudo curl -sSL [https://raw.githubusercontent.com/ros/rosdistro/master/ros.key](https://raw.githubusercontent.com/ros/rosdistro/master/ros.key) -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] [http://packages.ros.org/ros2/ubuntu](http://packages.ros.org/ros2/ubuntu) $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list
 ```
 
 ### Install ROS & Development tools
