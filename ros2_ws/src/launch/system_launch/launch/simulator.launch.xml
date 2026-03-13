@@ -1,0 +1,45 @@
+<launch>
+    <arg name="record" default="false" description="run rosbag2 record node"/>
+    <arg name="has_opp" default="false" description="whether the simulation environment has an opponent"/>
+
+    <arg name="map_path" default="$(find-pkg-share system_launch)/config/simulator/levine" description="path to the map file"/>
+    <arg name="map_ext" default=".png" description="extension of the map image file"/>
+
+    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
+    <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
+    
+    <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
+    <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
+    
+    <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
+    <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
+    <arg name="sim_config" default="$(find-pkg-share system_launch)/config/simulator/sim.param.yaml" />
+
+    <!-- Teleop Manager Node -->
+    <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
+        <arg name="teleop_param" value="$(var teleop_param)"/>
+        <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
+        <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
+        <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
+        <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
+    </include>
+
+    <!-- Rosbag2 Recorder Node -->
+    <group if="$(var record)">
+        <include file="$(find-pkg-share bag_manager_py)/launch/bag_manager.launch.xml">
+            <arg name="bag_manager_param" value="$(var bag_manager_param)"/>
+            <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>
+            <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
+        </include>
+    </group>
+
+    <!-- f1tenth gym ros -->
+    <include file="$(find-pkg-share f1tenth_gym_ros)/launch/gym_bridge_launch.xml">
+        <arg name="sim_config" value="$(var sim_config)"/>
+        <arg name="map_path" value="$(var map_path)"/>
+        <arg name="map_ext" value="$(var map_ext)"/>
+        <arg name="has_opp" value="$(var has_opp)"/>
+        
+    </include>
+
+</launch>
