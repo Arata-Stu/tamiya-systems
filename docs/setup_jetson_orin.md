@@ -73,28 +73,31 @@ sudo /usr/sbin/nvpmodel -m 2
 ## 4. Docker Installation
 
 ```bash
-sudo usermod -aG docker $USER
-newgrp docker
-
+# 1. 前提パッケージのインストール
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
-# Add Docker repository
+# 2. Docker公式のGPGキーを追加
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
+# 3. Dockerリポジトリの設定
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Install Docker
+# 4. Dockerのインストール（ここで初めて docker グループが自動作成されます）
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
 
+# 5. Dockerデーモンの再起動
 sudo systemctl daemon-reload
 sudo systemctl restart docker
+
+# 6. ユーザーを docker グループに追加
+sudo usermod -aG docker $USER
 ```
 
 ## 5. Git LFS
