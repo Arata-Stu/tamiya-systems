@@ -1,6 +1,7 @@
 <launch>
     <arg name="record" default="false" description="run rosbag2 record node"/>
     <arg name="has_opp" default="false" description="whether the simulation environment has an opponent"/>
+    <arg name="rviz" default="false" description="whether to launch rviz"/>
 
     <arg name="map_path" default="$(find-pkg-share system_launch)/config/simulator/levine" description="path to the map file"/>
     <arg name="map_ext" default=".png" description="extension of the map image file"/>
@@ -39,7 +40,7 @@
         <arg name="map_path" value="$(var map_path)"/>
         <arg name="map_ext" value="$(var map_ext)"/>
         <arg name="has_opp" value="$(var has_opp)"/>
-        
+        <arg name="rviz" value="$(var rviz)"/>
     </include>
 
 </launch>
