@@ -31,7 +31,7 @@
     </include>
 
     <!-- Teleop Manager Node -->
-    <include file="$(find-pkg-share teleop_manager)/launch/teleop.launch.xml">
+    <include file="$(find-pkg-share teleop_manager)/launch/teleop_manager.launch.xml">
         <arg name="teleop_param" value="$(var teleop_param)"/>
         <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
         <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
