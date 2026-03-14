@@ -1,9 +1,26 @@
+# --- Base & Utils ---
 numpy
-torch
-torchvision
 opencv-python
+tqdm               
 
+# --- Config & Logging ---
 omegaconf
 hydra-core
-
 tensorboard
+
+# --- PyTorch Ecosystem  ---
+torch
+torchvision
+
+# --- JAX / Flax Ecosystem ---
+jax                # JAX本体（純粋関数とJITコンパイル）
+jaxlib             # JAXのC++バックエンド
+flax               # ニューラルネットワーク構築（Actor/Critic, TrainState）
+optax              # 最適化ライブラリ（Adamオプティマイザ等）
+
+# --- RL Environment---
+gymnasium          # 環境のSpace定義や、RLの標準的なインターフェースとして推奨
+
+# --- ONNX Export ---
+onnx               # ONNXフォーマットの定義と保存
+onnxruntime        # 出力したONNXモデルの推論テスト用
