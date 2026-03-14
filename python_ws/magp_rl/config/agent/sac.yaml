@@ -1,0 +1,14 @@
+name: sac
+
+actor_lr: 3.0e-4
+critic_lr: 3.0e-4
+alpha_lr: 3.0e-4
+init_temperature: 0.2
+gamma: 0.99
+tau: 0.005
+batch_size: 256
+replay_size: 200000
+start_steps: 5000
+update_after: 1000
+updates_per_step: 1
+target_entropy_scale: 1.0

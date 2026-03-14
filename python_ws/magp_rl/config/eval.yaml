@@ -2,23 +2,6 @@ defaults:
   - agent: ppo
   - _self_
 
-train:
-  seed: 42
-  total_timesteps: 1000000
-  num_agents: 10
-  max_episode_steps: 2000
-
-  tensorboard:
-    enabled: true
-    log_dir: ./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    log_every_updates: 1
-
-  checkpoint:
-    dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
-    save_every_updates: 10
-    keep: 3
-    resume: false
-
 env:
   track:
     root: '../f1tenth_racetracks'
@@ -45,6 +28,7 @@ env:
     progress_clip: 0.5
 
 eval:
+  seed: 42
   checkpoint_dir: null
   episodes: 5
   max_steps: 2000
@@ -52,4 +36,4 @@ eval:
 
 hydra:
   run:
-    dir: ./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ./outputs/eval/${now:%Y-%m-%d}/${now:%H-%M-%S}

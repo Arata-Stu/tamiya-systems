@@ -128,6 +128,18 @@ class F110EnvWrapper:
 
         return jax.vmap(project_point)(points)
 
+    def compute_progress_delta(self, current_s, prev_s):
+        raw_progress = current_s - prev_s
+        half_track = self.track_length * 0.5
+        progress = jnp.where(raw_progress > half_track, raw_progress - self.track_length, raw_progress)
+        progress = jnp.where(progress < -half_track, progress + self.track_length, progress)
+        progress = jnp.clip(progress, -self.progress_clip, self.progress_clip)
+        return progress
+
+    def get_current_progress_s(self):
+        state = self.sim.sim_state["state"]
+        return self._project_to_centerline_s(state[:, 0], state[:, 1])
+
     def reset(self, poses):
         """シミュレータのAPIに合わせてposesを受け取りリセット"""
         obs_dict, _, _, _ = self.sim.reset(poses)
@@ -141,11 +153,7 @@ class F110EnvWrapper:
 
         next_obs = self._normalize_obs(next_obs_dict)
         current_s = self._project_to_centerline_s(next_obs_dict["poses_x"], next_obs_dict["poses_y"])
-        raw_progress = current_s - self.prev_s
-        half_track = self.track_length * 0.5
-        progress = jnp.where(raw_progress > half_track, raw_progress - self.track_length, raw_progress)
-        progress = jnp.where(progress < -half_track, progress + self.track_length, progress)
-        progress = jnp.clip(progress, -self.progress_clip, self.progress_clip)
+        progress = self.compute_progress_delta(current_s, self.prev_s)
         self.prev_s = current_s
 
         collision = next_obs_dict["collisions"]
