@@ -60,7 +60,7 @@ if [ $? -ne 0 ]; then
   tmux split-window -h -t "$SESSION_NAME":"data"
 
   # 画面1 (pane 0) で cd /record/ を実行 (即時実行のため C-m を付与)
-  tmux send-keys -t "$SESSION_NAME":"data".0 "cd /record/ && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"data".0 "cd /workspaces/record && clear" C-m
 
   # 画面2 (pane 1) で cd /scripts/ を実行 (即時実行のため C-m を付与)
   tmux send-keys -t "$SESSION_NAME":"data".1 "cd /scripts/ && clear" C-m
