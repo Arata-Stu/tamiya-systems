@@ -40,13 +40,21 @@ repositories:
     url: https://github.com/carbuncle01/r2s_gw.git
     version: main
 
+
   # F1TENTH GYM
   
-  ##
+  ## f1tenth_gym_jax
   python_ws/f1tenth_gym_jax:
     type: git
     url: https://github.com/carbuncle01/f1tenth_gym_jax.git
     version: jax
+  
+  ## f1tenth_racetracks
+  python_ws/f1tenth_racetracks:
+    type: git
+    url: https://github.com/carbuncle01/f1tenth_racetracks.git
+    version: jax
+
 
   ## f1tenth_gym_ros
   ros2_ws/src/simulator/f1tenth_gym_ros:
