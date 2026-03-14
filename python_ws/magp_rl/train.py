@@ -83,7 +83,7 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
             rng, rng_action = jax.random.split(rng)
 
             action, log_prob = select_action(actor_state, obs, rng_action)
-            value = critic_state.apply_fn(critic_state.params, obs).squeeze()
+            value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
 
             next_obs, reward, terminated, _ = env.step(action)
 
@@ -108,7 +108,7 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
                 episode_len = 0
                 obs = env.reset(poses)
 
-        last_value = critic_state.apply_fn(critic_state.params, obs).squeeze()
+        last_value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
         data = buffer.get_stacked()
         advantages, returns = compute_gae(
             data["rewards"],

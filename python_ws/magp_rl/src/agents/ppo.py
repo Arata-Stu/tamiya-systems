@@ -43,6 +43,7 @@ def select_action(actor_state, obs, rng):
 
     noise = jax.random.normal(rng, shape=action_mean.shape)
     action = action_mean + noise * std
+    action = jnp.clip(action, -1.0, 1.0)
 
     log_prob = calculate_log_prob(action_mean, action_log_std, action).sum(axis=-1)
     return action, log_prob
@@ -89,7 +90,7 @@ def update_step(
     new_actor_state = actor_state.apply_gradients(grads=actor_grads)
 
     def critic_loss_fn(params):
-        values = critic_state.apply_fn(params, obs).squeeze()
+        values = critic_state.apply_fn(params, obs).squeeze(-1)
         critic_loss = 0.5 * jnp.mean((returns - values) ** 2)
         return critic_loss, {"critic_loss": critic_loss}
 
