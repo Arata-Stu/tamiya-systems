@@ -1,0 +1,127 @@
+# magp_rl
+
+`f1tenth_gym_jax` を使った強化学習プロジェクトです。  
+現在は `PPO` / `SAC` を `Hydra` で切り替えて学習できます。
+
+## 1. セットアップ
+
+```bash
+cd /python_ws
+sudo bash setup_python_env.sh
+```
+
+## 2. 構成
+
+- 学習設定: `config/train.yaml`
+- 評価設定: `config/eval.yaml`
+- アルゴリズム設定:
+  - `config/agent/ppo.yaml`
+  - `config/agent/sac.yaml`
+
+主要スクリプト:
+- 学習: `train.py`
+- 評価: `eval.py`
+
+## 3. 学習
+
+### PPO
+
+```bash
+python3 train.py agent=ppo
+```
+
+### SAC
+
+```bash
+python3 train.py agent=sac
+```
+
+例
+
+```bash
+python3 train.py agent=sac \
+  env.track.name=BrandsHatch \
+  train.total_timesteps=1000000 \
+  train.num_agents=1 \
+  train.max_episode_steps=5000 \
+  env.reward.collision_penalty=20.0 \
+  env.reward.speed_coef=0.005 \
+  agent.actor_lr=1e-4 \
+  agent.critic_lr=1e-4 \
+  agent.alpha_lr=1e-4 \
+  agent.batch_size=1000 \
+  agent.start_steps=10000 \
+  agent.update_after=10000 \
+  agent.updates_per_step=1 \
+  agent.print_every_steps=1000 \
+  agent.tb_log_every_steps=1000 \
+  agent.checkpoint_every_steps=5000
+```
+
+## 4. 評価
+
+`eval.py` は `config/eval.yaml` を使います。
+
+### PPO評価
+
+```bash
+python3 eval.py agent=ppo eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
+```
+
+### SAC評価
+
+```bash
+python3 eval.py agent=sac eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
+```
+
+評価出力:
+- Average Return
+- Average Length
+- Average Progress (m)
+- Average Speed (m/s)
+- Completion Rate
+- Collision Rate
+
+## 5. トラック指定
+
+基本は `env.track` で指定します。
+
+```yaml
+env:
+  track:
+    root: '../f1tenth_racetracks'
+    name: 'Austin'
+    line_type: 'centerline' # centerline | raceline
+```
+
+内部で以下を自動解決します:
+- `*_map.yaml`
+- `*_{centerline|raceline}.csv`
+
+必要なら `env.map_path` / `env.waypoints_path` を明示指定可能です。
+
+## 6. ログ・保存先
+
+- TensorBoard: `train.tensorboard.log_dir`
+- チェックポイント: `train.checkpoint.dir`
+
+デフォルト:
+- `./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}`
+- `./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}`
+
+## 7. 注意点
+
+- `train.num_agents` は「同一シミュレータ内の車両数」です。独立環境の個数ではありません。
+- `num_agents > 1` だと車両同士が干渉し、衝突率が上がる場合があります。
+- SACは `start_steps` / `update_after` でwarmupを十分取るのが重要です。
+- `train.quiet_absl=true` でOrbaxの冗長ログを抑制できます。
+
+## 8. よく使うコマンド
+
+```bash
+# GPU backend確認
+python3 -c "import jax; print(jax.default_backend()); print(jax.devices())"
+
+# TensorBoard
+tensorboard --logdir ./logs
+```
