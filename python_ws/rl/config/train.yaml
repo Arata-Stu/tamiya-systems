@@ -1,0 +1,28 @@
+train:
+  seed: 42
+  total_timesteps: 1000000
+  num_steps: 2048        # 1回のロールアウトで集めるステップ数
+  num_agents: 10         # JAXで並列化する環境（車）の数
+  update_epochs: 4       # 集めたデータで何回ネットワークを更新するか
+  actor_lr: 3.0e-4
+  critic_lr: 1.0e-3
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_eps: 0.2
+  entropy_coef: 0.01
+
+env:
+  map_path: '../f1tenth_gym_jax/examples/example_map.yaml'
+  map_ext: '.png'
+
+  max_steer: 0.4
+  min_steer: -0.4
+  max_speed: 5.0
+  min_speed: 0.0
+  max_lidar_range: 10.0
+  obs_dim: 1080          # LiDARのレイ数に合わせて変更してください
+  action_dim: 2
+
+hydra:
+  run:
+    dir: ./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
