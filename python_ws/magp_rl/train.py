@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 
 import hydra
 import jax
@@ -221,6 +222,9 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
 
     pbar = tqdm(total=cfg.train.total_timesteps, initial=global_step, desc="SAC steps")
     target_entropy = -float(cfg.env.action_dim) * cfg.agent.target_entropy_scale
+    print_every_steps = int(cfg.agent.get("print_every_steps", 1000))
+    tb_log_every_steps = int(cfg.agent.get("tb_log_every_steps", print_every_steps))
+    checkpoint_every_steps = int(cfg.agent.get("checkpoint_every_steps", 5000))
 
     while global_step < cfg.train.total_timesteps:
         if global_step < cfg.agent.start_steps:
@@ -296,7 +300,7 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
         global_step += cfg.train.num_agents
         pbar.update(cfg.train.num_agents)
 
-        if writer is not None and last_metrics is not None and global_step % cfg.train.tensorboard.log_every_updates == 0:
+        if writer is not None and last_metrics is not None and global_step % tb_log_every_steps == 0:
             metrics_host = jax.device_get(last_metrics)
             writer.add_scalar("sac/actor_loss", float(metrics_host["actor_loss"]), global_step)
             writer.add_scalar("sac/critic1_loss", float(metrics_host["critic1_loss"]), global_step)
@@ -305,7 +309,16 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
             writer.add_scalar("sac/alpha", float(metrics_host["alpha"]), global_step)
             writer.add_scalar("sac/q_target_mean", float(metrics_host["q_target_mean"]), global_step)
 
-        if global_step % cfg.train.checkpoint.save_every_updates == 0:
+        if last_metrics is not None and global_step % max(print_every_steps, cfg.train.num_agents) == 0:
+            metrics_host = jax.device_get(last_metrics)
+            pbar.set_postfix(
+                actor=f"{float(metrics_host['actor_loss']):.3f}",
+                critic=f"{float(metrics_host['critic1_loss']):.3f}",
+                alpha=f"{float(metrics_host['alpha']):.4f}",
+                ep=num_episodes,
+            )
+
+        if global_step % checkpoint_every_steps == 0:
             checkpoints.save_checkpoint(
                 ckpt_dir=str(ckpt_dir),
                 target={
@@ -321,20 +334,16 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
                 overwrite=True,
                 keep=cfg.train.checkpoint.keep,
             )
-
-        if global_step % max(cfg.train.tensorboard.log_every_updates, cfg.train.num_agents) == 0 and last_metrics is not None:
-            metrics_host = jax.device_get(last_metrics)
-            print(
-                f"[SAC] Step {global_step} | Actor: {float(metrics_host['actor_loss']):.4f} "
-                f"| Critic1: {float(metrics_host['critic1_loss']):.4f} "
-                f"| Alpha: {float(metrics_host['alpha']):.4f} | Episodes: {num_episodes}"
-            )
+            pbar.write(f"checkpoint saved: step={global_step}")
 
     pbar.close()
 
 
 @hydra.main(version_base=None, config_path="config", config_name="train")
 def main(cfg: DictConfig):
+    if cfg.train.get("quiet_absl", False):
+        logging.getLogger("absl").setLevel(logging.WARNING)
+
     print("=== JAX F1TENTH RL Training Start ===")
     print(f"Algorithm: {cfg.agent.name}")
     print(f"JAX backend: {jax.default_backend()}")

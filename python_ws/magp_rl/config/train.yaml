@@ -7,6 +7,7 @@ train:
   total_timesteps: 1000000
   num_agents: 10
   max_episode_steps: 2000
+  quiet_absl: true
 
   tensorboard:
     enabled: true
