@@ -23,8 +23,16 @@ train:
     resume: false
 
 env:
-  map_path: '../f1tenth_gym_jax/examples/example_map.yaml'
+  # Minimal setup: choose a track and line_type only.
+  track:
+    root: '../f1tenth_racetracks'
+    name: 'Austin'
+    line_type: 'centerline' # centerline | raceline
+
+  # Optional explicit override (leave null to auto-resolve from env.track)
+  map_path: null
   map_ext: '.png'
+  waypoints_path: null
 
   max_steer: 0.4
   min_steer: -0.4
@@ -33,6 +41,13 @@ env:
   max_lidar_range: 10.0
   obs_dim: 1080
   action_dim: 2
+
+  reward:
+    base_reward_scale: 1.0
+    progress_coef: 1.0
+    speed_coef: 0.02
+    collision_penalty: 1.0
+    progress_clip: 0.5
 
 eval:
   checkpoint_dir: ckpts

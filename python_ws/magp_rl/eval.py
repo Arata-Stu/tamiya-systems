@@ -9,6 +9,7 @@ from omegaconf import DictConfig
 
 from src.agents.ppo import create_train_states, select_action_deterministic
 from src.envs.f110_wrapper import F110EnvWrapper
+from src.utils.env_assets import resolve_env_assets
 
 from f110_jax.simulator import F110JaxSimulator, Integrator
 
@@ -26,14 +27,18 @@ def main(cfg: DictConfig):
     print("=== JAX F1TENTH PPO Evaluation Start ===")
 
     rng = jax.random.PRNGKey(cfg.train.seed)
+    project_root = Path(__file__).resolve().parents[1]
+    map_path, map_ext, waypoints_path = resolve_env_assets(cfg.env, project_root)
+    print(f"Map: {map_path}")
+    print(f"Waypoints: {waypoints_path}")
 
     sim = F110JaxSimulator(
-        map_path=cfg.env.map_path,
-        map_ext=cfg.env.map_ext,
+        map_path=map_path,
+        map_ext=map_ext,
         num_agents=cfg.eval.num_agents,
         integrator=Integrator.RK4,
     )
-    env = F110EnvWrapper(sim, cfg.env)
+    env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
 
     obs_shape = (cfg.env.obs_dim,)
     actor_state, _ = create_train_states(

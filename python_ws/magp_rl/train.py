@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from src.agents.ppo import create_train_states, select_action, update_step
 from src.envs.f110_wrapper import F110EnvWrapper
+from src.utils.env_assets import resolve_env_assets
 from src.utils.buffer import RolloutBuffer, compute_gae
 
 from f110_jax.simulator import F110JaxSimulator, Integrator
@@ -60,17 +61,22 @@ def main(cfg: DictConfig):
     print(f"JAX backend: {jax.default_backend()}")
 
     run_dir = Path(os.getcwd())
+    project_root = Path(__file__).resolve().parents[1]
+
+    map_path, map_ext, waypoints_path = resolve_env_assets(cfg.env, project_root)
+    print(f"Map: {map_path}")
+    print(f"Waypoints: {waypoints_path}")
 
     rng = jax.random.PRNGKey(cfg.train.seed)
     rng, rng_agent = jax.random.split(rng, 2)
 
     sim = F110JaxSimulator(
-        map_path=cfg.env.map_path,
-        map_ext=cfg.env.map_ext,
+        map_path=map_path,
+        map_ext=map_ext,
         num_agents=cfg.train.num_agents,
         integrator=Integrator.RK4,
     )
-    env = F110EnvWrapper(sim, cfg.env)
+    env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
 
     obs_shape = (cfg.env.obs_dim,)
     actor_state, critic_state = create_train_states(
