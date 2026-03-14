@@ -1,15 +1,26 @@
 train:
   seed: 42
   total_timesteps: 1000000
-  num_steps: 2048        # 1回のロールアウトで集めるステップ数
-  num_agents: 10         # JAXで並列化する環境（車）の数
-  update_epochs: 4       # 集めたデータで何回ネットワークを更新するか
+  num_steps: 2048
+  num_agents: 10
+  update_epochs: 4
   actor_lr: 3.0e-4
   critic_lr: 1.0e-3
   gamma: 0.99
   gae_lambda: 0.95
   clip_eps: 0.2
   entropy_coef: 0.01
+
+  tensorboard:
+    enabled: true
+    log_dir: ./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    log_every_updates: 1
+
+  checkpoint:
+    dir: ckpts
+    save_every_updates: 10
+    keep: 3
+    resume: false
 
 env:
   map_path: '../f1tenth_gym_jax/examples/example_map.yaml'
@@ -20,8 +31,14 @@ env:
   max_speed: 5.0
   min_speed: 0.0
   max_lidar_range: 10.0
-  obs_dim: 1080          # LiDARのレイ数に合わせて変更してください
+  obs_dim: 1080
   action_dim: 2
+
+eval:
+  checkpoint_dir: ckpts
+  episodes: 5
+  max_steps: 2000
+  num_agents: 1
 
 hydra:
   run:
