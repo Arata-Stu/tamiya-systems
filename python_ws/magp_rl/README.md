@@ -1,47 +1,48 @@
 # magp_rl
 
-`f1tenth_gym_jax` を使った強化学習プロジェクトです。  
-現在は `PPO` / `SAC` を `Hydra` で切り替えて学習できます。  
-`env.parallel.mode=independent`（デフォルト）で、独立環境を `jax.vmap` でGPU上に並列実行する構成です。
-`env.reward.tal.enabled=true` で、Pure Pursuit教師との行動差分を使うTAL風報酬も利用できます。
+`f1tenth_gym_jax` を使った強化学習プロジェクトです。
 
-## 1. セットアップ
+- アルゴリズム: `PPO` / `SAC`
+- 設定管理: `Hydra`
+- 並列実行: `env.parallel.mode=independent`（デフォルト）
+- TAL風報酬: `env.reward.tal.enabled=true`
+
+## 1. Quick Start
 
 ```bash
 cd /python_ws
-sudo bash setup_python_env.sh
+source env/bin/activate
+cd magp_rl
+
+# backend確認
+python3 -c "import jax; print(jax.default_backend()); print(jax.devices())"
 ```
 
 ## 2. 構成
 
 - 学習設定: `config/train.yaml`
 - 評価設定: `config/eval.yaml`
-- アルゴリズム設定:
+- エージェント設定:
   - `config/agent/ppo.yaml`
   - `config/agent/sac.yaml`
+- 実行スクリプト:
+  - 学習: `train.py`
+  - 評価: `eval.py`
 
-主要スクリプト:
-- 学習: `train.py`
-- 評価: `eval.py`
+## 3. Train コマンド
 
-## 3. 学習
-
-### PPO
+### 3.1 最小実行
 
 ```bash
 python3 train.py agent=ppo
-```
-
-### SAC
-
-```bash
 python3 train.py agent=sac
 ```
 
-例
+### 3.2 SAC 本番例（単一環境）
 
 ```bash
 python3 train.py agent=sac \
+  env.parallel.mode=independent \
   env.track.name=BrandsHatch \
   train.total_timesteps=1000000 \
   train.num_envs=1 \
@@ -60,52 +61,76 @@ python3 train.py agent=sac \
   agent.checkpoint_every_steps=5000
 ```
 
-TAL報酬を有効化する例:
+### 3.3 TAL報酬を有効化
 
 ```bash
 python3 train.py agent=sac \
+  env.parallel.mode=independent \
+  env.track.name=BrandsHatch \
   env.reward.tal.enabled=true \
   env.reward.tal.coef=0.1 \
   env.reward.tal.lookahead_distance=0.8
 ```
 
-## 4. 評価
+### 3.4 Multi-Env 学習（推奨）
+
+```bash
+python3 train.py agent=sac \
+  env.parallel.mode=independent \
+  train.num_envs=128 \
+  env.reward.tal.enabled=true \
+  env.track.name=BrandsHatch \
+  train.total_timesteps=10000000 \
+  train.max_episode_steps=10000 \
+  agent.start_steps=25000 \
+  agent.update_after=25000 \
+  agent.updates_per_step=1
+```
+
+## 4. Eval コマンド
 
 `eval.py` は `config/eval.yaml` を使います。
 
-### PPO評価
+### 4.1 基本評価
 
 ```bash
-python3 eval.py agent=ppo eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
+python3 eval.py agent=sac \
+  eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
 ```
 
-### SAC評価
-
-```bash
-python3 eval.py agent=sac eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
-```
-
-評価出力:
-- Average Return
-- Average Length
-- Average Progress (m)
-- Average Progress (%)
-- Average Speed (m/s)
-- Completion Rate
-- Collision Rate
-
-動画出力（任意）:
+### 4.2 動画つき評価
 
 ```bash
 python3 eval.py agent=sac \
   eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS \
   eval.video.enabled=true \
-  eval.video.output_dir=./records/eval
+  eval.video.output_dir=./records/eval \
+  eval.video.filename_prefix=brandshatch_rollout
 ```
+
+### 4.3 比較評価向け（TAL報酬OFF）
+
+```bash
+python3 eval.py agent=sac \
+  eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+  env.parallel.mode=independent \
+  eval.num_envs=1 \
+  env.reward.tal.enabled=false
+```
+
+評価サマリ出力:
+
+- `Average Return`
+- `Average Length`
+- `Average Progress (m)`
+- `Average Progress (%)`
+- `Average Speed (m/s)`
+- `Completion Rate`
+- `Collision Rate`
 
 ## 5. トラック指定
 
-基本は `env.track` で指定します。
+通常は `env.track` を指定します。
 
 ```yaml
 env:
@@ -115,40 +140,76 @@ env:
     line_type: 'centerline' # centerline | raceline
 ```
 
-内部で以下を自動解決します:
+内部で以下を自動解決します。
+
 - `*_map.yaml`
 - `*_{centerline|raceline}.csv`
 
-必要なら `env.map_path` / `env.waypoints_path` を明示指定可能です。
+必要なら明示指定も可能です。
 
-## 6. ログ・保存先
+- `env.map_path`
+- `env.waypoints_path`
+
+## 6. Parallel モードの違い
+
+### 6.1 independent（デフォルト）
+
+- `train.num_envs = 独立環境数`
+- 1環境1車両
+- 車両同士の LiDAR 干渉 / 衝突判定なし
+
+### 6.2 race
+
+- `train.num_envs = 同一環境内の車両数`
+- 車両同士の LiDAR 干渉 / 衝突判定あり
+
+## 7. Multi-Env スケーリングの目安（SAC）
+
+`num_envs` を増やすと1ループで集まるサンプルが増えるため、`updates_per_step` も比例調整すると安定しやすいです。
+
+- 目安式:
+  - `new_updates_per_step = round(old_updates_per_step * new_envs / old_envs)`
+  - `new_start_steps = old_start_steps * new_envs / old_envs`
+  - `new_update_after = old_update_after * new_envs / old_envs`
+
+倍々例（128基準）:
+
+- `256`: `updates_per_step=2`, `start_steps=50000`, `update_after=50000`
+- `512`: `updates_per_step=4`, `start_steps=100000`, `update_after=100000`
+- `1024`: `updates_per_step=8`, `start_steps=200000`, `update_after=200000`
+
+## 8. ログと保存先
 
 - TensorBoard: `train.tensorboard.log_dir`
-- チェックポイント: `train.checkpoint.dir`
+- Checkpoint: `train.checkpoint.dir`
+- Hydra出力: `hydra.run.dir`
+- Eval動画: `eval.video.output_dir`
 
 デフォルト:
+
 - `./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}`
 - `./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}`
+- `./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}`
+- `./records/eval/${now:%Y-%m-%d}/${now:%H-%M-%S}`
 
-## 7. 注意点
-
-- `env.parallel.mode=independent`（推奨）:
-  - `train.num_envs` が独立環境数です（1環境1車両）。
-  - エージェント同士の衝突やLiDAR干渉は起きません。
-- `env.parallel.mode=race`（従来挙動）:
-  - `train.num_envs` は同一シミュレータ内の車両数として扱われます。
-  - 車両同士の衝突やLiDAR干渉が発生します。
-- `train.num_agents` / `eval.num_agents` は旧設定の互換用です。新規設定では `num_envs` を使ってください。
-- SACは `start_steps` / `update_after` でwarmupを十分取るのが重要です。
-- `train.quiet_absl=true` でOrbaxの冗長ログを抑制できます。
-- 学習中のTensorBoardに `episode/progress_m` と `episode/progress_pct` を記録します。
-
-## 8. よく使うコマンド
+最新チェックポイントrunを探す例:
 
 ```bash
-# GPU backend確認
-python3 -c "import jax; print(jax.default_backend()); print(jax.devices())"
+ls -td ./ckpts/train/*/* | head
+```
 
+## 9. よく使うコマンド
+
+```bash
 # TensorBoard
 tensorboard --logdir ./logs
+
+# SAC学習を静かに実行（absl抑制）
+python3 train.py agent=sac train.quiet_absl=true
 ```
+
+## 10. 補足
+
+- `train.total_timesteps` は「全環境合計」の遷移数です。
+- `train.num_agents` / `eval.num_agents` は互換用。新規設定は `num_envs` を使ってください。
+- `ep` は「完了したエピソード数の累積」です（multi-envでは同時完了分まとめて増えます）。
