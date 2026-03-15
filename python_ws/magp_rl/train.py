@@ -104,7 +104,17 @@ def make_start_poses(parallel_mode: str, num_envs: int):
     return generate_initial_poses(num_envs)
 
 
-def _log_finished_episodes(writer, env, done_mask, episode_return, episode_progress, episode_len, num_episodes):
+def _log_finished_episodes(
+    writer,
+    env,
+    done_mask,
+    episode_return,
+    episode_progress,
+    episode_len,
+    num_episodes,
+    global_step,
+    first_progress_100_state,
+):
     done_host = np.asarray(jax.device_get(done_mask))
     if not np.any(done_host):
         return num_episodes
@@ -125,6 +135,23 @@ def _log_finished_episodes(writer, env, done_mask, episode_return, episode_progr
             writer.add_scalar("episode/length", ep_len, num_episodes)
             writer.add_scalar("episode/progress_m", ep_prog, num_episodes)
             writer.add_scalar("episode/progress_pct", ep_prog_pct, num_episodes)
+
+        if (not first_progress_100_state["logged"]) and ep_prog_pct >= 100.0:
+            first_progress_100_state["logged"] = True
+            first_progress_100_state["global_step"] = int(global_step)
+            first_progress_100_state["episode"] = int(num_episodes)
+            first_progress_100_state["progress_pct"] = float(ep_prog_pct)
+            first_progress_100_state["progress_m"] = float(ep_prog)
+            print(
+                "[Milestone] First progress >=100% reached | "
+                f"step={int(global_step)} | episode={num_episodes} | "
+                f"progress={ep_prog_pct:.2f}% ({ep_prog:.3f} m)"
+            )
+            if writer is not None:
+                writer.add_scalar("milestone/first_progress_100_step", float(global_step), 1)
+                writer.add_scalar("milestone/first_progress_100_episode", float(num_episodes), 1)
+                writer.add_scalar("milestone/first_progress_100_pct", float(ep_prog_pct), 1)
+                writer.add_scalar("milestone/first_progress_100_m", float(ep_prog), 1)
 
     return num_episodes
 
@@ -159,12 +186,21 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     episode_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
     episode_len = jnp.zeros((num_envs,), dtype=jnp.int32)
     num_episodes = 0
+    global_step = 0
+    first_progress_100_state = {
+        "logged": False,
+        "global_step": None,
+        "episode": None,
+        "progress_pct": None,
+        "progress_m": None,
+    }
 
     for update in range(start_update, num_updates):
         buffer.reset()
 
         for _ in tqdm(range(cfg.agent.num_steps), desc=f"Update {update + 1}/{num_updates}"):
             rng, rng_action = jax.random.split(rng)
+            step_after_transition = global_step + num_envs
 
             action, log_prob = select_action(actor_state, obs, rng_action)
             value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
@@ -195,11 +231,15 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
                     episode_progress,
                     episode_len,
                     num_episodes,
+                    global_step=step_after_transition,
+                    first_progress_100_state=first_progress_100_state,
                 )
                 obs, prev_s = env.reset_done(done_mask, poses)
                 episode_return = jnp.where(done_mask, 0.0, episode_return)
                 episode_progress = jnp.where(done_mask, 0.0, episode_progress)
                 episode_len = jnp.where(done_mask, jnp.zeros_like(episode_len), episode_len)
+
+            global_step = step_after_transition
 
         last_value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
         data = buffer.get_stacked()
@@ -313,6 +353,13 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     episode_len = jnp.zeros((num_envs,), dtype=jnp.int32)
     num_episodes = 0
     last_metrics = None
+    first_progress_100_state = {
+        "logged": False,
+        "global_step": None,
+        "episode": None,
+        "progress_pct": None,
+        "progress_m": None,
+    }
 
     pbar = tqdm(total=cfg.train.total_timesteps, initial=global_step, desc="SAC steps")
     target_entropy = -float(cfg.env.action_dim) * cfg.agent.target_entropy_scale
@@ -321,6 +368,7 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     checkpoint_every_steps = int(cfg.agent.get("checkpoint_every_steps", 5000))
 
     while global_step < cfg.train.total_timesteps:
+        step_after_transition = global_step + num_envs
         if global_step < cfg.agent.start_steps:
             rng, rng_random = jax.random.split(rng)
             action = jax.random.uniform(
@@ -394,13 +442,15 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
                 episode_progress,
                 episode_len,
                 num_episodes,
+                global_step=step_after_transition,
+                first_progress_100_state=first_progress_100_state,
             )
             obs, prev_s = env.reset_done(done_mask, poses)
             episode_return = jnp.where(done_mask, 0.0, episode_return)
             episode_progress = jnp.where(done_mask, 0.0, episode_progress)
             episode_len = jnp.where(done_mask, jnp.zeros_like(episode_len), episode_len)
 
-        global_step += num_envs
+        global_step = step_after_transition
         pbar.update(num_envs)
 
         if writer is not None and last_metrics is not None and global_step % tb_log_every_steps == 0:
