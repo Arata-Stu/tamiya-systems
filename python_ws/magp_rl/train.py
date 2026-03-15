@@ -72,8 +72,10 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
 
     poses = generate_initial_poses(cfg.train.num_agents)
     obs = env.reset(poses)
+    prev_s = env.get_current_progress_s()
 
     episode_return = jnp.array(0.0, dtype=jnp.float32)
+    episode_progress = jnp.array(0.0, dtype=jnp.float32)
     episode_len = 0
     num_episodes = 0
 
@@ -87,6 +89,8 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
             value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
 
             next_obs, reward, terminated, _ = env.step(action)
+            current_s = env.get_current_progress_s()
+            progress_delta = env.compute_progress_delta(current_s, prev_s)
 
             episode_len += 1
             timeout = float(episode_len >= cfg.train.max_episode_steps)
@@ -95,19 +99,27 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
 
             buffer.add(obs, action, reward, done_for_gae, value, log_prob)
             episode_return = episode_return + jnp.mean(reward)
+            episode_progress = episode_progress + jnp.mean(progress_delta)
             obs = next_obs
+            prev_s = current_s
 
             done_flag = bool(jax.device_get(jnp.any(terminated))) or bool(timeout)
             if done_flag:
                 num_episodes += 1
                 ep_ret = float(jax.device_get(episode_return))
+                ep_prog = float(jax.device_get(episode_progress))
+                ep_prog_pct = (ep_prog / max(env.track_length, 1e-6)) * 100.0
                 if writer is not None:
                     writer.add_scalar("episode/return", ep_ret, num_episodes)
                     writer.add_scalar("episode/length", episode_len, num_episodes)
+                    writer.add_scalar("episode/progress_m", ep_prog, num_episodes)
+                    writer.add_scalar("episode/progress_pct", ep_prog_pct, num_episodes)
 
                 episode_return = jnp.array(0.0, dtype=jnp.float32)
+                episode_progress = jnp.array(0.0, dtype=jnp.float32)
                 episode_len = 0
                 obs = env.reset(poses)
+                prev_s = env.get_current_progress_s()
 
         last_value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
         data = buffer.get_stacked()
@@ -214,8 +226,10 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
 
     poses = generate_initial_poses(cfg.train.num_agents)
     obs = env.reset(poses)
+    prev_s = env.get_current_progress_s()
 
     episode_return = jnp.array(0.0, dtype=jnp.float32)
+    episode_progress = jnp.array(0.0, dtype=jnp.float32)
     episode_len = 0
     num_episodes = 0
     last_metrics = None
@@ -240,6 +254,8 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
             action = sac_act(actor_state, obs, rng_action)
 
         next_obs, reward, terminated, _ = env.step(action)
+        current_s = env.get_current_progress_s()
+        progress_delta = env.compute_progress_delta(current_s, prev_s)
 
         episode_len += 1
         timeout = float(episode_len >= cfg.train.max_episode_steps)
@@ -254,6 +270,8 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
 
         obs = next_obs
         episode_return = episode_return + jnp.mean(reward)
+        episode_progress = episode_progress + jnp.mean(progress_delta)
+        prev_s = current_s
 
         if global_step >= cfg.agent.update_after and replay.can_sample(cfg.agent.batch_size):
             for _ in range(cfg.agent.updates_per_step):
@@ -289,13 +307,19 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
         if done_flag:
             num_episodes += 1
             ep_ret = float(jax.device_get(episode_return))
+            ep_prog = float(jax.device_get(episode_progress))
+            ep_prog_pct = (ep_prog / max(env.track_length, 1e-6)) * 100.0
             if writer is not None:
                 writer.add_scalar("episode/return", ep_ret, num_episodes)
                 writer.add_scalar("episode/length", episode_len, num_episodes)
+                writer.add_scalar("episode/progress_m", ep_prog, num_episodes)
+                writer.add_scalar("episode/progress_pct", ep_prog_pct, num_episodes)
 
             episode_return = jnp.array(0.0, dtype=jnp.float32)
+            episode_progress = jnp.array(0.0, dtype=jnp.float32)
             episode_len = 0
             obs = env.reset(poses)
+            prev_s = env.get_current_progress_s()
 
         global_step += cfg.train.num_agents
         pbar.update(cfg.train.num_agents)

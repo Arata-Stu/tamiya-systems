@@ -78,9 +78,19 @@ python3 eval.py agent=sac eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
 - Average Return
 - Average Length
 - Average Progress (m)
+- Average Progress (%)
 - Average Speed (m/s)
 - Completion Rate
 - Collision Rate
+
+動画出力（任意）:
+
+```bash
+python3 eval.py agent=sac \
+  eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+  eval.video.enabled=true \
+  eval.video.output_dir=./records/eval
+```
 
 ## 5. トラック指定
 
@@ -115,6 +125,7 @@ env:
 - `num_agents > 1` だと車両同士が干渉し、衝突率が上がる場合があります。
 - SACは `start_steps` / `update_after` でwarmupを十分取るのが重要です。
 - `train.quiet_absl=true` でOrbaxの冗長ログを抑制できます。
+- 学習中のTensorBoardに `episode/progress_m` と `episode/progress_pct` を記録します。
 
 ## 8. よく使うコマンド
 

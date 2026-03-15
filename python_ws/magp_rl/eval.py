@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import cv2
 import hydra
 import jax
 import jax.numpy as jnp
@@ -14,6 +15,55 @@ from src.agents.sac import create_sac_states, sac_act_deterministic
 from src.envs.f110_wrapper import F110EnvWrapper
 from src.utils.common import generate_initial_poses
 from src.utils.env_assets import resolve_env_assets
+
+
+class TrajectoryVideoRecorder:
+    def __init__(self, output_path: Path, centerline_xy, fps=20, size=900, margin=20.0):
+        self.output_path = output_path
+        self.fps = int(fps)
+        self.size = int(size)
+        self.margin = float(margin)
+
+        self.centerline_xy = np.asarray(centerline_xy, dtype=np.float32)
+        self.min_xy = self.centerline_xy.min(axis=0) - self.margin
+        self.max_xy = self.centerline_xy.max(axis=0) + self.margin
+        span = np.maximum(self.max_xy - self.min_xy, 1e-3)
+        self.scale = (self.size - 20) / span
+
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        self.writer = cv2.VideoWriter(str(self.output_path), fourcc, self.fps, (self.size, self.size))
+        if not self.writer.isOpened():
+            raise RuntimeError(f"Failed to open video writer: {self.output_path}")
+
+        self.base = np.full((self.size, self.size, 3), 255, dtype=np.uint8)
+        self._draw_centerline()
+        self.traj = []
+
+    def _world_to_pixel(self, x, y):
+        px = int((x - self.min_xy[0]) * self.scale[0]) + 10
+        py = int((y - self.min_xy[1]) * self.scale[1]) + 10
+        py = self.size - py
+        return px, py
+
+    def _draw_centerline(self):
+        pts = np.array([self._world_to_pixel(x, y) for x, y in self.centerline_xy], dtype=np.int32)
+        cv2.polylines(self.base, [pts], isClosed=True, color=(160, 160, 160), thickness=1, lineType=cv2.LINE_AA)
+
+    def add_frame(self, x, y, episode_idx, collided=False):
+        frame = self.base.copy()
+        self.traj.append((x, y))
+        if len(self.traj) > 1:
+            traj_pts = np.array([self._world_to_pixel(px, py) for px, py in self.traj], dtype=np.int32)
+            cv2.polylines(frame, [traj_pts], isClosed=False, color=(30, 144, 255), thickness=2, lineType=cv2.LINE_AA)
+
+        car_pt = self._world_to_pixel(x, y)
+        car_color = (0, 0, 255) if collided else (0, 180, 0)
+        cv2.circle(frame, car_pt, 5, car_color, -1, lineType=cv2.LINE_AA)
+        cv2.putText(frame, f"Episode {episode_idx}", (12, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (30, 30, 30), 1, cv2.LINE_AA)
+        self.writer.write(frame)
+
+    def close(self):
+        self.writer.release()
 
 
 def _restore_ppo_actor(cfg: DictConfig, rng, obs_shape):
@@ -103,6 +153,7 @@ def main(cfg: DictConfig):
     lengths = []
     collision_rates = []
     progresses = []
+    progress_pcts = []
     avg_speeds = []
     completion_flags = []
 
@@ -116,6 +167,21 @@ def main(cfg: DictConfig):
         speed_count = 0
         collided = False
         completed = False
+        video_recorder = None
+
+        if cfg.eval.video.enabled:
+            output_dir = Path(cfg.eval.video.output_dir)
+            if not output_dir.is_absolute():
+                output_dir = project_root / output_dir
+            output_dir.mkdir(parents=True, exist_ok=True)
+            video_path = output_dir / f"{cfg.eval.video.filename_prefix}_ep{ep + 1:03d}.mp4"
+            video_recorder = TrajectoryVideoRecorder(
+                output_path=video_path,
+                centerline_xy=jax.device_get(env.waypoints_xy),
+                fps=cfg.eval.video.fps,
+                size=cfg.eval.video.size,
+                margin=cfg.eval.video.margin_m,
+            )
 
         for _ in range(cfg.eval.max_steps):
             action = act_fn(actor_state, obs)
@@ -133,6 +199,11 @@ def main(cfg: DictConfig):
             speed_sum += float(jax.device_get(jnp.mean(speeds)))
             speed_count += 1
 
+            if video_recorder is not None:
+                ego_x = float(jax.device_get(sim.sim_state["state"][0, 0]))
+                ego_y = float(jax.device_get(sim.sim_state["state"][0, 1]))
+                video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
+
             if "checkpoint_done" in info:
                 lap_done = bool(jax.device_get(jnp.any(info["checkpoint_done"])))
             else:
@@ -144,18 +215,28 @@ def main(cfg: DictConfig):
             if done_flag:
                 scans = sim.sim_state["collisions"]
                 collided = bool(jax.device_get(jnp.any(scans > 0.0)))
+                if video_recorder is not None:
+                    ego_x = float(jax.device_get(sim.sim_state["state"][0, 0]))
+                    ego_y = float(jax.device_get(sim.sim_state["state"][0, 1]))
+                    video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=collided)
                 break
+
+        if video_recorder is not None:
+            video_recorder.close()
 
         returns.append(episode_return)
         lengths.append(episode_steps)
         collision_rates.append(1.0 if collided else 0.0)
         progresses.append(episode_progress)
+        progress_pct = (episode_progress / max(env.track_length, 1e-6)) * 100.0
+        progress_pcts.append(progress_pct)
         avg_speed = speed_sum / max(speed_count, 1)
         avg_speeds.append(avg_speed)
         completion_flags.append(1.0 if completed else 0.0)
         print(
             f"Episode {ep + 1}/{cfg.eval.episodes} | Return: {episode_return:.3f} "
             f"| Length: {episode_steps} | Progress(m): {episode_progress:.3f} "
+            f"| Progress(%): {progress_pct:.2f} "
             f"| AvgSpeed(m/s): {avg_speed:.3f} | Completed: {completed} | Collided: {collided}"
         )
 
@@ -163,6 +244,7 @@ def main(cfg: DictConfig):
     print(f"Average Return: {np.mean(returns):.3f}")
     print(f"Average Length: {np.mean(lengths):.2f}")
     print(f"Average Progress (m): {np.mean(progresses):.3f}")
+    print(f"Average Progress (%): {np.mean(progress_pcts):.2f}")
     print(f"Average Speed (m/s): {np.mean(avg_speeds):.3f}")
     print(f"Completion Rate: {np.mean(completion_flags):.3f}")
     print(f"Collision Rate: {np.mean(collision_rates):.3f}")
