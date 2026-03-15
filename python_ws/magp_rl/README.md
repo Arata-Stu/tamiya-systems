@@ -3,6 +3,7 @@
 `f1tenth_gym_jax` を使った強化学習プロジェクトです。  
 現在は `PPO` / `SAC` を `Hydra` で切り替えて学習できます。  
 `env.parallel.mode=independent`（デフォルト）で、独立環境を `jax.vmap` でGPU上に並列実行する構成です。
+`env.reward.tal.enabled=true` で、Pure Pursuit教師との行動差分を使うTAL風報酬も利用できます。
 
 ## 1. セットアップ
 
@@ -57,6 +58,15 @@ python3 train.py agent=sac \
   agent.print_every_steps=1000 \
   agent.tb_log_every_steps=1000 \
   agent.checkpoint_every_steps=5000
+```
+
+TAL報酬を有効化する例:
+
+```bash
+python3 train.py agent=sac \
+  env.reward.tal.enabled=true \
+  env.reward.tal.coef=0.1 \
+  env.reward.tal.lookahead_distance=0.8
 ```
 
 ## 4. 評価

@@ -22,7 +22,7 @@ def resolve_waypoints_path(path_str: str) -> Path:
     raise FileNotFoundError(f"Waypoints file not found: {path_str}")
 
 
-def load_waypoints(path_str: str):
+def load_waypoints(path_str: str, default_speed_mps: float = 2.0):
     waypoint_path = resolve_waypoints_path(path_str)
     lines = waypoint_path.read_text(encoding="utf-8").splitlines()
     comment_lines = [ln.strip().lstrip("#").strip() for ln in lines if ln.strip().startswith("#")]
@@ -48,19 +48,36 @@ def load_waypoints(path_str: str):
     columns = [c.strip() for c in header_line.split(delimiter)] if header_line else []
     has_s = "s_m" in columns
 
+    speed = None
+
     if has_s:
         s_idx = columns.index("s_m")
         x_idx = columns.index("x_m")
         y_idx = columns.index("y_m")
         s = data[:, s_idx]
         xy = data[:, [x_idx, y_idx]]
+        if "vx_mps" in columns:
+            speed = data[:, columns.index("vx_mps")]
+        elif "v_mps" in columns:
+            speed = data[:, columns.index("v_mps")]
     else:
         xy = data[:, :2]
         diffs = np.diff(xy, axis=0)
         ds = np.linalg.norm(diffs, axis=1)
         s = np.concatenate([[0.0], np.cumsum(ds)]).astype(np.float32)
 
-    return xy, s
+    if speed is None:
+        if data.shape[1] >= 6:
+            # Common format: x, y, ..., vx, ...
+            speed = data[:, 5]
+        else:
+            speed = np.full((xy.shape[0],), float(default_speed_mps), dtype=np.float32)
+
+    speed = np.asarray(speed, dtype=np.float32)
+    speed = np.nan_to_num(speed, nan=float(default_speed_mps), posinf=float(default_speed_mps), neginf=0.0)
+    speed = np.clip(speed, 0.0, None)
+
+    return xy, s, speed
 
 
 def project_to_centerline_s(points_xy, waypoints_xy, waypoints_s, track_length):

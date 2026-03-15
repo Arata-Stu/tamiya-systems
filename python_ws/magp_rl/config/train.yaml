@@ -48,6 +48,15 @@ env:
     speed_coef: 0.02
     collision_penalty: 1.0
     progress_clip: 0.5
+    tal:
+      enabled: false
+      coef: 0.1
+      steer_weight: 1.0
+      speed_weight: 0.25
+      lookahead_distance: 0.8
+      wheelbase: 0.3302
+      vgain: 1.0
+      default_speed_mps: 2.0
 
 eval:
   checkpoint_dir: null

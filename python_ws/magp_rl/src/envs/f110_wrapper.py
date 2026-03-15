@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+from src.utils.pure_pursuit import PurePursuitTeacher
 from src.utils.track import (
     compute_progress_delta,
     load_waypoints,
@@ -38,16 +39,55 @@ class F110EnvWrapper:
         self.collision_penalty = float(config.reward.collision_penalty)
         self.progress_clip = float(config.reward.progress_clip)
 
+        tal_cfg = config.reward.get("tal", None)
+        tal_default_speed = 2.0
+        if tal_cfg is not None:
+            tal_default_speed = float(tal_cfg.get("default_speed_mps", tal_default_speed))
+
         waypoint_source = waypoints_path if waypoints_path is not None else config.waypoints_path
-        waypoints_xy, waypoints_s = load_waypoints(waypoint_source)
+        waypoints_xy, waypoints_s, waypoints_speed = load_waypoints(
+            waypoint_source,
+            default_speed_mps=tal_default_speed,
+        )
         self.waypoints_xy = jnp.asarray(waypoints_xy, dtype=jnp.float32)
         self.waypoints_s = jnp.asarray(waypoints_s, dtype=jnp.float32)
+        self.waypoints_speed = jnp.asarray(waypoints_speed, dtype=jnp.float32)
         self.track_length = float(waypoints_s[-1])
         if self.track_length <= 0.0:
             raise ValueError("Invalid waypoint track length.")
 
         self.prev_s = None
         self.last_obs = None
+        self._setup_tal(tal_cfg)
+
+    def _setup_tal(self, tal_cfg):
+        self.tal_enabled = False
+        self.tal_coef = 0.0
+        self.tal_steer_weight = 1.0
+        self.tal_speed_weight = 1.0
+        self.pp_teacher = None
+
+        if tal_cfg is None:
+            return
+        if not bool(tal_cfg.get("enabled", False)):
+            return
+
+        self.tal_enabled = True
+        self.tal_coef = float(tal_cfg.get("coef", 0.0))
+        self.tal_steer_weight = float(tal_cfg.get("steer_weight", 1.0))
+        self.tal_speed_weight = float(tal_cfg.get("speed_weight", 1.0))
+
+        lookahead = float(tal_cfg.get("lookahead_distance", 0.8))
+        wheelbase = float(tal_cfg.get("wheelbase", 0.17145 + 0.15875))
+        vgain = float(tal_cfg.get("vgain", 1.0))
+        self.pp_teacher = PurePursuitTeacher(
+            self.waypoints_xy,
+            self.waypoints_s,
+            self.waypoints_speed,
+            lookahead_distance=lookahead,
+            wheelbase=wheelbase,
+            vgain=vgain,
+        )
 
     def _normalize_obs(self, obs_dict):
         scans = obs_dict["scans"]
@@ -55,6 +95,30 @@ class F110EnvWrapper:
 
     def _scale_action(self, action_normalized):
         return action_normalized * self.action_scale + self.action_bias
+
+    def _to_normalized_action(self, action_physical):
+        action_normalized = (action_physical - self.action_bias) / self.action_scale
+        return jnp.clip(action_normalized, -1.0, 1.0)
+
+    def _compute_tal_reward(self, action_normalized):
+        if not self.tal_enabled:
+            return jnp.zeros((action_normalized.shape[0],), dtype=jnp.float32)
+
+        state = self.sim.sim_state["state"]
+        teacher_action = self.pp_teacher.act(state[:, 0], state[:, 1], state[:, 4])
+        teacher_action = teacher_action.at[:, 0].set(
+            jnp.clip(teacher_action[:, 0], self.min_steer, self.max_steer)
+        )
+        teacher_action = teacher_action.at[:, 1].set(
+            jnp.clip(teacher_action[:, 1], self.min_speed, self.max_speed)
+        )
+        teacher_norm = self._to_normalized_action(teacher_action)
+        diff = action_normalized - teacher_norm
+        imitation_error = (
+            self.tal_steer_weight * (diff[:, 0] ** 2)
+            + self.tal_speed_weight * (diff[:, 1] ** 2)
+        )
+        return -self.tal_coef * imitation_error
 
     def _project_to_centerline_s(self, poses_x, poses_y):
         points = jnp.stack([poses_x, poses_y], axis=1)
@@ -91,6 +155,7 @@ class F110EnvWrapper:
         return self.last_obs, self.prev_s
 
     def step(self, action_normalized):
+        tal_reward = self._compute_tal_reward(action_normalized)
         action_physical = self._scale_action(action_normalized)
         next_obs_dict, reward, done, info = self.sim.step(action_physical)
 
@@ -105,6 +170,7 @@ class F110EnvWrapper:
             + self.progress_coef * progress
             + self.speed_coef * action_physical[:, 1]
             - self.collision_penalty * collision
+            + tal_reward
         )
         self.last_obs = next_obs
 
