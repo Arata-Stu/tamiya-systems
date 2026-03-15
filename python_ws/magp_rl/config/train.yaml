@@ -58,6 +58,12 @@ env:
       wheelbase: 0.3302
       vgain: 1.0
       default_speed_mps: 2.0
+      schedule:
+        enabled: false
+        mode: linear # linear | cosine
+        start_step: 0
+        decay_steps: 1000000
+        coef_min: 0.0
 
 eval:
   checkpoint_dir: null

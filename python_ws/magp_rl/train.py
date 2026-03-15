@@ -1,5 +1,6 @@
 from pathlib import Path
 import logging
+import math
 
 import hydra
 import jax
@@ -114,6 +115,46 @@ def make_start_poses(parallel_mode: str, num_envs: int):
     return generate_initial_poses(num_envs)
 
 
+def _compute_tal_coef(cfg: DictConfig, global_step: int):
+    tal_cfg = cfg.env.reward.get("tal", None)
+    if tal_cfg is None or (not bool(tal_cfg.get("enabled", False))):
+        return None
+
+    base_coef = float(tal_cfg.get("coef", 0.0))
+    schedule_cfg = tal_cfg.get("schedule", None)
+    if schedule_cfg is None or (not bool(schedule_cfg.get("enabled", False))):
+        return base_coef
+
+    start_step = int(schedule_cfg.get("start_step", 0))
+    decay_steps = int(schedule_cfg.get("decay_steps", 1))
+    decay_steps = max(1, decay_steps)
+    coef_min = float(schedule_cfg.get("coef_min", 0.0))
+    mode = str(schedule_cfg.get("mode", "linear")).lower()
+
+    if global_step <= start_step:
+        return base_coef
+
+    progress = min(max((global_step - start_step) / decay_steps, 0.0), 1.0)
+    if mode == "linear":
+        coef = base_coef + (coef_min - base_coef) * progress
+    elif mode == "cosine":
+        cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+        coef = coef_min + (base_coef - coef_min) * cosine
+    else:
+        coef = base_coef + (coef_min - base_coef) * progress
+
+    return float(max(coef, 0.0))
+
+
+def _apply_tal_schedule(env, cfg: DictConfig, global_step: int):
+    coef = _compute_tal_coef(cfg, global_step)
+    if coef is None:
+        return None
+    if hasattr(env, "set_tal_coef"):
+        env.set_tal_coef(coef)
+    return coef
+
+
 def _log_finished_episodes(
     writer,
     env,
@@ -196,7 +237,7 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     episode_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
     episode_len = jnp.zeros((num_envs,), dtype=jnp.int32)
     num_episodes = 0
-    global_step = 0
+    global_step = start_update * cfg.agent.num_steps * num_envs
     first_progress_100_state = {
         "logged": False,
         "global_step": None,
@@ -207,10 +248,12 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
 
     for update in range(start_update, num_updates):
         buffer.reset()
+        tal_coef = _compute_tal_coef(cfg, global_step)
 
         for _ in tqdm(range(cfg.agent.num_steps), desc=f"Update {update + 1}/{num_updates}"):
             rng, rng_action = jax.random.split(rng)
             step_after_transition = global_step + num_envs
+            tal_coef = _apply_tal_schedule(env, cfg, global_step)
 
             action, log_prob = select_action(actor_state, obs, rng_action)
             value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
@@ -287,6 +330,8 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
             writer.add_scalar("loss/actor", float(metrics_host["actor_loss"]), update + 1)
             writer.add_scalar("loss/critic", float(metrics_host["critic_loss"]), update + 1)
             writer.add_scalar("policy/entropy", float(metrics_host["entropy"]), update + 1)
+            if tal_coef is not None:
+                writer.add_scalar("reward/tal_coef", float(tal_coef), global_step)
 
         if (update + 1) % cfg.train.checkpoint.save_every_updates == 0:
             checkpoints.save_checkpoint(
@@ -379,6 +424,7 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
 
     while global_step < cfg.train.total_timesteps:
         step_after_transition = global_step + num_envs
+        tal_coef = _apply_tal_schedule(env, cfg, global_step)
         if global_step < cfg.agent.start_steps:
             rng, rng_random = jax.random.split(rng)
             action = jax.random.uniform(
@@ -471,6 +517,8 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
             writer.add_scalar("sac/alpha_loss", float(metrics_host["alpha_loss"]), global_step)
             writer.add_scalar("sac/alpha", float(metrics_host["alpha"]), global_step)
             writer.add_scalar("sac/q_target_mean", float(metrics_host["q_target_mean"]), global_step)
+            if tal_coef is not None:
+                writer.add_scalar("reward/tal_coef", float(tal_coef), global_step)
 
         if last_metrics is not None and global_step % max(print_every_steps, num_envs) == 0:
             metrics_host = jax.device_get(last_metrics)
@@ -478,6 +526,7 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
                 actor=f"{float(metrics_host['actor_loss']):.3f}",
                 critic=f"{float(metrics_host['critic1_loss']):.3f}",
                 alpha=f"{float(metrics_host['alpha']):.4f}",
+                tal=f"{float(tal_coef):.4f}" if tal_coef is not None else "off",
                 ep=num_episodes,
             )
 

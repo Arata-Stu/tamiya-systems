@@ -73,6 +73,26 @@ python3 train.py agent=sac \
   env.reward.tal.lookahead_distance=0.8
 ```
 
+### 3.3.1 TAL係数を徐々に弱める（スケジューラ）
+
+```bash
+python3 train.py agent=sac \
+  env.parallel.mode=independent \
+  env.track.name=BrandsHatch \
+  env.reward.tal.enabled=true \
+  env.reward.tal.coef=0.1 \
+  env.reward.tal.schedule.enabled=true \
+  env.reward.tal.schedule.mode=linear \
+  env.reward.tal.schedule.start_step=2000000 \
+  env.reward.tal.schedule.decay_steps=4000000 \
+  env.reward.tal.schedule.coef_min=0.0
+```
+
+利用可能な `mode`:
+
+- `linear`: 線形減衰
+- `cosine`: コサイン減衰
+
 ### 3.4 Multi-Env 学習（推奨）
 
 ```bash

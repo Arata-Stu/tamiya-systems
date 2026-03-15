@@ -89,6 +89,14 @@ class F110EnvWrapper:
             vgain=vgain,
         )
 
+    def set_tal_coef(self, coef):
+        if not self.tal_enabled:
+            return
+        self.tal_coef = float(max(coef, 0.0))
+
+    def get_tal_coef(self):
+        return float(self.tal_coef)
+
     def _normalize_obs(self, obs_dict):
         scans = obs_dict["scans"]
         return jnp.clip(scans, 0.0, self.max_lidar_range) / self.max_lidar_range

@@ -104,6 +104,14 @@ class F110IndependentVecEnv:
             vgain=vgain,
         )
 
+    def set_tal_coef(self, coef):
+        if not self.tal_enabled:
+            return
+        self.tal_coef = float(max(coef, 0.0))
+
+    def get_tal_coef(self):
+        return float(self.tal_coef)
+
     def _next_rng_keys(self, n):
         self.master_rng, sub = jax.random.split(self.master_rng)
         return jax.random.split(sub, n)
