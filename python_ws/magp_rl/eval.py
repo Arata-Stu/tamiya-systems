@@ -12,8 +12,9 @@ from omegaconf import DictConfig
 from f110_jax.simulator import F110JaxSimulator, Integrator
 from src.agents.ppo import create_train_states, select_action_deterministic
 from src.agents.sac import create_sac_states, sac_act_deterministic
+from src.envs.f110_independent_vec import F110IndependentVecEnv
 from src.envs.f110_wrapper import F110EnvWrapper
-from src.utils.common import generate_initial_poses
+from src.utils.common import generate_independent_poses, generate_initial_poses
 from src.utils.env_assets import resolve_env_assets
 
 
@@ -108,6 +109,58 @@ def _restore_sac_actor(cfg: DictConfig, rng, obs_shape):
     return actor_state, target, "global_step"
 
 
+def get_parallel_mode(env_cfg: DictConfig) -> str:
+    parallel_cfg = env_cfg.get("parallel", None)
+    if parallel_cfg is None:
+        return "independent"
+    return str(parallel_cfg.get("mode", "independent")).lower()
+
+
+def get_eval_env_count(cfg: DictConfig) -> int:
+    legacy = cfg.eval.get("num_agents", None)
+    if legacy is not None:
+        return int(legacy)
+    return int(cfg.eval.num_envs)
+
+
+def make_start_poses(parallel_mode: str, num_envs: int):
+    if parallel_mode == "independent":
+        return generate_independent_poses(num_envs)
+    return generate_initial_poses(num_envs)
+
+
+def build_eval_env(cfg: DictConfig, map_path: str, map_ext: str, waypoints_path: str, num_envs: int):
+    parallel_mode = get_parallel_mode(cfg.env)
+    if parallel_mode == "independent":
+        sim = F110JaxSimulator(
+            map_path=map_path,
+            map_ext=map_ext,
+            num_agents=1,
+            seed=cfg.eval.seed,
+            integrator=Integrator.RK4,
+        )
+        env = F110IndependentVecEnv(
+            sim,
+            cfg.env,
+            num_envs=num_envs,
+            waypoints_path=waypoints_path,
+            seed=cfg.eval.seed,
+        )
+    elif parallel_mode == "race":
+        sim = F110JaxSimulator(
+            map_path=map_path,
+            map_ext=map_ext,
+            num_agents=num_envs,
+            seed=cfg.eval.seed,
+            integrator=Integrator.RK4,
+        )
+        env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
+    else:
+        raise ValueError(f"Unsupported env.parallel.mode: {parallel_mode}")
+
+    return env, parallel_mode
+
+
 @hydra.main(version_base=None, config_path="config", config_name="eval")
 def main(cfg: DictConfig):
     print("=== JAX F1TENTH RL Evaluation Start ===")
@@ -119,13 +172,15 @@ def main(cfg: DictConfig):
     print(f"Map: {map_path}")
     print(f"Waypoints: {waypoints_path}")
 
-    sim = F110JaxSimulator(
+    num_envs = get_eval_env_count(cfg)
+    env, parallel_mode = build_eval_env(
+        cfg,
         map_path=map_path,
         map_ext=map_ext,
-        num_agents=cfg.eval.num_agents,
-        integrator=Integrator.RK4,
+        waypoints_path=waypoints_path,
+        num_envs=num_envs,
     )
-    env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
+    print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
 
     obs_shape = (cfg.env.obs_dim,)
     if cfg.agent.name == "ppo":
@@ -147,7 +202,7 @@ def main(cfg: DictConfig):
     actor_state = restored["actor_state"]
     print(f"Loaded checkpoint {step_key}={restored[step_key]} from: {ckpt_dir}")
 
-    poses = generate_initial_poses(cfg.eval.num_agents)
+    poses = make_start_poses(parallel_mode, env.num_envs)
 
     returns = []
     lengths = []
@@ -160,6 +215,7 @@ def main(cfg: DictConfig):
     for ep in range(cfg.eval.episodes):
         obs = env.reset(poses)
         prev_s = env.get_current_progress_s()
+
         episode_return = 0.0
         episode_steps = 0
         episode_progress = 0.0
@@ -195,29 +251,29 @@ def main(cfg: DictConfig):
             episode_progress += float(jax.device_get(jnp.mean(progress_delta)))
             prev_s = current_s
 
-            speeds = jnp.abs(sim.sim_state["state"][:, 3])
+            speeds = env.get_speeds()
             speed_sum += float(jax.device_get(jnp.mean(speeds)))
             speed_count += 1
 
             if video_recorder is not None:
-                ego_x = float(jax.device_get(sim.sim_state["state"][0, 0]))
-                ego_y = float(jax.device_get(sim.sim_state["state"][0, 1]))
+                pos_x, pos_y = env.get_positions()
+                ego_x = float(jax.device_get(pos_x[0]))
+                ego_y = float(jax.device_get(pos_y[0]))
                 video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
 
-            if "checkpoint_done" in info:
-                lap_done = bool(jax.device_get(jnp.any(info["checkpoint_done"])))
-            else:
-                lap_done = False
+            checkpoint_done = info.get("checkpoint_done", jnp.zeros((env.num_envs,), dtype=jnp.float32))
+            lap_done = bool(jax.device_get(jnp.any(checkpoint_done > 0.5)))
             if lap_done:
                 completed = True
 
-            done_flag = bool(jax.device_get(jnp.any(done))) or lap_done
+            done_flag = bool(jax.device_get(jnp.any(done > 0.5))) or lap_done
             if done_flag:
-                scans = sim.sim_state["collisions"]
-                collided = bool(jax.device_get(jnp.any(scans > 0.0)))
+                collisions = env.get_collisions()
+                collided = bool(jax.device_get(jnp.any(collisions > 0.0)))
                 if video_recorder is not None:
-                    ego_x = float(jax.device_get(sim.sim_state["state"][0, 0]))
-                    ego_y = float(jax.device_get(sim.sim_state["state"][0, 1]))
+                    pos_x, pos_y = env.get_positions()
+                    ego_x = float(jax.device_get(pos_x[0]))
+                    ego_y = float(jax.device_get(pos_y[0]))
                     video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=collided)
                 break
 
@@ -233,6 +289,7 @@ def main(cfg: DictConfig):
         avg_speed = speed_sum / max(speed_count, 1)
         avg_speeds.append(avg_speed)
         completion_flags.append(1.0 if completed else 0.0)
+
         print(
             f"Episode {ep + 1}/{cfg.eval.episodes} | Return: {episode_return:.3f} "
             f"| Length: {episode_steps} | Progress(m): {episode_progress:.3f} "

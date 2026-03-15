@@ -3,6 +3,9 @@ defaults:
   - _self_
 
 env:
+  parallel:
+    mode: independent # independent | race
+
   track:
     root: '../f1tenth_racetracks'
     name: 'Austin'
@@ -32,7 +35,8 @@ eval:
   checkpoint_dir: null
   episodes: 5
   max_steps: 2000
-  num_agents: 1
+  num_envs: 1
+  num_agents: null # legacy alias (prefer num_envs)
   video:
     enabled: false
     output_dir: ./records/eval/${now:%Y-%m-%d}/${now:%H-%M-%S}

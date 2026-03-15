@@ -4,6 +4,7 @@ import logging
 import hydra
 import jax
 import jax.numpy as jnp
+import numpy as np
 from flax.training import checkpoints
 from hydra.utils import get_original_cwd
 from omegaconf import DictConfig
@@ -17,11 +18,13 @@ from src.agents.sac import (
     sac_act,
     sac_update_step,
 )
+from src.envs.f110_independent_vec import F110IndependentVecEnv
 from src.envs.f110_wrapper import F110EnvWrapper
 from src.utils.buffer import RolloutBuffer, compute_gae
-from src.utils.common import generate_initial_poses
+from src.utils.common import generate_independent_poses, generate_initial_poses
 from src.utils.env_assets import resolve_env_assets
 from src.utils.replay_buffer import ReplayBuffer
+
 
 def maybe_make_writer(cfg: DictConfig, base_dir: Path):
     if not cfg.train.tensorboard.enabled:
@@ -49,7 +52,84 @@ def maybe_restore_checkpoint(cfg: DictConfig, ckpt_dir: Path, target):
     return restored
 
 
-def train_ppo(cfg, env, writer, ckpt_dir, rng):
+def get_parallel_mode(env_cfg: DictConfig) -> str:
+    parallel_cfg = env_cfg.get("parallel", None)
+    if parallel_cfg is None:
+        return "independent"
+    return str(parallel_cfg.get("mode", "independent")).lower()
+
+
+def get_train_env_count(cfg: DictConfig) -> int:
+    legacy = cfg.train.get("num_agents", None)
+    if legacy is not None:
+        return int(legacy)
+    return int(cfg.train.num_envs)
+
+
+def build_env(cfg: DictConfig, map_path: str, map_ext: str, waypoints_path: str, num_envs: int):
+    parallel_mode = get_parallel_mode(cfg.env)
+    if parallel_mode == "independent":
+        sim = F110JaxSimulator(
+            map_path=map_path,
+            map_ext=map_ext,
+            num_agents=1,
+            seed=cfg.train.seed,
+            integrator=Integrator.RK4,
+        )
+        env = F110IndependentVecEnv(
+            sim,
+            cfg.env,
+            num_envs=num_envs,
+            waypoints_path=waypoints_path,
+            seed=cfg.train.seed,
+        )
+    elif parallel_mode == "race":
+        sim = F110JaxSimulator(
+            map_path=map_path,
+            map_ext=map_ext,
+            num_agents=num_envs,
+            seed=cfg.train.seed,
+            integrator=Integrator.RK4,
+        )
+        env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
+    else:
+        raise ValueError(f"Unsupported env.parallel.mode: {parallel_mode}")
+
+    return env, parallel_mode
+
+
+def make_start_poses(parallel_mode: str, num_envs: int):
+    if parallel_mode == "independent":
+        return generate_independent_poses(num_envs)
+    return generate_initial_poses(num_envs)
+
+
+def _log_finished_episodes(writer, env, done_mask, episode_return, episode_progress, episode_len, num_episodes):
+    done_host = np.asarray(jax.device_get(done_mask))
+    if not np.any(done_host):
+        return num_episodes
+
+    ret_host = np.asarray(jax.device_get(episode_return))
+    prog_host = np.asarray(jax.device_get(episode_progress))
+    len_host = np.asarray(jax.device_get(episode_len))
+
+    for idx in np.where(done_host)[0]:
+        num_episodes += 1
+        ep_ret = float(ret_host[idx])
+        ep_prog = float(prog_host[idx])
+        ep_len = int(len_host[idx])
+        ep_prog_pct = (ep_prog / max(env.track_length, 1e-6)) * 100.0
+
+        if writer is not None:
+            writer.add_scalar("episode/return", ep_ret, num_episodes)
+            writer.add_scalar("episode/length", ep_len, num_episodes)
+            writer.add_scalar("episode/progress_m", ep_prog, num_episodes)
+            writer.add_scalar("episode/progress_pct", ep_prog_pct, num_episodes)
+
+    return num_episodes
+
+
+def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     rng, rng_agent = jax.random.split(rng, 2)
 
     obs_shape = (cfg.env.obs_dim,)
@@ -68,15 +148,16 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
     start_update = int(restored["update"])
 
     buffer = RolloutBuffer()
-    num_updates = cfg.train.total_timesteps // (cfg.agent.num_steps * cfg.train.num_agents)
+    denom = cfg.agent.num_steps * num_envs
+    num_updates = max(1, int(np.ceil(cfg.train.total_timesteps / max(denom, 1))))
 
-    poses = generate_initial_poses(cfg.train.num_agents)
+    poses = make_start_poses(parallel_mode, num_envs)
     obs = env.reset(poses)
     prev_s = env.get_current_progress_s()
 
-    episode_return = jnp.array(0.0, dtype=jnp.float32)
-    episode_progress = jnp.array(0.0, dtype=jnp.float32)
-    episode_len = 0
+    episode_return = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_len = jnp.zeros((num_envs,), dtype=jnp.int32)
     num_episodes = 0
 
     for update in range(start_update, num_updates):
@@ -92,34 +173,33 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
             current_s = env.get_current_progress_s()
             progress_delta = env.compute_progress_delta(current_s, prev_s)
 
-            episode_len += 1
-            timeout = float(episode_len >= cfg.train.max_episode_steps)
-            timeout_vec = jnp.full_like(terminated, timeout)
-            done_for_gae = jnp.maximum(terminated, timeout_vec)
+            episode_len = episode_len + 1
+            timeout_mask = episode_len >= int(cfg.train.max_episode_steps)
+            terminated_mask = terminated > 0.5
+            done_mask = jnp.logical_or(terminated_mask, timeout_mask)
+            done_for_gae = done_mask.astype(jnp.float32)
 
             buffer.add(obs, action, reward, done_for_gae, value, log_prob)
-            episode_return = episode_return + jnp.mean(reward)
-            episode_progress = episode_progress + jnp.mean(progress_delta)
+            episode_return = episode_return + reward
+            episode_progress = episode_progress + progress_delta
+
             obs = next_obs
             prev_s = current_s
 
-            done_flag = bool(jax.device_get(jnp.any(terminated))) or bool(timeout)
-            if done_flag:
-                num_episodes += 1
-                ep_ret = float(jax.device_get(episode_return))
-                ep_prog = float(jax.device_get(episode_progress))
-                ep_prog_pct = (ep_prog / max(env.track_length, 1e-6)) * 100.0
-                if writer is not None:
-                    writer.add_scalar("episode/return", ep_ret, num_episodes)
-                    writer.add_scalar("episode/length", episode_len, num_episodes)
-                    writer.add_scalar("episode/progress_m", ep_prog, num_episodes)
-                    writer.add_scalar("episode/progress_pct", ep_prog_pct, num_episodes)
-
-                episode_return = jnp.array(0.0, dtype=jnp.float32)
-                episode_progress = jnp.array(0.0, dtype=jnp.float32)
-                episode_len = 0
-                obs = env.reset(poses)
-                prev_s = env.get_current_progress_s()
+            if bool(jax.device_get(jnp.any(done_mask))):
+                num_episodes = _log_finished_episodes(
+                    writer,
+                    env,
+                    done_mask,
+                    episode_return,
+                    episode_progress,
+                    episode_len,
+                    num_episodes,
+                )
+                obs, prev_s = env.reset_done(done_mask, poses)
+                episode_return = jnp.where(done_mask, 0.0, episode_return)
+                episode_progress = jnp.where(done_mask, 0.0, episode_progress)
+                episode_len = jnp.where(done_mask, jnp.zeros_like(episode_len), episode_len)
 
         last_value = critic_state.apply_fn(critic_state.params, obs).squeeze(-1)
         data = buffer.get_stacked()
@@ -178,7 +258,7 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng):
         )
 
 
-def train_sac(cfg, env, writer, ckpt_dir, rng):
+def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     rng, rng_agent = jax.random.split(rng, 2)
 
     obs_shape = (cfg.env.obs_dim,)
@@ -224,13 +304,13 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
         seed=cfg.train.seed,
     )
 
-    poses = generate_initial_poses(cfg.train.num_agents)
+    poses = make_start_poses(parallel_mode, num_envs)
     obs = env.reset(poses)
     prev_s = env.get_current_progress_s()
 
-    episode_return = jnp.array(0.0, dtype=jnp.float32)
-    episode_progress = jnp.array(0.0, dtype=jnp.float32)
-    episode_len = 0
+    episode_return = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_len = jnp.zeros((num_envs,), dtype=jnp.int32)
     num_episodes = 0
     last_metrics = None
 
@@ -245,7 +325,7 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
             rng, rng_random = jax.random.split(rng)
             action = jax.random.uniform(
                 rng_random,
-                shape=(cfg.train.num_agents, cfg.env.action_dim),
+                shape=(num_envs, cfg.env.action_dim),
                 minval=-1.0,
                 maxval=1.0,
             )
@@ -257,20 +337,22 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
         current_s = env.get_current_progress_s()
         progress_delta = env.compute_progress_delta(current_s, prev_s)
 
-        episode_len += 1
-        timeout = float(episode_len >= cfg.train.max_episode_steps)
+        episode_len = episode_len + 1
+        timeout_mask = episode_len >= int(cfg.train.max_episode_steps)
+        terminated_mask = terminated > 0.5
+        done_mask = jnp.logical_or(terminated_mask, timeout_mask)
 
         replay.add_batch(
             jax.device_get(obs),
             jax.device_get(action),
             jax.device_get(reward),
             jax.device_get(next_obs),
-            jax.device_get(terminated),
+            jax.device_get(done_mask.astype(jnp.float32)),
         )
 
         obs = next_obs
-        episode_return = episode_return + jnp.mean(reward)
-        episode_progress = episode_progress + jnp.mean(progress_delta)
+        episode_return = episode_return + reward
+        episode_progress = episode_progress + progress_delta
         prev_s = current_s
 
         if global_step >= cfg.agent.update_after and replay.can_sample(cfg.agent.batch_size):
@@ -303,26 +385,23 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
                     target_entropy=target_entropy,
                 )
 
-        done_flag = bool(jax.device_get(jnp.any(terminated))) or bool(timeout)
-        if done_flag:
-            num_episodes += 1
-            ep_ret = float(jax.device_get(episode_return))
-            ep_prog = float(jax.device_get(episode_progress))
-            ep_prog_pct = (ep_prog / max(env.track_length, 1e-6)) * 100.0
-            if writer is not None:
-                writer.add_scalar("episode/return", ep_ret, num_episodes)
-                writer.add_scalar("episode/length", episode_len, num_episodes)
-                writer.add_scalar("episode/progress_m", ep_prog, num_episodes)
-                writer.add_scalar("episode/progress_pct", ep_prog_pct, num_episodes)
+        if bool(jax.device_get(jnp.any(done_mask))):
+            num_episodes = _log_finished_episodes(
+                writer,
+                env,
+                done_mask,
+                episode_return,
+                episode_progress,
+                episode_len,
+                num_episodes,
+            )
+            obs, prev_s = env.reset_done(done_mask, poses)
+            episode_return = jnp.where(done_mask, 0.0, episode_return)
+            episode_progress = jnp.where(done_mask, 0.0, episode_progress)
+            episode_len = jnp.where(done_mask, jnp.zeros_like(episode_len), episode_len)
 
-            episode_return = jnp.array(0.0, dtype=jnp.float32)
-            episode_progress = jnp.array(0.0, dtype=jnp.float32)
-            episode_len = 0
-            obs = env.reset(poses)
-            prev_s = env.get_current_progress_s()
-
-        global_step += cfg.train.num_agents
-        pbar.update(cfg.train.num_agents)
+        global_step += num_envs
+        pbar.update(num_envs)
 
         if writer is not None and last_metrics is not None and global_step % tb_log_every_steps == 0:
             metrics_host = jax.device_get(last_metrics)
@@ -333,7 +412,7 @@ def train_sac(cfg, env, writer, ckpt_dir, rng):
             writer.add_scalar("sac/alpha", float(metrics_host["alpha"]), global_step)
             writer.add_scalar("sac/q_target_mean", float(metrics_host["q_target_mean"]), global_step)
 
-        if last_metrics is not None and global_step % max(print_every_steps, cfg.train.num_agents) == 0:
+        if last_metrics is not None and global_step % max(print_every_steps, num_envs) == 0:
             metrics_host = jax.device_get(last_metrics)
             pbar.set_postfix(
                 actor=f"{float(metrics_host['actor_loss']):.3f}",
@@ -378,15 +457,17 @@ def main(cfg: DictConfig):
     print(f"Map: {map_path}")
     print(f"Waypoints: {waypoints_path}")
 
+    num_envs = get_train_env_count(cfg)
     rng = jax.random.PRNGKey(cfg.train.seed)
 
-    sim = F110JaxSimulator(
+    env, parallel_mode = build_env(
+        cfg,
         map_path=map_path,
         map_ext=map_ext,
-        num_agents=cfg.train.num_agents,
-        integrator=Integrator.RK4,
+        waypoints_path=waypoints_path,
+        num_envs=num_envs,
     )
-    env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
+    print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
 
     writer = maybe_make_writer(cfg, project_root)
 
@@ -396,9 +477,9 @@ def main(cfg: DictConfig):
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.agent.name == "ppo":
-        train_ppo(cfg, env, writer, ckpt_dir, rng)
+        train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs=env.num_envs, parallel_mode=parallel_mode)
     elif cfg.agent.name == "sac":
-        train_sac(cfg, env, writer, ckpt_dir, rng)
+        train_sac(cfg, env, writer, ckpt_dir, rng, num_envs=env.num_envs, parallel_mode=parallel_mode)
     else:
         raise ValueError(f"Unsupported agent: {cfg.agent.name}")
 

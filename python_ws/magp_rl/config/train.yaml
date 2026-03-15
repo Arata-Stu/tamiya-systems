@@ -5,7 +5,8 @@ defaults:
 train:
   seed: 42
   total_timesteps: 1000000
-  num_agents: 10
+  num_envs: 10
+  num_agents: null # legacy alias (prefer num_envs)
   max_episode_steps: 2000
   quiet_absl: true
 
@@ -21,6 +22,9 @@ train:
     resume: false
 
 env:
+  parallel:
+    mode: independent # independent | race
+
   track:
     root: '../f1tenth_racetracks'
     name: 'Austin'
@@ -49,7 +53,8 @@ eval:
   checkpoint_dir: null
   episodes: 5
   max_steps: 2000
-  num_agents: 1
+  num_envs: 1
+  num_agents: null # legacy alias (prefer num_envs)
 
 hydra:
   run:

@@ -27,7 +27,7 @@ class RolloutBuffer:
     def get_stacked(self):
         """
         収集したリストをJAXのテンソルに一括変換して返す。
-        結果の形状は (num_steps, num_agents, ...) になります。
+        結果の形状は (num_steps, num_envs, ...) になります。
         """
         return {
             "obs": jnp.stack(self.obs),

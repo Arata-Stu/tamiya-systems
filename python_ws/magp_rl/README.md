@@ -1,7 +1,8 @@
 # magp_rl
 
 `f1tenth_gym_jax` を使った強化学習プロジェクトです。  
-現在は `PPO` / `SAC` を `Hydra` で切り替えて学習できます。
+現在は `PPO` / `SAC` を `Hydra` で切り替えて学習できます。  
+`env.parallel.mode=independent`（デフォルト）で、独立環境を `jax.vmap` でGPU上に並列実行する構成です。
 
 ## 1. セットアップ
 
@@ -42,7 +43,7 @@ python3 train.py agent=sac
 python3 train.py agent=sac \
   env.track.name=BrandsHatch \
   train.total_timesteps=1000000 \
-  train.num_agents=1 \
+  train.num_envs=1 \
   train.max_episode_steps=5000 \
   env.reward.collision_penalty=20.0 \
   env.reward.speed_coef=0.005 \
@@ -121,8 +122,13 @@ env:
 
 ## 7. 注意点
 
-- `train.num_agents` は「同一シミュレータ内の車両数」です。独立環境の個数ではありません。
-- `num_agents > 1` だと車両同士が干渉し、衝突率が上がる場合があります。
+- `env.parallel.mode=independent`（推奨）:
+  - `train.num_envs` が独立環境数です（1環境1車両）。
+  - エージェント同士の衝突やLiDAR干渉は起きません。
+- `env.parallel.mode=race`（従来挙動）:
+  - `train.num_envs` は同一シミュレータ内の車両数として扱われます。
+  - 車両同士の衝突やLiDAR干渉が発生します。
+- `train.num_agents` / `eval.num_agents` は旧設定の互換用です。新規設定では `num_envs` を使ってください。
 - SACは `start_steps` / `update_after` でwarmupを十分取るのが重要です。
 - `train.quiet_absl=true` でOrbaxの冗長ログを抑制できます。
 - 学習中のTensorBoardに `episode/progress_m` と `episode/progress_pct` を記録します。
