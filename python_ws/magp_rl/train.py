@@ -24,6 +24,7 @@ from src.utils.buffer import RolloutBuffer, compute_gae
 from src.utils.common import generate_independent_poses, generate_initial_poses
 from src.utils.env_assets import resolve_env_assets
 from src.utils.replay_buffer import ReplayBuffer
+from src.utils.vehicle import resolve_vehicle_params
 
 
 def maybe_make_writer(cfg: DictConfig, base_dir: Path):
@@ -66,13 +67,21 @@ def get_train_env_count(cfg: DictConfig) -> int:
     return int(cfg.train.num_envs)
 
 
-def build_env(cfg: DictConfig, map_path: str, map_ext: str, waypoints_path: str, num_envs: int):
+def build_env(
+    cfg: DictConfig,
+    map_path: str,
+    map_ext: str,
+    waypoints_path: str,
+    num_envs: int,
+    vehicle_params,
+):
     parallel_mode = get_parallel_mode(cfg.env)
     if parallel_mode == "independent":
         sim = F110JaxSimulator(
             map_path=map_path,
             map_ext=map_ext,
             num_agents=1,
+            params=vehicle_params,
             seed=cfg.train.seed,
             integrator=Integrator.RK4,
         )
@@ -88,6 +97,7 @@ def build_env(cfg: DictConfig, map_path: str, map_ext: str, waypoints_path: str,
             map_path=map_path,
             map_ext=map_ext,
             num_agents=num_envs,
+            params=vehicle_params,
             seed=cfg.train.seed,
             integrator=Integrator.RK4,
         )
@@ -506,6 +516,8 @@ def main(cfg: DictConfig):
     map_path, map_ext, waypoints_path = resolve_env_assets(cfg.env, project_root)
     print(f"Map: {map_path}")
     print(f"Waypoints: {waypoints_path}")
+    vehicle_params, vehicle_source = resolve_vehicle_params(cfg, project_root)
+    print(f"Vehicle Params: {vehicle_source}")
 
     num_envs = get_train_env_count(cfg)
     rng = jax.random.PRNGKey(cfg.train.seed)
@@ -516,6 +528,7 @@ def main(cfg: DictConfig):
         map_ext=map_ext,
         waypoints_path=waypoints_path,
         num_envs=num_envs,
+        vehicle_params=vehicle_params,
     )
     print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
 

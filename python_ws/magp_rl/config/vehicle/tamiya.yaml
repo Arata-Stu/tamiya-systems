@@ -1,0 +1,39 @@
+# Vehicle selector fields (for Hydra override compatibility)
+enabled: true
+name: null
+path: null
+dir: null
+params: {}
+
+# Tamiya TT02 Vehicle Parameters
+# Lightweight RWD chassis with high acceleration capability
+# Reference: Tamiya TT02 1:10 RC car (4WD kit)
+
+# Friction & Tire Model
+mu: 1.0489              # Friction coefficient (similar to Traxxas, but tuned for TT02 tires)
+C_Sf: 4.718             # Front cornering stiffness (slightly lower due to smaller tires)
+C_Sr: 5.4562            # Rear cornering stiffness
+
+# Vehicle Geometry & Mass
+lf: 0.128               # Distance from center to front axle (scaled to 1:10 scale: ~128mm)
+lr: 0.129               # Distance from center to rear axle (scaled to 1:10 scale: ~129mm)
+h: 0.065                # Height of center of mass (lower than Traxxas, smaller chassis)
+m: 1.1                  # Mass in kg (lightweight: ~1.1kg vs Traxxas ~3.74kg)
+I: 0.01858              # Yaw inertia (smaller due to reduced mass and size)
+
+# Steering Control
+s_min: -0.4189          # Minimum steering angle (rad, ~-24°)
+s_max: 0.4189           # Maximum steering angle (rad, ~24°)
+sv_min: -3.2            # Minimum steering rate (rad/s)
+sv_max: 3.2             # Maximum steering rate (rad/s)
+
+# Dynamics & Performance
+v_switch: 7.319         # Velocity threshold for dynamics mode switching (m/s)
+a_max: 10.0             # Maximum acceleration (higher than Traxxas due to light weight)
+v_min: -5.0             # Minimum velocity (m/s, reverse)
+v_max: 20.0             # Maximum velocity (m/s, higher top speed ratio)
+
+# Vehicle Dimensions
+width: 0.18          # Vehicle width (scaled: ~180mm, smaller than Traxxas)
+length: 0.30           # Vehicle length (scaled: ~300mm, smaller than Traxxas)
+laser_distance: 0.23    # LiDAR mount distance from center (slightly closer due to smaller chassis)

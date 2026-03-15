@@ -16,6 +16,7 @@ from src.envs.f110_independent_vec import F110IndependentVecEnv
 from src.envs.f110_wrapper import F110EnvWrapper
 from src.utils.common import generate_independent_poses, generate_initial_poses
 from src.utils.env_assets import resolve_env_assets
+from src.utils.vehicle import resolve_vehicle_params
 
 
 class TrajectoryVideoRecorder:
@@ -129,13 +130,21 @@ def make_start_poses(parallel_mode: str, num_envs: int):
     return generate_initial_poses(num_envs)
 
 
-def build_eval_env(cfg: DictConfig, map_path: str, map_ext: str, waypoints_path: str, num_envs: int):
+def build_eval_env(
+    cfg: DictConfig,
+    map_path: str,
+    map_ext: str,
+    waypoints_path: str,
+    num_envs: int,
+    vehicle_params,
+):
     parallel_mode = get_parallel_mode(cfg.env)
     if parallel_mode == "independent":
         sim = F110JaxSimulator(
             map_path=map_path,
             map_ext=map_ext,
             num_agents=1,
+            params=vehicle_params,
             seed=cfg.eval.seed,
             integrator=Integrator.RK4,
         )
@@ -151,6 +160,7 @@ def build_eval_env(cfg: DictConfig, map_path: str, map_ext: str, waypoints_path:
             map_path=map_path,
             map_ext=map_ext,
             num_agents=num_envs,
+            params=vehicle_params,
             seed=cfg.eval.seed,
             integrator=Integrator.RK4,
         )
@@ -171,6 +181,8 @@ def main(cfg: DictConfig):
     map_path, map_ext, waypoints_path = resolve_env_assets(cfg.env, project_root)
     print(f"Map: {map_path}")
     print(f"Waypoints: {waypoints_path}")
+    vehicle_params, vehicle_source = resolve_vehicle_params(cfg, project_root)
+    print(f"Vehicle Params: {vehicle_source}")
 
     num_envs = get_eval_env_count(cfg)
     env, parallel_mode = build_eval_env(
@@ -179,6 +191,7 @@ def main(cfg: DictConfig):
         map_ext=map_ext,
         waypoints_path=waypoints_path,
         num_envs=num_envs,
+        vehicle_params=vehicle_params,
     )
     print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
 
@@ -224,6 +237,10 @@ def main(cfg: DictConfig):
         collided = False
         completed = False
         video_recorder = None
+        video_sync_to_sim_time = False
+        video_next_frame_time = 0.0
+        video_frame_interval = 0.0
+        video_sim_dt = 0.0
 
         if cfg.eval.video.enabled:
             output_dir = Path(cfg.eval.video.output_dir)
@@ -238,6 +255,17 @@ def main(cfg: DictConfig):
                 size=cfg.eval.video.size,
                 margin=cfg.eval.video.margin_m,
             )
+            video_sync_to_sim_time = bool(cfg.eval.video.get("sync_to_sim_time", True))
+            sim_dt_override = cfg.eval.video.get("sim_dt_override", None)
+            video_sim_dt = float(env.sim.time_step if sim_dt_override is None else sim_dt_override)
+            video_frame_interval = 1.0 / float(cfg.eval.video.fps)
+            if video_sync_to_sim_time:
+                print(
+                    f"Video timing sync enabled: sim_dt={video_sim_dt:.4f}s, "
+                    f"video_fps={cfg.eval.video.fps}"
+                )
+            else:
+                print("Video timing sync disabled: writing one frame per step.")
 
         for _ in range(cfg.eval.max_steps):
             action = act_fn(actor_state, obs)
@@ -259,7 +287,13 @@ def main(cfg: DictConfig):
                 pos_x, pos_y = env.get_positions()
                 ego_x = float(jax.device_get(pos_x[0]))
                 ego_y = float(jax.device_get(pos_y[0]))
-                video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
+                if video_sync_to_sim_time:
+                    sim_time = episode_steps * video_sim_dt
+                    while sim_time + 1e-9 >= video_next_frame_time:
+                        video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
+                        video_next_frame_time += video_frame_interval
+                else:
+                    video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
 
             checkpoint_done = info.get("checkpoint_done", jnp.zeros((env.num_envs,), dtype=jnp.float32))
             lap_done = bool(jax.device_get(jnp.any(checkpoint_done > 0.5)))

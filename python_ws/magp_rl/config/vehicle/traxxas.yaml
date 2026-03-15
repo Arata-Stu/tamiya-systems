@@ -1,0 +1,39 @@
+# Vehicle selector fields (for Hydra override compatibility)
+enabled: true
+name: null
+path: null
+dir: null
+params: {}
+
+# Traxxas 1/10 RC Car Vehicle Parameters
+# Reference baseline for F1TENTH simulator
+# Based on Traxxas Slash/4x4 chassis
+
+# Friction & Tire Model
+mu: 1.0489              # Friction coefficient
+C_Sf: 4.718             # Front cornering stiffness
+C_Sr: 5.4562            # Rear cornering stiffness
+
+# Vehicle Geometry & Mass
+lf: 0.15875             # Distance from center to front axle (mm)
+lr: 0.17145             # Distance from center to rear axle (mm)
+h: 0.074                # Height of center of mass
+m: 3.74                 # Mass in kg
+I: 0.04712              # Yaw inertia (kg⋅m²)
+
+# Steering Control
+s_min: -0.4189          # Minimum steering angle (rad, ~-24°)
+s_max: 0.4189           # Maximum steering angle (rad, ~24°)
+sv_min: -3.2            # Minimum steering rate (rad/s)
+sv_max: 3.2             # Maximum steering rate (rad/s)
+
+# Dynamics & Performance
+v_switch: 7.319         # Velocity threshold for dynamics mode switching (m/s)
+a_max: 9.51             # Maximum acceleration (m/s²)
+v_min: -5.0             # Minimum velocity (m/s, reverse)
+v_max: 20.0             # Maximum velocity (m/s)
+
+# Vehicle Dimensions
+width: 0.31             # Vehicle width (m)
+length: 0.58            # Vehicle length (m)
+laser_distance: 0.27    # LiDAR mount distance from center rear (m)

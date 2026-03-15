@@ -1,5 +1,6 @@
 defaults:
   - agent: ppo
+  - vehicle: traxxas
   - _self_
 
 env:
@@ -51,6 +52,8 @@ eval:
     output_dir: ./records/eval/${now:%Y-%m-%d}/${now:%H-%M-%S}
     filename_prefix: rollout
     fps: 20
+    sync_to_sim_time: true
+    sim_dt_override: null
     size: 900
     margin_m: 20.0
 
