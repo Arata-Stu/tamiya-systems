@@ -291,3 +291,111 @@ python3 train.py agent=sac train.quiet_absl=true
 - `train.total_timesteps` は「全環境合計」の遷移数です。
 - `train.num_agents` / `eval.num_agents` は互換用。新規設定は `num_envs` を使ってください。
 - `ep` は「完了したエピソード数の累積」です（multi-envでは同時完了分まとめて増えます）。
+
+## 12. ONNX エクスポート
+
+学習済みcheckpointから actor をONNXへ変換できます。
+
+```bash
+# SAC deterministic policy (tanh(mean)) を出力
+python3 export_onnx.py \
+  --agent sac \
+  --checkpoint-dir ./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+  --output ./ckpts/train/YYYY-MM-DD/HH-MM-SS/sac_actor.onnx \
+  --obs-dim 1080 \
+  --action-dim 2
+```
+
+```bash
+# PPO policy を出力
+python3 export_onnx.py \
+  --agent ppo \
+  --checkpoint-dir ./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+  --output ./ckpts/train/YYYY-MM-DD/HH-MM-SS/ppo_actor.onnx \
+  --obs-dim 1080 \
+  --action-dim 2
+```
+
+SACは `--sac-output` で出力形式を選べます。
+
+- `deterministic`（デフォルト）: `action`
+- `mean_logstd`: `mean`, `log_std`
+- `all`: `action`, `mean`, `log_std`
+
+Isaac ROS向けに `scan_input` 形式（`[batch, 1, points]`）と入力正規化をONNX内で持たせる例:
+
+```bash
+python3 export_onnx.py \
+  --agent sac \
+  --checkpoint-dir ./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+  --output ./ckpts/train/YYYY-MM-DD/HH-MM-SS/sac_actor_isaac.onnx \
+  --lidar-profile hokuyo \
+  --action-dim 2 \
+  --input-layout scan \
+  --normalize-input \
+  --input-name scan_input \
+  --output-name control_output
+```
+
+`obs_dim` とセンサ点数の運用:
+
+- Hokuyo想定: `obs_dim=1080`, `scan_points=1080`, `fov_rad=4.7`, `max_range=30.0`
+- T-mini想定: `obs_dim=320`, `scan_points=320`, `fov_rad=4.7`, `max_range=10.0`
+- 学習モデルが `obs_dim=320` の場合のみ、`scan_points=1080` からONNX内でダウンサンプル可能（1080→320）
+
+## 13. TensorRT / Triton デプロイ
+
+`ONNX export -> TensorRT(.plan) -> Triton model repo 配置` を一括で実行するスクリプト:
+
+- [deploy_isaac_triton.sh](/Users/at/project/competition/MAGP/tamiya-systems/python_ws/magp_rl/scripts/deploy_isaac_triton.sh)
+
+デフォルトでは:
+
+1. `./ckpts/train` から run を選択（`--yes` で最新を自動選択）
+2. 最新 `checkpoint_*` から ONNX を export
+3. `/workspaces/isaac_ros_assets/models/<model_name>/<version>/` に `model.onnx`, `model.plan` を配置
+4. `/workspaces/isaac_ros_assets/models/<model_name>/config.pbtxt` を生成
+
+### 13.1 Hokuyo (1080)
+
+```bash
+bash ./scripts/deploy_isaac_triton.sh \
+  --model-name magp_sac_hokuyo \
+  --agent sac \
+  --lidar-profile hokuyo \
+  --input-layout scan \
+  --normalize-input \
+  --input-name scan_input \
+  --output-name control_output \
+  --precision fp16 \
+  --max-batch-size 1 \
+  --yes
+```
+
+### 13.2 T-mini (320)
+
+```bash
+bash ./scripts/deploy_isaac_triton.sh \
+  --model-name magp_sac_tmini \
+  --agent sac \
+  --lidar-profile t_mini_plus \
+  --input-layout scan \
+  --normalize-input \
+  --input-name scan_input \
+  --output-name control_output \
+  --precision fp16 \
+  --max-batch-size 1 \
+  --yes
+```
+
+### 13.3 既存ONNXを直接デプロイ
+
+```bash
+bash ./scripts/deploy_isaac_triton.sh \
+  --onnx /path/to/model.onnx \
+  --model-name magp_sac_prod \
+  --input-layout scan \
+  --scan-points 1080 \
+  --input-name scan_input \
+  --output-name control_output
+```
