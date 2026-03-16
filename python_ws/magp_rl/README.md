@@ -152,11 +152,16 @@ python3 eval.py agent=sac \
   eval.video.enabled=true \
   eval.video.output_dir=./records/eval \
   eval.video.filename_prefix=brandshatch_rollout \
-  eval.video.sync_to_sim_time=true
+  eval.video.sync_to_sim_time=true \
+  eval.video.color_by_speed=true \
+  eval.video.speed_min_mps=0.0 \
+  eval.video.speed_max_mps=5.0
 ```
 
 `sync_to_sim_time=true` の場合、`sim_dt`（デフォルト: simulatorの `time_step` = 0.01）を使って
 動画フレームを間引き、再生時間がシミュレータ時間に近くなるように出力します。
+
+`color_by_speed=true` の場合、軌跡は速度に応じた色（低速→高速）で描画されます。
 
 ### 4.3 比較評価向け（TAL報酬OFF）
 

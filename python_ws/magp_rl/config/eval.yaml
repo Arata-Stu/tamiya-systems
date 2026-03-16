@@ -62,6 +62,9 @@ eval:
     sim_dt_override: null
     size: 900
     margin_m: 20.0
+    color_by_speed: true
+    speed_min_mps: 0.0
+    speed_max_mps: 5.0
 
 hydra:
   run:

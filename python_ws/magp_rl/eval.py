@@ -20,11 +20,24 @@ from src.utils.vehicle import resolve_vehicle_params
 
 
 class TrajectoryVideoRecorder:
-    def __init__(self, output_path: Path, centerline_xy, fps=20, size=900, margin=20.0):
+    def __init__(
+        self,
+        output_path: Path,
+        centerline_xy,
+        fps=20,
+        size=900,
+        margin=20.0,
+        color_by_speed=True,
+        speed_min_mps=0.0,
+        speed_max_mps=5.0,
+    ):
         self.output_path = output_path
         self.fps = int(fps)
         self.size = int(size)
         self.margin = float(margin)
+        self.color_by_speed = bool(color_by_speed)
+        self.speed_min_mps = float(speed_min_mps)
+        self.speed_max_mps = float(max(speed_max_mps, self.speed_min_mps + 1e-6))
 
         self.centerline_xy = np.asarray(centerline_xy, dtype=np.float32)
         self.min_xy = self.centerline_xy.min(axis=0) - self.margin
@@ -40,6 +53,7 @@ class TrajectoryVideoRecorder:
         self.base = np.full((self.size, self.size, 3), 255, dtype=np.uint8)
         self._draw_centerline()
         self.traj = []
+        self.traj_speeds = []
 
     def _world_to_pixel(self, x, y):
         px = int((x - self.min_xy[0]) * self.scale[0]) + 10
@@ -51,17 +65,40 @@ class TrajectoryVideoRecorder:
         pts = np.array([self._world_to_pixel(x, y) for x, y in self.centerline_xy], dtype=np.int32)
         cv2.polylines(self.base, [pts], isClosed=True, color=(160, 160, 160), thickness=1, lineType=cv2.LINE_AA)
 
-    def add_frame(self, x, y, episode_idx, collided=False):
+    def _speed_to_color(self, speed_mps):
+        if not self.color_by_speed:
+            return (30, 144, 255)
+        norm = (float(speed_mps) - self.speed_min_mps) / (self.speed_max_mps - self.speed_min_mps)
+        norm = float(np.clip(norm, 0.0, 1.0))
+        color_idx = int(norm * 255.0)
+        color = cv2.applyColorMap(np.array([[color_idx]], dtype=np.uint8), cv2.COLORMAP_TURBO)[0, 0]
+        return (int(color[0]), int(color[1]), int(color[2]))  # BGR
+
+    def add_frame(self, x, y, speed_mps, episode_idx, collided=False):
         frame = self.base.copy()
         self.traj.append((x, y))
+        self.traj_speeds.append(float(speed_mps))
         if len(self.traj) > 1:
-            traj_pts = np.array([self._world_to_pixel(px, py) for px, py in self.traj], dtype=np.int32)
-            cv2.polylines(frame, [traj_pts], isClosed=False, color=(30, 144, 255), thickness=2, lineType=cv2.LINE_AA)
+            for i in range(1, len(self.traj)):
+                p0 = self._world_to_pixel(self.traj[i - 1][0], self.traj[i - 1][1])
+                p1 = self._world_to_pixel(self.traj[i][0], self.traj[i][1])
+                seg_color = self._speed_to_color(self.traj_speeds[i])
+                cv2.line(frame, p0, p1, seg_color, 2, lineType=cv2.LINE_AA)
 
         car_pt = self._world_to_pixel(x, y)
         car_color = (0, 0, 255) if collided else (0, 180, 0)
         cv2.circle(frame, car_pt, 5, car_color, -1, lineType=cv2.LINE_AA)
         cv2.putText(frame, f"Episode {episode_idx}", (12, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (30, 30, 30), 1, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            f"Speed {float(speed_mps):.2f} m/s",
+            (12, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (30, 30, 30),
+            1,
+            cv2.LINE_AA,
+        )
         self.writer.write(frame)
 
     def close(self):
@@ -254,6 +291,9 @@ def main(cfg: DictConfig):
                 fps=cfg.eval.video.fps,
                 size=cfg.eval.video.size,
                 margin=cfg.eval.video.margin_m,
+                color_by_speed=cfg.eval.video.get("color_by_speed", True),
+                speed_min_mps=cfg.eval.video.get("speed_min_mps", cfg.env.min_speed),
+                speed_max_mps=cfg.eval.video.get("speed_max_mps", cfg.env.max_speed),
             )
             video_sync_to_sim_time = bool(cfg.eval.video.get("sync_to_sim_time", True))
             sim_dt_override = cfg.eval.video.get("sim_dt_override", None)
@@ -287,13 +327,14 @@ def main(cfg: DictConfig):
                 pos_x, pos_y = env.get_positions()
                 ego_x = float(jax.device_get(pos_x[0]))
                 ego_y = float(jax.device_get(pos_y[0]))
+                ego_speed = float(jax.device_get(speeds[0]))
                 if video_sync_to_sim_time:
                     sim_time = episode_steps * video_sim_dt
                     while sim_time + 1e-9 >= video_next_frame_time:
-                        video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
+                        video_recorder.add_frame(ego_x, ego_y, ego_speed, ep + 1, collided=False)
                         video_next_frame_time += video_frame_interval
                 else:
-                    video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=False)
+                    video_recorder.add_frame(ego_x, ego_y, ego_speed, ep + 1, collided=False)
 
             checkpoint_done = info.get("checkpoint_done", jnp.zeros((env.num_envs,), dtype=jnp.float32))
             lap_done = bool(jax.device_get(jnp.any(checkpoint_done > 0.5)))
@@ -308,7 +349,9 @@ def main(cfg: DictConfig):
                     pos_x, pos_y = env.get_positions()
                     ego_x = float(jax.device_get(pos_x[0]))
                     ego_y = float(jax.device_get(pos_y[0]))
-                    video_recorder.add_frame(ego_x, ego_y, ep + 1, collided=collided)
+                    end_speeds = env.get_speeds()
+                    ego_speed = float(jax.device_get(end_speeds[0]))
+                    video_recorder.add_frame(ego_x, ego_y, ego_speed, ep + 1, collided=collided)
                 break
 
         if video_recorder is not None:
