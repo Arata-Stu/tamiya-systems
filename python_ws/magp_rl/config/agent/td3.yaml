@@ -1,0 +1,22 @@
+name: td3
+
+actor_lr: 3.0e-4
+critic_lr: 3.0e-4
+gamma: 0.99
+tau: 0.005
+batch_size: 256
+replay_size: 200000
+start_steps: 5000
+update_after: 1000
+updates_per_step: 1
+
+# TD3-specific
+exploration_noise: 0.1
+target_policy_noise: 0.2
+target_noise_clip: 0.5
+policy_delay: 2
+
+# Logging / checkpoint cadence for TD3 (step-based)
+print_every_steps: 1000
+tb_log_every_steps: 1000
+checkpoint_every_steps: 5000

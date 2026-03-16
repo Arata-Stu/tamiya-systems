@@ -12,6 +12,7 @@ from omegaconf import DictConfig
 from f110_jax.simulator import F110JaxSimulator, Integrator
 from src.agents.ppo import create_train_states, select_action_deterministic
 from src.agents.sac import create_sac_states, sac_act_deterministic
+from src.agents.td3 import create_td3_states, td3_act_deterministic
 from src.envs.f110_independent_vec import F110IndependentVecEnv
 from src.envs.f110_wrapper import F110EnvWrapper
 from src.utils.common import generate_independent_poses, generate_initial_poses
@@ -147,6 +148,35 @@ def _restore_sac_actor(cfg: DictConfig, rng, obs_shape):
     return actor_state, target, "global_step"
 
 
+def _restore_td3_actor(cfg: DictConfig, rng, obs_shape):
+    (
+        actor_state,
+        critic1_state,
+        critic2_state,
+        target_actor_params,
+        target_critic1_params,
+        target_critic2_params,
+    ) = create_td3_states(
+        rng,
+        obs_shape,
+        cfg.env.action_dim,
+        actor_lr=cfg.agent.actor_lr,
+        critic_lr=cfg.agent.critic_lr,
+    )
+
+    target = {
+        "actor_state": actor_state,
+        "critic1_state": critic1_state,
+        "critic2_state": critic2_state,
+        "target_actor_params": target_actor_params,
+        "target_critic1_params": target_critic1_params,
+        "target_critic2_params": target_critic2_params,
+        "global_step": 0,
+        "update_step": 0,
+    }
+    return actor_state, target, "global_step"
+
+
 def get_parallel_mode(env_cfg: DictConfig) -> str:
     parallel_cfg = env_cfg.get("parallel", None)
     if parallel_cfg is None:
@@ -239,6 +269,9 @@ def main(cfg: DictConfig):
     elif cfg.agent.name == "sac":
         actor_state, restore_target, step_key = _restore_sac_actor(cfg, rng, obs_shape)
         act_fn = lambda actor, obs: sac_act_deterministic(actor, obs)
+    elif cfg.agent.name == "td3":
+        actor_state, restore_target, step_key = _restore_td3_actor(cfg, rng, obs_shape)
+        act_fn = lambda actor, obs: td3_act_deterministic(actor, obs)
     else:
         raise ValueError(f"Unsupported agent for eval: {cfg.agent.name}")
 

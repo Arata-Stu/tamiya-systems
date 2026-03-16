@@ -2,7 +2,7 @@
 
 `f1tenth_gym_jax` を使った強化学習プロジェクトです。
 
-- アルゴリズム: `PPO` / `SAC`
+- アルゴリズム: `PPO` / `SAC` / `TD3`
 - 設定管理: `Hydra`
 - 並列実行: `env.parallel.mode=independent`（デフォルト）
 - TAL風報酬: `env.reward.tal.enabled=true`
@@ -26,6 +26,7 @@ python3 -c "import jax; print(jax.default_backend()); print(jax.devices())"
 - エージェント設定:
   - `config/agent/ppo.yaml`
   - `config/agent/sac.yaml`
+  - `config/agent/td3.yaml`
 - 実行スクリプト:
   - 学習: `train.py`
   - 評価: `eval.py`
@@ -37,6 +38,7 @@ python3 -c "import jax; print(jax.default_backend()); print(jax.devices())"
 ```bash
 python3 train.py agent=ppo
 python3 train.py agent=sac
+python3 train.py agent=td3
 ```
 
 ### 3.2 SAC 本番例（単一環境）
@@ -57,6 +59,31 @@ python3 train.py agent=sac \
   agent.start_steps=10000 \
   agent.update_after=10000 \
   agent.updates_per_step=1 \
+  agent.print_every_steps=1000 \
+  agent.tb_log_every_steps=1000 \
+  agent.checkpoint_every_steps=5000
+```
+
+### 3.2.1 TD3 本番例（単一環境）
+
+```bash
+python3 train.py agent=td3 \
+  env.parallel.mode=independent \
+  env.track.name=BrandsHatch \
+  train.total_timesteps=1000000 \
+  train.num_envs=1 \
+  train.max_episode_steps=5000 \
+  env.reward.collision_penalty=20.0 \
+  env.reward.speed_coef=0.005 \
+  agent.actor_lr=1e-4 \
+  agent.critic_lr=1e-4 \
+  agent.batch_size=1000 \
+  agent.start_steps=10000 \
+  agent.update_after=10000 \
+  agent.updates_per_step=1 \
+  agent.policy_delay=2 \
+  agent.target_policy_noise=0.2 \
+  agent.target_noise_clip=0.5 \
   agent.print_every_steps=1000 \
   agent.tb_log_every_steps=1000 \
   agent.checkpoint_every_steps=5000
@@ -141,6 +168,9 @@ python3 train.py agent=sac \
 
 ```bash
 python3 eval.py agent=sac \
+  eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
+
+python3 eval.py agent=td3 \
   eval.checkpoint_dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS
 ```
 

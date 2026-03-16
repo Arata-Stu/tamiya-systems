@@ -19,6 +19,13 @@ from src.agents.sac import (
     sac_act,
     sac_update_step,
 )
+from src.agents.td3 import (
+    create_td3_states,
+    td3_act,
+    td3_soft_update_target_critic2,
+    td3_update_actor_and_targets,
+    td3_update_critics,
+)
 from src.envs.f110_independent_vec import F110IndependentVecEnv
 from src.envs.f110_wrapper import F110EnvWrapper
 from src.utils.buffer import RolloutBuffer, compute_gae
@@ -551,6 +558,235 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     pbar.close()
 
 
+def train_td3(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
+    rng, rng_agent = jax.random.split(rng, 2)
+
+    obs_shape = (cfg.env.obs_dim,)
+    (
+        actor_state,
+        critic1_state,
+        critic2_state,
+        target_actor_params,
+        target_critic1_params,
+        target_critic2_params,
+    ) = create_td3_states(
+        rng_agent,
+        obs_shape,
+        cfg.env.action_dim,
+        actor_lr=cfg.agent.actor_lr,
+        critic_lr=cfg.agent.critic_lr,
+    )
+
+    restore_target = {
+        "actor_state": actor_state,
+        "critic1_state": critic1_state,
+        "critic2_state": critic2_state,
+        "target_actor_params": target_actor_params,
+        "target_critic1_params": target_critic1_params,
+        "target_critic2_params": target_critic2_params,
+        "global_step": 0,
+        "update_step": 0,
+    }
+    restored = maybe_restore_checkpoint(cfg, ckpt_dir, restore_target)
+    actor_state = restored["actor_state"]
+    critic1_state = restored["critic1_state"]
+    critic2_state = restored["critic2_state"]
+    target_actor_params = restored["target_actor_params"]
+    target_critic1_params = restored["target_critic1_params"]
+    target_critic2_params = restored["target_critic2_params"]
+    global_step = int(restored["global_step"])
+    update_step = int(restored.get("update_step", 0))
+
+    replay = ReplayBuffer(
+        capacity=cfg.agent.replay_size,
+        obs_dim=cfg.env.obs_dim,
+        action_dim=cfg.env.action_dim,
+        seed=cfg.train.seed,
+    )
+
+    poses = make_start_poses(parallel_mode, num_envs)
+    obs = env.reset(poses)
+    prev_s = env.get_current_progress_s()
+
+    episode_return = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_progress = jnp.zeros((num_envs,), dtype=jnp.float32)
+    episode_len = jnp.zeros((num_envs,), dtype=jnp.int32)
+    num_episodes = 0
+    last_metrics = None
+    last_actor_loss = jnp.array(0.0, dtype=jnp.float32)
+    first_progress_100_state = {
+        "logged": False,
+        "global_step": None,
+        "episode": None,
+        "progress_pct": None,
+        "progress_m": None,
+    }
+
+    pbar = tqdm(total=cfg.train.total_timesteps, initial=global_step, desc="TD3 steps")
+    print_every_steps = int(cfg.agent.get("print_every_steps", 1000))
+    tb_log_every_steps = int(cfg.agent.get("tb_log_every_steps", print_every_steps))
+    checkpoint_every_steps = int(cfg.agent.get("checkpoint_every_steps", 5000))
+    policy_delay = int(cfg.agent.policy_delay)
+
+    while global_step < cfg.train.total_timesteps:
+        step_after_transition = global_step + num_envs
+        tal_coef = _apply_tal_schedule(env, cfg, global_step)
+
+        if global_step < cfg.agent.start_steps:
+            rng, rng_random = jax.random.split(rng)
+            action = jax.random.uniform(
+                rng_random,
+                shape=(num_envs, cfg.env.action_dim),
+                minval=-1.0,
+                maxval=1.0,
+            )
+        else:
+            rng, rng_action = jax.random.split(rng)
+            action = td3_act(
+                actor_state,
+                obs,
+                rng_action,
+                exploration_noise=cfg.agent.exploration_noise,
+            )
+
+        next_obs, reward, terminated, _ = env.step(action)
+        current_s = env.get_current_progress_s()
+        progress_delta = env.compute_progress_delta(current_s, prev_s)
+
+        episode_len = episode_len + 1
+        timeout_mask = episode_len >= int(cfg.train.max_episode_steps)
+        terminated_mask = terminated > 0.5
+        done_mask = jnp.logical_or(terminated_mask, timeout_mask)
+
+        replay.add_batch(
+            jax.device_get(obs),
+            jax.device_get(action),
+            jax.device_get(reward),
+            jax.device_get(next_obs),
+            jax.device_get(done_mask.astype(jnp.float32)),
+        )
+
+        obs = next_obs
+        episode_return = episode_return + reward
+        episode_progress = episode_progress + progress_delta
+        prev_s = current_s
+
+        if global_step >= cfg.agent.update_after and replay.can_sample(cfg.agent.batch_size):
+            for _ in range(cfg.agent.updates_per_step):
+                batch = replay.sample(cfg.agent.batch_size)
+                rng, rng_update = jax.random.split(rng)
+
+                critic1_state, critic2_state, critic_metrics = td3_update_critics(
+                    actor_state,
+                    critic1_state,
+                    critic2_state,
+                    target_actor_params,
+                    target_critic1_params,
+                    target_critic2_params,
+                    batch["obs"],
+                    batch["actions"],
+                    batch["rewards"],
+                    batch["next_obs"],
+                    batch["terminated"],
+                    rng_update,
+                    gamma=cfg.agent.gamma,
+                    target_policy_noise=cfg.agent.target_policy_noise,
+                    target_noise_clip=cfg.agent.target_noise_clip,
+                )
+
+                update_step += 1
+                actor_updated = (update_step % policy_delay) == 0
+                if actor_updated:
+                    (
+                        actor_state,
+                        target_actor_params,
+                        target_critic1_params,
+                        actor_loss,
+                    ) = td3_update_actor_and_targets(
+                        actor_state,
+                        critic1_state,
+                        target_actor_params,
+                        target_critic1_params,
+                        batch["obs"],
+                        tau=cfg.agent.tau,
+                    )
+                    target_critic2_params = td3_soft_update_target_critic2(
+                        target_critic2_params,
+                        critic2_state.params,
+                        tau=cfg.agent.tau,
+                    )
+                    last_actor_loss = actor_loss
+
+                last_metrics = {
+                    "actor_loss": last_actor_loss,
+                    "critic1_loss": critic_metrics["critic1_loss"],
+                    "critic2_loss": critic_metrics["critic2_loss"],
+                    "q_target_mean": critic_metrics["q_target_mean"],
+                    "actor_updated": jnp.array(1.0 if actor_updated else 0.0, dtype=jnp.float32),
+                }
+
+        if bool(jax.device_get(jnp.any(done_mask))):
+            num_episodes = _log_finished_episodes(
+                writer,
+                env,
+                done_mask,
+                episode_return,
+                episode_progress,
+                episode_len,
+                num_episodes,
+                global_step=step_after_transition,
+                first_progress_100_state=first_progress_100_state,
+            )
+            obs, prev_s = env.reset_done(done_mask, poses)
+            episode_return = jnp.where(done_mask, 0.0, episode_return)
+            episode_progress = jnp.where(done_mask, 0.0, episode_progress)
+            episode_len = jnp.where(done_mask, jnp.zeros_like(episode_len), episode_len)
+
+        global_step = step_after_transition
+        pbar.update(num_envs)
+
+        if writer is not None and last_metrics is not None and global_step % tb_log_every_steps == 0:
+            metrics_host = jax.device_get(last_metrics)
+            writer.add_scalar("td3/actor_loss", float(metrics_host["actor_loss"]), global_step)
+            writer.add_scalar("td3/critic1_loss", float(metrics_host["critic1_loss"]), global_step)
+            writer.add_scalar("td3/critic2_loss", float(metrics_host["critic2_loss"]), global_step)
+            writer.add_scalar("td3/q_target_mean", float(metrics_host["q_target_mean"]), global_step)
+            writer.add_scalar("td3/actor_updated", float(metrics_host["actor_updated"]), global_step)
+            if tal_coef is not None:
+                writer.add_scalar("reward/tal_coef", float(tal_coef), global_step)
+
+        if last_metrics is not None and global_step % max(print_every_steps, num_envs) == 0:
+            metrics_host = jax.device_get(last_metrics)
+            pbar.set_postfix(
+                actor=f"{float(metrics_host['actor_loss']):.3f}",
+                critic=f"{float(metrics_host['critic1_loss']):.3f}",
+                tal=f"{float(tal_coef):.4f}" if tal_coef is not None else "off",
+                au=int(float(metrics_host["actor_updated"])),
+                ep=num_episodes,
+            )
+
+        if global_step % checkpoint_every_steps == 0:
+            checkpoints.save_checkpoint(
+                ckpt_dir=str(ckpt_dir),
+                target={
+                    "actor_state": actor_state,
+                    "critic1_state": critic1_state,
+                    "critic2_state": critic2_state,
+                    "target_actor_params": target_actor_params,
+                    "target_critic1_params": target_critic1_params,
+                    "target_critic2_params": target_critic2_params,
+                    "global_step": global_step,
+                    "update_step": update_step,
+                },
+                step=global_step,
+                overwrite=True,
+                keep=cfg.train.checkpoint.keep,
+            )
+            pbar.write(f"checkpoint saved: step={global_step}")
+
+    pbar.close()
+
+
 @hydra.main(version_base=None, config_path="config", config_name="train")
 def main(cfg: DictConfig):
     if cfg.train.get("quiet_absl", False):
@@ -592,6 +828,8 @@ def main(cfg: DictConfig):
         train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs=env.num_envs, parallel_mode=parallel_mode)
     elif cfg.agent.name == "sac":
         train_sac(cfg, env, writer, ckpt_dir, rng, num_envs=env.num_envs, parallel_mode=parallel_mode)
+    elif cfg.agent.name == "td3":
+        train_td3(cfg, env, writer, ckpt_dir, rng, num_envs=env.num_envs, parallel_mode=parallel_mode)
     else:
         raise ValueError(f"Unsupported agent: {cfg.agent.name}")
 

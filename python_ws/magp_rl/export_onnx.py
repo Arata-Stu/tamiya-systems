@@ -31,7 +31,7 @@ import numpy as np
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="Export Flax actor checkpoint to ONNX")
-    parser.add_argument("--agent", type=str, choices=["ppo", "sac"], required=True)
+    parser.add_argument("--agent", type=str, choices=["ppo", "sac", "td3"], required=True)
     parser.add_argument("--checkpoint-dir", type=str, required=True)
     parser.add_argument("--step", type=int, default=None, help="Checkpoint step (optional)")
     parser.add_argument("--output", type=str, default=None, help="Output .onnx path")
@@ -548,10 +548,74 @@ def _build_sac_onnx(param_tree, obs_dim: int, action_dim: int, opset: int, args)
     return model, input_desc
 
 
+def _build_td3_onnx(param_tree, obs_dim: int, action_dim: int, opset: int, args):
+    import onnx
+    from onnx import helper, numpy_helper, TensorProto
+
+    if "encoder" not in param_tree:
+        raise ValueError("TD3 actor param tree must contain 'encoder'.")
+
+    dense_keys = _sorted_layer_keys(param_tree, "Dense")
+    if len(dense_keys) < 3:
+        raise ValueError(f"Expected 3 dense layers in TD3 actor, got {dense_keys}")
+    d0, d1, d2 = dense_keys[:3]
+
+    nodes = []
+    initializers = []
+
+    model_obs, graph_inputs, input_desc = _make_preprocessed_input(
+        nodes,
+        initializers,
+        helper,
+        numpy_helper,
+        TensorProto,
+        input_name=args.input_name,
+        input_layout=args.input_layout,
+        obs_dim=obs_dim,
+        scan_points=args.scan_points,
+        normalize_input=bool(args.normalize_input),
+        max_lidar_range=float(args.max_lidar_range),
+    )
+
+    x = _build_encoder(
+        nodes,
+        initializers,
+        helper,
+        numpy_helper,
+        input_name=model_obs,
+        obs_dim=obs_dim,
+        encoder_params=param_tree["encoder"],
+    )
+    x = _add_dense(nodes, initializers, helper, numpy_helper, x, param_tree[d0], "td3_dense0", "relu")
+    x = _add_dense(nodes, initializers, helper, numpy_helper, x, param_tree[d1], "td3_dense1", "relu")
+    action_raw = _add_dense(nodes, initializers, helper, numpy_helper, x, param_tree[d2], "td3_out", "tanh")
+
+    action_name = args.output_name
+    if action_name != action_raw:
+        nodes.append(helper.make_node("Identity", inputs=[action_raw], outputs=[action_name], name="TD3ActionRename"))
+
+    graph = helper.make_graph(
+        nodes=nodes,
+        name="magp_rl_td3_actor",
+        inputs=graph_inputs,
+        outputs=[helper.make_tensor_value_info(action_name, TensorProto.FLOAT, ["batch", int(action_dim)])],
+        initializer=initializers,
+    )
+
+    model = helper.make_model(
+        graph,
+        producer_name="magp_rl.export_onnx",
+        opset_imports=[helper.make_opsetid("", int(opset))],
+    )
+    onnx.checker.check_model(model)
+    return model, input_desc
+
+
 def _make_restore_target(agent: str, obs_dim: int, action_dim: int):
     import jax
     from src.agents.ppo import create_train_states
     from src.agents.sac import create_sac_states
+    from src.agents.td3 import create_td3_states
 
     rng = jax.random.PRNGKey(0)
     obs_shape = (int(obs_dim),)
@@ -566,25 +630,51 @@ def _make_restore_target(agent: str, obs_dim: int, action_dim: int):
         )
         return {"actor_state": actor_state, "critic_state": critic_state, "update": 0}
 
-    actor_state, critic1_state, critic2_state, target_critic1_params, target_critic2_params, alpha_state = (
-        create_sac_states(
-            rng,
-            obs_shape=obs_shape,
-            action_dim=int(action_dim),
-            actor_lr=1e-4,
-            critic_lr=1e-4,
-            alpha_lr=1e-4,
-            init_temperature=0.1,
+    if agent == "sac":
+        actor_state, critic1_state, critic2_state, target_critic1_params, target_critic2_params, alpha_state = (
+            create_sac_states(
+                rng,
+                obs_shape=obs_shape,
+                action_dim=int(action_dim),
+                actor_lr=1e-4,
+                critic_lr=1e-4,
+                alpha_lr=1e-4,
+                init_temperature=0.1,
+            )
         )
+        return {
+            "actor_state": actor_state,
+            "critic1_state": critic1_state,
+            "critic2_state": critic2_state,
+            "target_critic1_params": target_critic1_params,
+            "target_critic2_params": target_critic2_params,
+            "alpha_state": alpha_state,
+            "global_step": 0,
+        }
+
+    (
+        actor_state,
+        critic1_state,
+        critic2_state,
+        target_actor_params,
+        target_critic1_params,
+        target_critic2_params,
+    ) = create_td3_states(
+        rng,
+        obs_shape=obs_shape,
+        action_dim=int(action_dim),
+        actor_lr=1e-4,
+        critic_lr=1e-4,
     )
     return {
         "actor_state": actor_state,
         "critic1_state": critic1_state,
         "critic2_state": critic2_state,
+        "target_actor_params": target_actor_params,
         "target_critic1_params": target_critic1_params,
         "target_critic2_params": target_critic2_params,
-        "alpha_state": alpha_state,
         "global_step": 0,
+        "update_step": 0,
     }
 
 
@@ -637,8 +727,11 @@ def main():
     if args.agent == "ppo":
         model, input_desc = _build_ppo_onnx(actor_param_tree, args.obs_dim, args.action_dim, args.opset, args)
         step_key = "update"
-    else:
+    elif args.agent == "sac":
         model, input_desc = _build_sac_onnx(actor_param_tree, args.obs_dim, args.action_dim, args.opset, args)
+        step_key = "global_step"
+    else:
+        model, input_desc = _build_td3_onnx(actor_param_tree, args.obs_dim, args.action_dim, args.opset, args)
         step_key = "global_step"
 
     onnx.save(model, str(output_path))

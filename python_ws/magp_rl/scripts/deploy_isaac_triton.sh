@@ -52,7 +52,7 @@ Options:
   --checkpoint-base PATH      Base dir to search runs (default: ./ckpts/train)
   --step N                    Checkpoint step for export_onnx.py
   --output-onnx PATH          Output ONNX path (default: auto in checkpoint run)
-  --agent {sac|ppo}           Agent type (default: sac)
+  --agent {sac|ppo|td3}       Agent type (default: sac)
   --model-name NAME           Triton model name (default: magp_rl_policy)
   --triton-model-repo PATH    Triton model repository root
 
@@ -410,11 +410,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${AGENT}" == "sac" || "${AGENT}" == "ppo" ]] || die "agent must be sac or ppo"
+[[ "${AGENT}" == "sac" || "${AGENT}" == "ppo" || "${AGENT}" == "td3" ]] || die "agent must be sac, ppo, or td3"
 [[ "${INPUT_LAYOUT}" == "scan" || "${INPUT_LAYOUT}" == "flat" ]] || die "input-layout must be scan or flat"
 [[ "${LIDAR_PROFILE}" == "custom" || "${LIDAR_PROFILE}" == "hokuyo" || "${LIDAR_PROFILE}" == "t_mini_plus" ]] || die "invalid --lidar-profile"
 [[ "${SAC_OUTPUT}" == "deterministic" || "${SAC_OUTPUT}" == "mean_logstd" || "${SAC_OUTPUT}" == "all" ]] || die "invalid --sac-output"
-[[ "${SAC_OUTPUT}" == "deterministic" ]] || die "Deployment expects deterministic control output. Use --sac-output deterministic."
+if [[ "${AGENT}" == "sac" ]]; then
+  [[ "${SAC_OUTPUT}" == "deterministic" ]] || die "Deployment expects deterministic control output. Use --sac-output deterministic."
+fi
 
 apply_lidar_profile_defaults
 export_onnx_if_needed
