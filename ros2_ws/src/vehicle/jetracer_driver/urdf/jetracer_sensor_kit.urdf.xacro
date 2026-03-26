@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+
+<robot name="jetracer_sensor_kit" xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:include filename="$(find jetracer_driver)/urdf/elp_stereo_camera.urdf.xacro" />
+
+  <xacro:arg name="base_frame" default="base_link" />
+  <xacro:arg name="lidar_frame" default="laser" />
+  <xacro:arg name="camera_frame" default="camera_link" />
+
+  <xacro:arg name="lidar_x" default="0.0" />
+  <xacro:arg name="lidar_y" default="0.0" />
+  <xacro:arg name="lidar_z" default="0.0" />
+  <xacro:arg name="lidar_roll" default="0.0" />
+  <xacro:arg name="lidar_pitch" default="0.0" />
+  <xacro:arg name="lidar_yaw" default="0.0" />
+
+  <xacro:arg name="camera_x" default="0.0" />
+  <xacro:arg name="camera_y" default="0.0" />
+  <xacro:arg name="camera_z" default="0.0" />
+  <xacro:arg name="camera_roll" default="0.0" />
+  <xacro:arg name="camera_pitch" default="0.0" />
+  <xacro:arg name="camera_yaw" default="0.0" />
+
+  <link name="$(arg base_frame)" />
+
+  <link name="$(arg lidar_frame)">
+    <visual>
+      <geometry>
+        <cylinder length="0.03" radius="0.03" />
+      </geometry>
+      <material name="lidar_gray">
+        <color rgba="0.3 0.3 0.3 1.0" />
+      </material>
+    </visual>
+  </link>
+
+  <xacro:elp_stereo_camera name="$(arg camera_frame)" />
+
+  <joint name="$(arg base_frame)_to_$(arg lidar_frame)" type="fixed">
+    <parent link="$(arg base_frame)" />
+    <child link="$(arg lidar_frame)" />
+    <origin
+      xyz="$(arg lidar_x) $(arg lidar_y) $(arg lidar_z)"
+      rpy="$(arg lidar_roll) $(arg lidar_pitch) $(arg lidar_yaw)" />
+  </joint>
+
+  <joint name="$(arg base_frame)_to_$(arg camera_frame)" type="fixed">
+    <parent link="$(arg base_frame)" />
+    <child link="$(arg camera_frame)" />
+    <origin
+      xyz="$(arg camera_x) $(arg camera_y) $(arg camera_z)"
+      rpy="$(arg camera_roll) $(arg camera_pitch) $(arg camera_yaw)" />
+  </joint>
+</robot>
