@@ -8,16 +8,17 @@
     <arg name="lidar_frame" default="laser"/>
     <arg name="camera_frame" default="camera_link"/>
 
-    <arg name="lidar_x" default="0.0"/>
+    <!-- Sensor offsets are defined from rear axle center (base_link), unit: [m] -->
+    <arg name="lidar_x" default="0.2725"/>
     <arg name="lidar_y" default="0.0"/>
-    <arg name="lidar_z" default="0.0"/>
+    <arg name="lidar_z" default="0.0257"/>
     <arg name="lidar_roll" default="0.0"/>
     <arg name="lidar_pitch" default="0.0"/>
     <arg name="lidar_yaw" default="0.0"/>
 
-    <arg name="camera_x" default="0.0"/>
+    <arg name="camera_x" default="0.224"/>
     <arg name="camera_y" default="0.0"/>
-    <arg name="camera_z" default="0.0"/>
+    <arg name="camera_z" default="0.0535"/>
     <arg name="camera_roll" default="0.0"/>
     <arg name="camera_pitch" default="0.0"/>
     <arg name="camera_yaw" default="0.0"/>
