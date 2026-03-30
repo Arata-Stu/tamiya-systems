@@ -21,7 +21,11 @@ env:
   max_speed: 5.0
   min_speed: 0.0
   max_lidar_range: 10.0
-  obs_dim: 1080
+  obs_dim: 320
+  scan_beams: 320
+  scan_angle_min: -2.343
+  scan_angle_max: 2.343
+  scan_fov: null # if null, use (scan_angle_max - scan_angle_min)
   action_dim: 2
 
   reward:

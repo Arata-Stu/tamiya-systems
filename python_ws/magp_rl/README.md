@@ -41,6 +41,25 @@ python3 train.py agent=sac
 python3 train.py agent=td3
 ```
 
+### 3.1.1 YDLiDAR crop (320点, angle ±2.343rad)
+
+`config/train.yaml` のデフォルトは以下です。
+
+- `env.obs_dim=320`
+- `env.scan_beams=320`
+- `env.scan_angle_min=-2.343`
+- `env.scan_angle_max=2.343`（`fov=4.686`）
+
+必要ならCLIで上書きできます。
+
+```bash
+python3 train.py agent=sac \
+  env.obs_dim=320 \
+  env.scan_beams=320 \
+  env.scan_angle_min=-2.343 \
+  env.scan_angle_max=2.343
+```
+
 ### 3.2 SAC 本番例（単一環境）
 
 ```bash
@@ -370,7 +389,7 @@ python3 export_onnx.py \
 `obs_dim` とセンサ点数の運用:
 
 - Hokuyo想定: `obs_dim=1080`, `scan_points=1080`, `fov_rad=4.7`, `max_range=30.0`
-- T-mini想定: `obs_dim=320`, `scan_points=320`, `fov_rad=4.7`, `max_range=10.0`
+- T-mini / YDLiDAR crop想定: `obs_dim=320`, `scan_points=320`, `fov_rad=4.686`, `max_range=10.0`
 - 学習モデルが `obs_dim=320` の場合のみ、`scan_points=1080` からONNX内でダウンサンプル可能（1080→320）
 
 ## 13. TensorRT / Triton デプロイ

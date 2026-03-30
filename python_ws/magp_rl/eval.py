@@ -15,7 +15,11 @@ from src.agents.sac import create_sac_states, sac_act_deterministic
 from src.agents.td3 import create_td3_states, td3_act_deterministic
 from src.envs.f110_independent_vec import F110IndependentVecEnv
 from src.envs.f110_wrapper import F110EnvWrapper
-from src.utils.common import generate_independent_poses, generate_initial_poses
+from src.utils.common import (
+    generate_independent_poses,
+    generate_initial_poses,
+    resolve_lidar_sim_params,
+)
 from src.utils.env_assets import resolve_env_assets
 from src.utils.vehicle import resolve_vehicle_params
 
@@ -204,6 +208,8 @@ def build_eval_env(
     waypoints_path: str,
     num_envs: int,
     vehicle_params,
+    scan_beams: int,
+    scan_fov: float,
 ):
     parallel_mode = get_parallel_mode(cfg.env)
     if parallel_mode == "independent":
@@ -214,6 +220,8 @@ def build_eval_env(
             params=vehicle_params,
             seed=cfg.eval.seed,
             integrator=Integrator.RK4,
+            num_beams=scan_beams,
+            fov=scan_fov,
         )
         env = F110IndependentVecEnv(
             sim,
@@ -230,6 +238,8 @@ def build_eval_env(
             params=vehicle_params,
             seed=cfg.eval.seed,
             integrator=Integrator.RK4,
+            num_beams=scan_beams,
+            fov=scan_fov,
         )
         env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
     else:
@@ -252,6 +262,7 @@ def main(cfg: DictConfig):
     print(f"Vehicle Params: {vehicle_source}")
 
     num_envs = get_eval_env_count(cfg)
+    scan_beams, scan_fov = resolve_lidar_sim_params(cfg.env)
     env, parallel_mode = build_eval_env(
         cfg,
         map_path=map_path,
@@ -259,8 +270,11 @@ def main(cfg: DictConfig):
         waypoints_path=waypoints_path,
         num_envs=num_envs,
         vehicle_params=vehicle_params,
+        scan_beams=scan_beams,
+        scan_fov=scan_fov,
     )
     print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
+    print(f"LiDAR: beams={scan_beams}, fov={scan_fov:.6f} rad")
 
     obs_shape = (cfg.env.obs_dim,)
     if cfg.agent.name == "ppo":
