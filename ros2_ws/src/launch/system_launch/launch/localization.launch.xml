@@ -6,15 +6,16 @@
   <arg name="localization_result_topic" default="/localization_result" />
   <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
 
-  <load_composable_nodes target_container="$(var lidar_container_name)">
-
+  <load_composable_node target="$(var lidar_container_name)">
     <composable_node pkg="isaac_ros_pointcloud_utils"
                      plugin="nvidia::isaac_ros::pointcloud_utils::LaserScantoFlatScanNode"
                      name="laserscan_to_flatscan">
       <remap from="scan" to="$(var scan_topic)" />
       <remap from="flatscan" to="$(var flatscan_topic)" />
     </composable_node>
+  </load_composable_node>
 
+  <load_composable_node target="$(var lidar_container_name)">
     <composable_node pkg="isaac_ros_occupancy_grid_localizer"
                      plugin="nvidia::isaac_ros::occupancy_grid_localizer::OccupancyGridLocalizerNode"
                      name="occupancy_grid_localizer">
@@ -25,6 +26,5 @@
       <remap from="localization_result" to="$(var localization_result_topic)" />
       <remap from="trigger_grid_search_localization" to="$(var localization_trigger_service)" />
     </composable_node>
-    
-  </load_composable_nodes>
+  </load_composable_node>
 </launch>
