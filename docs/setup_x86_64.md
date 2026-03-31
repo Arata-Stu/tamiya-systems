@@ -207,6 +207,47 @@ bash /scripts/monitor.sh
 bash /scripts/monitor.sh --demo
 ```
 
+## 10. Offline 2D Map Generation (Cartographer)
+
+Jetson で収録した rosbag2 をノートPCに移動した後、Docker コンテナ内で以下を実行してください。
+
+```bash
+source /opt/ros/humble/setup.bash
+source /workspaces/install/setup.bash
+
+# rosbag2ディレクトリ -> map生成（.yaml/.pgm/.pbstream）
+bash /scripts/create_2d_map_from_bag.sh \
+  /workspaces/bags/<bag_dir> \
+  /workspaces/maps/<map_name>
+```
+
+`/scan` 以外を使う場合は `--scan-topic` で指定できます。
+
+```bash
+bash /scripts/create_2d_map_from_bag.sh \
+  --scan-topic /scan_filtered \
+  /workspaces/bags/<bag_dir> \
+  /workspaces/maps/<map_name>
+```
+
+VSLAM の odom を使う場合:
+
+```bash
+bash /scripts/create_2d_map_from_bag.sh \
+  --use-vslam-odom \
+  /workspaces/bags/<bag_dir> \
+  /workspaces/maps/<map_name>
+```
+
+または odom topic を明示指定:
+
+```bash
+bash /scripts/create_2d_map_from_bag.sh \
+  --odom-topic /visual_slam/tracking/odometry \
+  /workspaces/bags/<bag_dir> \
+  /workspaces/maps/<map_name>
+```
+
 ---
 
 ## 📝 Notes
