@@ -6,7 +6,7 @@
       - name: footprint_filter
         type: laser_filters/LaserScanFootprintFilter
         params:
-          inscribed_radius: 0.15 #15cm
+          inscribed_radius: 0.001 #1 mm
 
       # フィルター2: メディアンフィルター (平滑化)
       - name: median_filter

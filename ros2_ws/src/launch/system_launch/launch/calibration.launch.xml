@@ -1,0 +1,40 @@
+<launch>
+    <arg name="camera_model" default="elp" />
+    <arg name="camera_container_name" default="camera_container" />
+    <arg name="image_width" default="340" />
+    <arg name="image_height" default="240" />
+    <arg name="image_fps" default="120" />
+
+    <arg name="board_size" default="8x6" description="checkerboard inner corners (cols x rows)" />
+    <arg name="square_size" default="0.024" description="checkerboard square size [m]" />
+    <arg name="approximate_sync" default="0.05" description="stereo image sync tolerance [s]" />
+    <arg name="no_service_check" default="true" description="skip waiting for set_camera_info services" />
+
+    <!-- Sensor Kit Nodes (camera only) -->
+    <include file="$(find-pkg-share sensor_kit_launch)/launch/sensor_kit.launch.xml">
+        <arg name="use_lidar" value="false"/>
+        <arg name="use_camera" value="true"/>
+        <arg name="camera_model" value="$(var camera_model)"/>
+        <arg name="camera_container_name" value="$(var camera_container_name)"/>
+        <arg name="image_width" value="$(var image_width)"/>
+        <arg name="image_height" value="$(var image_height)"/>
+        <arg name="image_fps" value="$(var image_fps)"/>
+    </include>
+
+    <let name="calib_args" value="--size $(var board_size) --square $(var square_size) --approximate $(var approximate_sync) left:=/camera/left/image_raw right:=/camera/right/image_raw left_camera:=/camera/left right_camera:=/camera/right"/>
+    <let name="calib_args_no_service" value="$(var calib_args) --no-service-check"/>
+
+    <node if="$(var no_service_check)"
+          pkg="camera_calibration"
+          exec="cameracalibrator"
+          name="stereo_camera_calibrator"
+          output="screen"
+          args="$(var calib_args_no_service)"/>
+
+    <node unless="$(var no_service_check)"
+          pkg="camera_calibration"
+          exec="cameracalibrator"
+          name="stereo_camera_calibrator"
+          output="screen"
+          args="$(var calib_args)"/>
+</launch>
