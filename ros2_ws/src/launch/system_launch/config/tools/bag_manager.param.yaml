@@ -12,3 +12,7 @@
       - /camera/left/image_rect_mono
       - /camera/right/image_rect_mono
       - /jetracer/cmd_drive
+      - /joy
+      - /tf
+      - /tf_static
+      # - /odom

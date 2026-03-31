@@ -1,0 +1,28 @@
+<launch>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="scan_topic" default="/scan"/>
+  <arg name="odom_topic" default="/odom"/>
+  <arg name="configuration_directory" default="$(find-pkg-share system_launch)/config/mapping"/>
+  <arg name="configuration_basename" default="cartographer_2d.lua"/>
+  <arg name="occupancy_grid_resolution" default="0.05"/>
+  <arg name="occupancy_grid_publish_period_sec" default="1.0"/>
+
+  <node pkg="cartographer_ros"
+        exec="cartographer_node"
+        name="cartographer_node"
+        output="screen"
+        args="-configuration_directory $(var configuration_directory) -configuration_basename $(var configuration_basename)">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <remap from="scan" to="$(var scan_topic)"/>
+    <remap from="odom" to="$(var odom_topic)"/>
+  </node>
+
+  <node pkg="cartographer_ros"
+        exec="cartographer_occupancy_grid_node"
+        name="cartographer_occupancy_grid_node"
+        output="screen">
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="resolution" value="$(var occupancy_grid_resolution)"/>
+    <param name="publish_period_sec" value="$(var occupancy_grid_publish_period_sec)"/>
+  </node>
+</launch>

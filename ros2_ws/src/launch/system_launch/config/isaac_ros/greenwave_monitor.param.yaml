@@ -42,6 +42,23 @@ greenwave_monitor:
         expected_frequency: 120.0
         # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
         tolerance: 10.0
+      /camera/right/image_rect_mono:
+        expected_frequency: 120.0
+        # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
+        tolerance: 10.0
+      /camera/left/image_rect_mono:
+        expected_frequency: 120.0
+        # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
+        tolerance: 10.0
       /jetracer/cmd_driver:
         expected_frequency: 100.0
+        tolerance: 10.0
+      /joy:
+        expected_frequency: 100.0
+        tolerance: 10.0
+      /tf:
+        expected_frequency: 100.0
+        tolerance: 10.0
+      /tf_static:
+        expected_frequency: 10.0
         tolerance: 10.0
