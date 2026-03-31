@@ -1,6 +1,7 @@
 <launch>
     <arg name="record" default="false" description="run rosbag2 record node"/>
     <arg name="vslam" default="false" description="run vslam node"/>
+    <arg name="localization" default="false" description="run localization node"/>
     
     <arg name="use_lidar" default="true" description="use lidar"/>
     <arg name="lidar_model" default="hokuyo" />
@@ -69,6 +70,13 @@
             <arg name="image_width" value="$(var image_width)"/>
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="camera_container_name" value="$(var camera_container_name)"/>
+        </include>
+    </group>
+
+    <!-- Localization Nodes -->
+    <group if="$(var localization)">
+        <include file="$(find-pkg-share system_launch)/launch/localization.launch.xml">
+            <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
         </include>
     </group>
 

@@ -28,6 +28,12 @@ repositories:
     url: https://github.com/carbuncle01/isaac_ros_common.git
     version: release-3.2
 
+
+  ros2_ws/src/isaac_ros/isaac_ros_map_localization:
+    type: git
+    url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_map_localization.git
+    version: release-3.2
+
   ## greenwave_monitor
   ros2_ws/src/isaac_ros/greenwave_monitor:
     type: git

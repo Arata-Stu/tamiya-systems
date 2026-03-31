@@ -17,7 +17,7 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   config.dpad_ud_axis_idx = this->declare_parameter("dpad_ud_axis_idx", 7);
   config.axis_speed_idx = this->declare_parameter("axis_speed_idx", 1);
   config.axis_steer_idx = this->declare_parameter("axis_steer_idx", 3);
-  joy_timeout_sec_ = this->declare_parameter("joy_timeout", 0.5);
+  joy_timeout_sec_ = this->declare_parameter("joy_timeout_sec", 0.5);
   double update_rate_hz = this->declare_parameter("timer_hz", 50.0);
 
   core_ = std::make_unique<TeleopManagerCore>(config);

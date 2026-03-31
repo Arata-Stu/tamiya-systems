@@ -1,0 +1,28 @@
+<launch>
+  <arg name="lidar_container_name" default="lidar_container" />
+  <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
+  <arg name="scan_topic" default="/scan" />
+  <arg name="flatscan_topic" default="/flatscan" />
+  <arg name="localization_result_topic" default="/localization_result" />
+
+  <load_composable_nodes target_container="$(var lidar_container_name)">
+
+    <composable_node pkg="isaac_ros_pointcloud_utils"
+                     plugin="nvidia::isaac_ros::pointcloud_utils::LaserScantoFlatScanNode"
+                     name="laserscan_to_flatscan">
+      <remap from="scan" to="$(var scan_topic)" />
+      <remap from="flatscan" to="$(var flatscan_topic)" />
+    </composable_node>
+
+    <composable_node pkg="isaac_ros_occupancy_grid_localizer"
+                     plugin="nvidia::isaac_ros::occupancy_grid_localizer::OccupancyGridLocalizerNode"
+                     name="occupancy_grid_localizer">
+      <param from="$(var map_yaml_path)" />
+      <param name="loc_result_frame" value="map" />
+      <param name="map_yaml_path" value="$(var map_yaml_path)" />
+      <remap from="flatscan" to="$(var flatscan_topic)" />
+      <remap from="localization_result" to="$(var localization_result_topic)" />
+    </composable_node>
+    
+  </load_composable_nodes>
+</launch>
