@@ -4,6 +4,7 @@
   <arg name="scan_topic" default="/scan" />
   <arg name="flatscan_topic" default="/flatscan" />
   <arg name="localization_result_topic" default="/localization_result" />
+  <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
 
   <load_composable_nodes target_container="$(var lidar_container_name)">
 
@@ -22,6 +23,7 @@
       <param name="map_yaml_path" value="$(var map_yaml_path)" />
       <remap from="flatscan" to="$(var flatscan_topic)" />
       <remap from="localization_result" to="$(var localization_result_topic)" />
+      <remap from="trigger_grid_search_localization" to="$(var localization_trigger_service)" />
     </composable_node>
     
   </load_composable_nodes>

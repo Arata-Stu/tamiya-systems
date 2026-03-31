@@ -2,6 +2,11 @@
 
 using std::placeholders::_1;
 
+namespace {
+constexpr const char *kLocalizationTriggerService =
+    "trigger_grid_search_localization";
+}
+
 TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   // Parameters
   TeleopManagerCore::Config config;
@@ -9,6 +14,8 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   config.steer_scale = this->declare_parameter("steer_scale", 1.0);
   config.joy_button_idx = this->declare_parameter("joy_button_idx", 4);
   config.ack_button_idx = this->declare_parameter("ack_button_idx", 5);
+  config.localization_trigger_button_idx =
+      this->declare_parameter("localization_trigger_button_idx", 8);
   config.start_button_idx = this->declare_parameter("start_button_idx", 0);
   config.stop_button_idx = this->declare_parameter("stop_button_idx", 1);
   config.good_button_idx = this->declare_parameter("good_button_idx", 2);
@@ -47,6 +54,8 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
       this->create_publisher<std_msgs::msg::Bool>("speed_offset_inc", 10);
   speed_offset_dec_pub_ =
       this->create_publisher<std_msgs::msg::Bool>("speed_offset_dec", 10);
+  localization_trigger_client_ =
+      this->create_client<std_srvs::srv::Empty>(kLocalizationTriggerService);
 
   // Timer Initialization
   auto timer_period = std::chrono::duration<double>(1.0 / update_rate_hz);
@@ -136,6 +145,10 @@ void TeleopManagerNode::publish_events() {
     trigger_pub_->publish(msg);
   }
 
+  if (core_->pop_localization_trigger_requested()) {
+    call_localization_trigger();
+  }
+
   auto memo = core_->pop_memo_requested();
   if (memo) {
     std_msgs::msg::String msg;
@@ -163,6 +176,26 @@ void TeleopManagerNode::publish_events() {
     msg.data = true;
     speed_offset_dec_pub_->publish(msg);
   }
+}
+
+void TeleopManagerNode::call_localization_trigger() {
+  if (!localization_trigger_client_) {
+    RCLCPP_ERROR(this->get_logger(),
+                 "Localization trigger client is not initialized.");
+    return;
+  }
+
+  if (!localization_trigger_client_->service_is_ready()) {
+    RCLCPP_WARN(this->get_logger(),
+                "Localization trigger service is not ready: %s",
+                kLocalizationTriggerService);
+    return;
+  }
+
+  auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+  (void)localization_trigger_client_->async_send_request(request);
+  RCLCPP_INFO(this->get_logger(), "Requested localization trigger: %s",
+              kLocalizationTriggerService);
 }
 
 int main(int argc, char **argv) {

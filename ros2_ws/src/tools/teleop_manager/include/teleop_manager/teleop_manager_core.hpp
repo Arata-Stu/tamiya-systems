@@ -12,6 +12,7 @@ public:
     double steer_scale;
     int joy_button_idx;
     int ack_button_idx;
+    int localization_trigger_button_idx;
     int start_button_idx;
     int stop_button_idx;
     int good_button_idx;
@@ -38,6 +39,7 @@ public:
 
   bool pop_start_requested();
   bool pop_stop_requested();
+  bool pop_localization_trigger_requested();
   std::optional<std::string> pop_memo_requested();
   bool pop_steer_inc_requested();
   bool pop_steer_dec_requested();
@@ -54,11 +56,13 @@ private:
   double joy_steer_{0.0};
 
   bool prev_start_{false}, prev_stop_{false};
+  bool prev_localization_trigger_{false};
   bool prev_good_{false}, prev_bad_{false};
   bool prev_st_inc_{false}, prev_st_dec_{false};
   bool prev_sp_inc_{false}, prev_sp_dec_{false};
 
   bool start_req_{false}, stop_req_{false};
+  bool localization_trigger_req_{false};
   bool st_inc_req_{false}, st_dec_req_{false};
   bool sp_inc_req_{false}, sp_dec_req_{false};
   std::optional<std::string> memo_req_{std::nullopt};

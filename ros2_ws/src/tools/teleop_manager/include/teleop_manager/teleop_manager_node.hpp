@@ -6,6 +6,7 @@
 #include "sensor_msgs/msg/joy.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "std_srvs/srv/empty.hpp"
 #include "teleop_manager_core.hpp"
 
 class TeleopManagerNode : public rclcpp::Node {
@@ -18,6 +19,7 @@ private:
   ack_callback(const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg);
   void timer_callback();
   void publish_events();
+  void call_localization_trigger();
 
   std::unique_ptr<TeleopManagerCore> core_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
@@ -34,6 +36,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr steer_offset_dec_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr speed_offset_inc_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr speed_offset_dec_pub_;
+  rclcpp::Client<std_srvs::srv::Empty>::SharedPtr localization_trigger_client_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 

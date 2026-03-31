@@ -42,6 +42,10 @@ void TeleopManagerCore::update_joy_input(const std::vector<float> &axes,
   if (check_button_press(get_btn(config_.stop_button_idx), prev_stop_)) {
     stop_req_ = true;
   }
+  if (check_button_press(get_btn(config_.localization_trigger_button_idx),
+                         prev_localization_trigger_)) {
+    localization_trigger_req_ = true;
+  }
 
   if (check_button_press(get_btn(config_.good_button_idx), prev_good_)) {
     memo_req_ = "good";
@@ -89,6 +93,12 @@ bool TeleopManagerCore::pop_start_requested() {
 bool TeleopManagerCore::pop_stop_requested() {
   bool ret = stop_req_;
   stop_req_ = false;
+  return ret;
+}
+
+bool TeleopManagerCore::pop_localization_trigger_requested() {
+  bool ret = localization_trigger_req_;
+  localization_trigger_req_ = false;
   return ret;
 }
 

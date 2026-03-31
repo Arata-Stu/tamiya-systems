@@ -11,6 +11,7 @@
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
+    <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
     
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
@@ -23,6 +24,7 @@
         <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
         <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
         <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
+        <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
     </include>
 
     <!-- Rosbag2 Recorder Node -->

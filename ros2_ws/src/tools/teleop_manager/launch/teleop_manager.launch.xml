@@ -5,6 +5,7 @@
   <arg name="vehicle_control_topic" default="/jetracer/cmd_drive"/>
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
   <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
+  <arg name="localization_trigger_service" default="/trigger_grid_search_localization"/>
 
   
   <!-- joynode -->
@@ -32,6 +33,8 @@
     <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
     <!-- rosbagメモ -->
     <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/>
+    <!-- localizationトリガサービス -->
+    <remap from="trigger_grid_search_localization" to="$(var localization_trigger_service)"/>
   </node>
 
 </launch>
