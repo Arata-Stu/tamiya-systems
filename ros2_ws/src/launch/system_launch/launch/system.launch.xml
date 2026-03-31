@@ -20,11 +20,13 @@
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+    <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
     
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
     <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter.param.yaml" />
+    <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
 
     <!-- Jetracer Driver Node -->
     <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
@@ -81,6 +83,7 @@
             <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
             <arg name="map_yaml_path" value="$(var map_yaml_path)"/>
+            <arg name="localization_param" value="$(var localization_param)"/>
         </include>
     </group>
 
