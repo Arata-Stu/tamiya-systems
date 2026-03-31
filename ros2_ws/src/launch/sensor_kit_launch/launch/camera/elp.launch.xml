@@ -4,7 +4,7 @@
     <arg name="image_width" default="320" />
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="120" />
-    <let name="stereo_image_width" value="$(var image_width) * 2"/>
+    <let name="stereo_image_width" value="$(eval 'int(\'$(var image_width)\') * 2')"/>
 
 
     <load_composable_node target="$(var camera_container_name)">

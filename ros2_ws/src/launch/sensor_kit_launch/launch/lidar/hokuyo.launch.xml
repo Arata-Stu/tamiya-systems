@@ -10,7 +10,10 @@
     </load_composable_node>
 
     <load_composable_node target="$(var lidar_container_name)">
-        <composable_node pkg="laser_filters" plugin="laser_filters::ScanToScanFilterChainer" name="laser_filter_node">
+        <composable_node
+            pkg="laser_filters"
+            plugin="ScanToScanFilterChain"
+            name="laser_filter_node">
             <param from="$(var filter_param)"/>
             <remap from="scan" to="scan_raw"/>
             <remap from="scan_filtered" to="scan"/>
