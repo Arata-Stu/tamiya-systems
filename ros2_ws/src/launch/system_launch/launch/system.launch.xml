@@ -27,7 +27,7 @@
     <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter.param.yaml" />
 
     <!-- Jetracer Driver Node -->
-    <include file="$(find-pkg-share jetracer_node)/launch/jetracer.launch.xml">
+    <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
         <arg name="jetracer_param" value="$(var vehicle_param)"/>
         <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
     </include>
