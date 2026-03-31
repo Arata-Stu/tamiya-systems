@@ -3,7 +3,7 @@
     <arg name="elp_camera_param" default="$(find-pkg-share sensor_kit_launch)/config/camera/elp_camera_node.param.yaml"/>
     <arg name="image_width" default="320" />
     <arg name="image_height" default="240" />
-    <arg name="image_fps" default="120" />
+    <arg name="image_fps" default="120.0" />
     <let name="stereo_image_width" value="$(eval 'int(\'$(var image_width)\') * 2')"/>
 
 
