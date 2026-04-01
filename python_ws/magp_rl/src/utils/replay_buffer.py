@@ -22,16 +22,47 @@ class ReplayBuffer:
         next_obs_np = np.asarray(next_obs, dtype=np.float32)
         term_np = np.asarray(terminated, dtype=np.float32)
 
-        batch_n = obs_np.shape[0]
-        for i in range(batch_n):
-            self.obs[self.ptr] = obs_np[i]
-            self.actions[self.ptr] = actions_np[i]
-            self.rewards[self.ptr] = rewards_np[i]
-            self.next_obs[self.ptr] = next_obs_np[i]
-            self.terminated[self.ptr] = term_np[i]
+        batch_n = int(obs_np.shape[0])
+        if batch_n == 0:
+            return
 
-            self.ptr = (self.ptr + 1) % self.capacity
-            self.size = min(self.size + 1, self.capacity)
+        start = self.ptr
+        if batch_n >= self.capacity:
+            drop = batch_n - self.capacity
+            obs_np = obs_np[drop:]
+            actions_np = actions_np[drop:]
+            rewards_np = rewards_np[drop:]
+            next_obs_np = next_obs_np[drop:]
+            term_np = term_np[drop:]
+            write_n = self.capacity
+            start = (self.ptr + drop) % self.capacity
+        else:
+            write_n = batch_n
+
+        end = start + write_n
+        if end <= self.capacity:
+            self.obs[start:end] = obs_np
+            self.actions[start:end] = actions_np
+            self.rewards[start:end] = rewards_np
+            self.next_obs[start:end] = next_obs_np
+            self.terminated[start:end] = term_np
+        else:
+            first = self.capacity - start
+            second = write_n - first
+
+            self.obs[start:] = obs_np[:first]
+            self.obs[:second] = obs_np[first:]
+            self.actions[start:] = actions_np[:first]
+            self.actions[:second] = actions_np[first:]
+            self.rewards[start:] = rewards_np[:first]
+            self.rewards[:second] = rewards_np[first:]
+            self.next_obs[start:] = next_obs_np[:first]
+            self.next_obs[:second] = next_obs_np[first:]
+            self.terminated[start:] = term_np[:first]
+            self.terminated[:second] = term_np[first:]
+
+        self.ptr = (self.ptr + batch_n) % self.capacity
+        self.size = min(self.size + batch_n, self.capacity)
 
     def can_sample(self, batch_size):
         return self.size >= batch_size
