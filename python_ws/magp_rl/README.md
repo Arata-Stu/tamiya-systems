@@ -5,8 +5,9 @@
 - アルゴリズム: `PPO` / `SAC` / `TD3`
 - 設定管理: `Hydra`
 - 並列実行: `env.parallel.mode=independent`（デフォルト）
-- TAL風報酬: `env.reward.tal.enabled=true`
-- 車両パラメータ切替: `vehicle=tamiya` / `vehicle=traxxas`
+- TAL風報酬: `env.reward.tal.enabled=true`（`env.reward.tal.schedule.enabled=true`）
+- 学習環境数: `train.num_envs=128`（デフォルト）
+- 車両パラメータ切替: `vehicle=tamiya` / `vehicle=traxxas`（デフォルト: `tamiya`）
 
 ## 1. Quick Start
 
@@ -41,7 +42,7 @@ python3 train.py agent=sac
 python3 train.py agent=td3
 ```
 
-### 3.1.1 YDLiDAR crop (320点, angle ±2.343rad)
+### 3.1.1 T-mini / YDLiDAR crop (320点, angle ±2.343rad)
 
 `config/train.yaml` のデフォルトは以下です。
 
@@ -49,6 +50,9 @@ python3 train.py agent=td3
 - `env.scan_beams=320`
 - `env.scan_angle_min=-2.343`
 - `env.scan_angle_max=2.343`（`fov=4.686`）
+- `env.max_lidar_range=12.0`
+
+`env.max_lidar_range` は観測の clip/div 正規化だけでなく、`F110JaxSimulator` の LiDAR raycast 上限にも使われます。
 
 必要ならCLIで上書きできます。
 
@@ -273,7 +277,7 @@ env:
 
 優先順位:
 
-1. `vehicle=<preset>`（Hydraグループ、デフォルトは `traxxas`）
+1. `vehicle=<preset>`（Hydraグループ、デフォルトは `tamiya`）
 2. `vehicle.path`（明示yaml）
 3. `vehicle.<param>=...` のinline上書き
 
@@ -389,7 +393,7 @@ python3 export_onnx.py \
 `obs_dim` とセンサ点数の運用:
 
 - Hokuyo想定: `obs_dim=1080`, `scan_points=1080`, `fov_rad=4.7`, `max_range=30.0`
-- T-mini / YDLiDAR crop想定: `obs_dim=320`, `scan_points=320`, `fov_rad=4.686`, `max_range=10.0`
+- T-mini / YDLiDAR crop想定: `obs_dim=320`, `scan_points=320`, `fov_rad=4.686`, `max_range=12.0`
 - 学習モデルが `obs_dim=320` の場合のみ、`scan_points=1080` からONNX内でダウンサンプル可能（1080→320）
 
 ## 13. TensorRT / Triton デプロイ

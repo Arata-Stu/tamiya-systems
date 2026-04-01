@@ -88,6 +88,7 @@ def build_env(
     vehicle_params,
     scan_beams: int,
     scan_fov: float,
+    max_lidar_range: float,
 ):
     parallel_mode = get_parallel_mode(cfg.env)
     if parallel_mode == "independent":
@@ -100,6 +101,7 @@ def build_env(
             integrator=Integrator.RK4,
             num_beams=scan_beams,
             fov=scan_fov,
+            max_range=max_lidar_range,
         )
         env = F110IndependentVecEnv(
             sim,
@@ -118,6 +120,7 @@ def build_env(
             integrator=Integrator.RK4,
             num_beams=scan_beams,
             fov=scan_fov,
+            max_range=max_lidar_range,
         )
         env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
     else:
@@ -816,6 +819,7 @@ def main(cfg: DictConfig):
 
     num_envs = get_train_env_count(cfg)
     scan_beams, scan_fov = resolve_lidar_sim_params(cfg.env)
+    max_lidar_range = float(cfg.env.get("max_lidar_range", 30.0))
     rng = jax.random.PRNGKey(cfg.train.seed)
 
     env, parallel_mode = build_env(
@@ -827,9 +831,10 @@ def main(cfg: DictConfig):
         vehicle_params=vehicle_params,
         scan_beams=scan_beams,
         scan_fov=scan_fov,
+        max_lidar_range=max_lidar_range,
     )
     print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
-    print(f"LiDAR: beams={scan_beams}, fov={scan_fov:.6f} rad")
+    print(f"LiDAR: beams={scan_beams}, fov={scan_fov:.6f} rad, max_range={max_lidar_range:.3f} m")
 
     writer = maybe_make_writer(cfg, project_root)
 

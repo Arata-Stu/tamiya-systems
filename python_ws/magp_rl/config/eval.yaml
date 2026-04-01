@@ -1,6 +1,6 @@
 defaults:
   - agent: ppo
-  - vehicle: traxxas
+  - vehicle: tamiya
   - _self_
 
 env:
@@ -20,11 +20,11 @@ env:
   min_steer: -0.4
   max_speed: 5.0
   min_speed: 0.0
-  max_lidar_range: 10.0
-  obs_dim: 320
-  scan_beams: 320
-  scan_angle_min: -2.343
-  scan_angle_max: 2.343
+  max_lidar_range: 12.0 # T-mini Plus profile
+  obs_dim: 320 # T-mini Plus profile
+  scan_beams: 320 # T-mini Plus profile
+  scan_angle_min: -2.343 # T-mini Plus profile
+  scan_angle_max: 2.343 # T-mini Plus profile
   scan_fov: null # if null, use (scan_angle_max - scan_angle_min)
   action_dim: 2
 
@@ -35,7 +35,7 @@ env:
     collision_penalty: 1.0
     progress_clip: 0.5
     tal:
-      enabled: false
+      enabled: true
       coef: 0.1
       steer_weight: 1.0
       speed_weight: 0.25
@@ -44,7 +44,7 @@ env:
       vgain: 1.0
       default_speed_mps: 2.0
       schedule:
-        enabled: false
+        enabled: true
         mode: linear # linear | cosine
         start_step: 0
         decay_steps: 1000000

@@ -24,7 +24,7 @@ ACTION_DIM=2
 INPUT_LAYOUT="scan"          # scan | flat
 SCAN_POINTS=""               # default: obs_dim
 NORMALIZE_INPUT=true
-MAX_LIDAR_RANGE=10.0
+MAX_LIDAR_RANGE=12.0
 LIDAR_PROFILE="custom"       # custom | hokuyo | t_mini_plus
 LIDAR_FOV_RAD=""
 INPUT_NAME="scan_input"
@@ -197,7 +197,7 @@ apply_lidar_profile_defaults() {
     t_mini_plus)
       if [[ "${OBS_DIM_SET}" == false ]]; then OBS_DIM=320; fi
       if [[ "${SCAN_POINTS_SET}" == false ]]; then SCAN_POINTS=320; fi
-      if [[ "${MAX_LIDAR_RANGE_SET}" == false ]]; then MAX_LIDAR_RANGE=10.0; fi
+      if [[ "${MAX_LIDAR_RANGE_SET}" == false ]]; then MAX_LIDAR_RANGE=12.0; fi
       if [[ "${LIDAR_FOV_SET}" == false ]]; then LIDAR_FOV_RAD=4.7; fi
       ;;
     *)

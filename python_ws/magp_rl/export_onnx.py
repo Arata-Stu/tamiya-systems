@@ -167,14 +167,14 @@ def _resolve_lidar_args(args):
         if args.scan_points is None:
             args.scan_points = 320
         if args.max_lidar_range is None:
-            args.max_lidar_range = 10.0
+            args.max_lidar_range = 12.0
         if args.lidar_fov_rad is None:
             args.lidar_fov_rad = 4.7
     else:
         if args.obs_dim is None:
             args.obs_dim = 1080
         if args.max_lidar_range is None:
-            args.max_lidar_range = 10.0
+            args.max_lidar_range = 12.0
 
     args.obs_dim = int(args.obs_dim)
     args.action_dim = int(args.action_dim)
