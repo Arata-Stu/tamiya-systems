@@ -221,7 +221,7 @@ def run_case(args, num_envs: int) -> Row:
 def print_rows(rows: Iterable[Row]):
     header = (
         "num_envs,loop_us_per_call,current_us_per_call,"
-        "loop_Msamples_per_s,current_Msamples_per_s,speedup_x"
+        "loop_m_samples_per_s,current_m_samples_per_s,speedup_x"
     )
     print(header)
     for row in rows:
@@ -245,8 +245,8 @@ def write_csv(path: Path, rows: Iterable[Row]):
                 "num_envs",
                 "loop_us_per_call",
                 "current_us_per_call",
-                "loop_Msamples_per_s",
-                "current_Msamples_per_s",
+                "loop_m_samples_per_s",
+                "current_m_samples_per_s",
                 "speedup_x",
             ],
         )
