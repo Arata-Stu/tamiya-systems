@@ -35,6 +35,7 @@ PRECISION="fp16"             # fp16 | fp32
 MAX_BATCH_SIZE=1
 TRTEXEC_BIN="${TRTEXEC_BIN:-}"
 YES=false
+FORCE_OBS_DIM_MISMATCH=false
 
 OBS_DIM_SET=false
 SCAN_POINTS_SET=false
@@ -73,6 +74,7 @@ Options:
   --max-batch-size N          trtexec max batch (default: 1)
   --trtexec-bin PATH          trtexec binary path
   --yes                       Non-interactive (auto-select latest run/checkpoint)
+  --force-obs-dim-mismatch    Allow proceed when inferred checkpoint obs_dim and --obs-dim differ
   -h, --help                  Show this help
 
 Examples:
@@ -97,6 +99,105 @@ EOF
 die() {
   echo "ERROR: $*" >&2
   exit 1
+}
+
+infer_checkpoint_obs_dim_hint() {
+  local ckpt_dir="$1"
+  local agent="$2"
+  local step="$3"
+
+  local dense_in_dim=""
+  dense_in_dim="$(
+    python3 - "${EXPORT_SCRIPT}" "${ckpt_dir}" "${agent}" "${step}" <<'PY'
+import importlib.util
+import sys
+
+export_script = sys.argv[1]
+ckpt_dir = sys.argv[2]
+agent = sys.argv[3]
+step_raw = sys.argv[4]
+step = int(step_raw) if step_raw else None
+
+try:
+    import jax  # noqa: F401
+    from flax.training import checkpoints
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+spec = importlib.util.spec_from_file_location("magp_rl_export_onnx", export_script)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+try:
+    # Restore target shape does not need to match checkpoint exactly for reading params.
+    target = mod._make_restore_target(agent, obs_dim=1080, action_dim=2)
+    restored = checkpoints.restore_checkpoint(ckpt_dir=ckpt_dir, target=target, step=step)
+    actor_tree = mod._extract_actor_param_tree(restored)
+
+    if agent == "ppo":
+        dense_keys = mod._sorted_layer_keys(actor_tree["actor_mlp"], "Dense")
+        first_dense = actor_tree["actor_mlp"][dense_keys[0]]
+    else:
+        dense_keys = mod._sorted_layer_keys(actor_tree, "Dense")
+        first_dense = actor_tree[dense_keys[0]]
+
+    in_dim = int(mod._as_numpy(first_dense["kernel"]).shape[0])
+    print(str(in_dim))
+except Exception:
+    print("")
+PY
+  )"
+  dense_in_dim="$(echo "${dense_in_dim}" | tr -d '[:space:]')"
+
+  case "${dense_in_dim}" in
+    640) echo "320" ;;
+    2176) echo "1080" ;;
+    *) echo "" ;;
+  esac
+}
+
+confirm_obs_dim_preflight() {
+  local selected_ckpt_dir="$1"
+  local inferred_obs_dim="$2"
+  local effective_scan_points="${SCAN_POINTS:-${OBS_DIM}}"
+
+  echo "---------------------------------------------------"
+  echo "Preflight: obs_dim confirmation"
+  echo "Checkpoint       : ${selected_ckpt_dir}"
+  echo "Configured       : obs_dim=${OBS_DIM}, scan_points=${effective_scan_points}, lidar_profile=${LIDAR_PROFILE}"
+  if [[ -n "${inferred_obs_dim}" ]]; then
+    echo "Checkpoint hint  : obs_dim=${inferred_obs_dim}"
+  else
+    echo "Checkpoint hint  : unknown"
+  fi
+
+  if [[ -n "${inferred_obs_dim}" && "${inferred_obs_dim}" != "${OBS_DIM}" ]]; then
+    local msg="checkpoint hint is obs_dim=${inferred_obs_dim}, but --obs-dim=${OBS_DIM}"
+    if [[ "${YES}" == true && "${FORCE_OBS_DIM_MISMATCH}" == false ]]; then
+      die "obs_dim mismatch (${msg}). Re-run with --obs-dim ${inferred_obs_dim} or --force-obs-dim-mismatch."
+    fi
+    if [[ "${YES}" == false ]]; then
+      echo "WARNING: ${msg}"
+      local ans_mismatch
+      read -r -p "Continue anyway? [y/N]: " ans_mismatch
+      [[ "${ans_mismatch}" =~ ^[Yy]$ ]] || die "Canceled by user."
+    fi
+  fi
+
+  if [[ "${YES}" == false ]]; then
+    [[ -t 0 ]] || die "Interactive confirmation requires TTY. Use --yes for non-interactive mode."
+
+    local ans_obs
+    read -r -p "Type '${OBS_DIM}' to confirm model obs_dim: " ans_obs
+    [[ "${ans_obs}" == "${OBS_DIM}" ]] || die "obs_dim confirmation failed."
+
+    if [[ "${effective_scan_points}" != "${OBS_DIM}" ]]; then
+      local ans_ds
+      read -r -p "scan_points(${effective_scan_points}) != obs_dim(${OBS_DIM}). Type 'downsample-ok' to continue: " ans_ds
+      [[ "${ans_ds}" == "downsample-ok" ]] || die "Canceled (downsample not confirmed)."
+    fi
+  fi
 }
 
 find_trtexec() {
@@ -310,6 +411,10 @@ export_onnx_if_needed() {
 
   [[ -d "${selected_ckpt_dir}" ]] || die "Checkpoint directory not found: ${selected_ckpt_dir}"
 
+  local inferred_obs_dim=""
+  inferred_obs_dim="$(infer_checkpoint_obs_dim_hint "${selected_ckpt_dir}" "${AGENT}" "${STEP}")"
+  confirm_obs_dim_preflight "${selected_ckpt_dir}" "${inferred_obs_dim}"
+
   if [[ -z "${OUTPUT_ONNX_PATH}" ]]; then
     OUTPUT_ONNX_PATH="${run_dir}/${MODEL_NAME}.onnx"
   fi
@@ -405,6 +510,7 @@ while [[ $# -gt 0 ]]; do
     --max-batch-size) MAX_BATCH_SIZE="$2"; shift 2 ;;
     --trtexec-bin) TRTEXEC_BIN="$2"; shift 2 ;;
     --yes) YES=true; shift ;;
+    --force-obs-dim-mismatch) FORCE_OBS_DIM_MISMATCH=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown option: $1 (use --help)" ;;
   esac

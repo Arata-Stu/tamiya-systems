@@ -345,6 +345,51 @@ def _add_dense(nodes, initializers, helper, numpy_helper, x, layer, name: str, a
     raise ValueError(f"Unsupported activation: {activation}")
 
 
+def _compute_encoder_flatten_dim(obs_dim: int, encoder_params):
+    conv_keys = _sorted_layer_keys(encoder_params, "Conv")
+    if len(conv_keys) < 5:
+        raise ValueError(f"Expected at least 5 conv layers in encoder, got {len(conv_keys)}: {conv_keys}")
+
+    conv_keys = conv_keys[:5]
+    conv_strides = [4, 4, 2, 1, 1]
+    length = int(obs_dim)
+    for s in conv_strides:
+        length = (length + int(s) - 1) // int(s)  # SAME padding output length = ceil(length / stride)
+
+    last_conv_key = conv_keys[-1]
+    last_conv_kernel = _as_numpy(encoder_params[last_conv_key]["kernel"])
+    out_channels = int(last_conv_kernel.shape[-1])  # Flax Conv1D kernel: [kernel, in_channel, out_channel]
+    return int(length * out_channels)
+
+
+def _assert_encoder_dense_compat(agent: str, obs_dim: int, encoder_params, first_dense_params, args):
+    encoder_flat_dim = _compute_encoder_flatten_dim(int(obs_dim), encoder_params)
+    dense_in_dim = int(_as_numpy(first_dense_params["kernel"]).shape[0])  # [in_features, out_features]
+
+    if encoder_flat_dim == dense_in_dim:
+        return
+
+    msg = [
+        f"{agent.upper()} dimension mismatch:",
+        f"  encoder output dim from --obs-dim={int(obs_dim)} is {encoder_flat_dim}",
+        f"  but first Dense expects {dense_in_dim} (from checkpoint weights).",
+        "This usually means checkpoint training obs_dim and export obs_dim differ.",
+    ]
+
+    if int(obs_dim) == 1080 and dense_in_dim == 640:
+        msg.append("Hint: this checkpoint likely used obs_dim=320.")
+        if getattr(args, "input_layout", "flat") == "scan":
+            scan_points = args.scan_points if args.scan_points is not None else int(obs_dim)
+            msg.append(
+                "Use e.g. --obs-dim 320 "
+                f"--scan-points {int(scan_points)} to keep input shape and downsample in ONNX."
+            )
+        else:
+            msg.append("Use e.g. --obs-dim 320 for flat input export.")
+
+    raise ValueError("\n".join(msg))
+
+
 def _build_encoder(nodes, initializers, helper, numpy_helper, input_name: str, obs_dim: int, encoder_params):
     # [N, obs_dim] -> [N, 1, obs_dim]
     reshape_shape_name = "encoder_input_shape"
@@ -428,6 +473,8 @@ def _build_ppo_onnx(param_tree, obs_dim: int, action_dim: int, opset: int, args)
         raise ValueError(f"Expected 4 dense layers in PPO actor_mlp, got {dense_keys}")
     d0, d1, d2, d3 = dense_keys[:4]
 
+    _assert_encoder_dense_compat("ppo", obs_dim, param_tree["encoder"], mlp[d0], args)
+
     x = _add_dense(nodes, initializers, helper, numpy_helper, x, mlp[d0], "actor_dense0", "relu")
     x = _add_dense(nodes, initializers, helper, numpy_helper, x, mlp[d1], "actor_dense1", "relu")
     x = _add_dense(nodes, initializers, helper, numpy_helper, x, mlp[d2], "actor_dense2", "relu")
@@ -465,6 +512,8 @@ def _build_sac_onnx(param_tree, obs_dim: int, action_dim: int, opset: int, args)
     if len(dense_keys) < 4:
         raise ValueError(f"Expected 4 dense layers in SAC actor, got {dense_keys}")
     d0, d1, d2, d3 = dense_keys[:4]
+
+    _assert_encoder_dense_compat("sac", obs_dim, param_tree["encoder"], param_tree[d0], args)
 
     nodes = []
     initializers = []
@@ -559,6 +608,8 @@ def _build_td3_onnx(param_tree, obs_dim: int, action_dim: int, opset: int, args)
     if len(dense_keys) < 3:
         raise ValueError(f"Expected 3 dense layers in TD3 actor, got {dense_keys}")
     d0, d1, d2 = dense_keys[:3]
+
+    _assert_encoder_dense_compat("td3", obs_dim, param_tree["encoder"], param_tree[d0], args)
 
     nodes = []
     initializers = []
