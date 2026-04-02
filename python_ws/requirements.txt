@@ -2,6 +2,7 @@
 numpy
 opencv-python
 tqdm               
+rosbags
 
 # --- Config & Logging ---
 omegaconf
