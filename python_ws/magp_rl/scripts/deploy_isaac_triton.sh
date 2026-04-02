@@ -19,7 +19,7 @@ OUTPUT_ONNX_PATH=""
 CHECKPOINT_DIR=""
 STEP=""
 
-OBS_DIM=1080
+OBS_DIM=320
 ACTION_DIM=2
 INPUT_LAYOUT="scan"          # scan | flat
 SCAN_POINTS=""               # default: obs_dim
