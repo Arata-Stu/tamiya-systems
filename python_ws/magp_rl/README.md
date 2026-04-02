@@ -190,7 +190,9 @@ python3 scripts/debug_pure_pursuit.py \
   --lat-accel-list 2.5,3.0,3.5 \
   --smoothing-list 9 \
   --episodes 1 \
-  --max-steps 3000
+  --max-steps 3000 \
+  --done-check-interval 25 \
+  --progress-eval-interval 5
 ```
 
 lookahead/vgain も同時にスイープしたい場合:

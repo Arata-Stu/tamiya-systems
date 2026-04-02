@@ -180,11 +180,95 @@ def run_pure_pursuit_episode(
     video_fps: int = 20,
     video_size: int = 900,
     video_margin_m: float = 20.0,
+    done_check_interval: int = 25,
+    progress_eval_interval: int = 5,
 ):
     waypoints_xy = np.asarray(jax.device_get(env.waypoints_xy), dtype=np.float32)
     pose = _make_start_pose_from_waypoints(waypoints_xy)
     env.reset(pose)
     prev_s = env.get_current_progress_s()
+
+    # Fast path (no video): minimize host-device sync by keeping most accumulators on device.
+    if video_path is None:
+        done_seen = jnp.array(False, dtype=jnp.bool_)
+        completed = jnp.array(False, dtype=jnp.bool_)
+        collided = jnp.array(False, dtype=jnp.bool_)
+        episode_progress = jnp.array(0.0, dtype=jnp.float32)
+        speed_sum = jnp.array(0.0, dtype=jnp.float32)
+        speed_count = jnp.array(0, dtype=jnp.int32)
+        done_step = jnp.array(int(max_steps), dtype=jnp.int32)
+
+        steps = int(max_steps)
+        check_every = max(int(done_check_interval), 1)
+        progress_every = max(int(progress_eval_interval), 1)
+        for step in range(1, int(max_steps) + 1):
+            action = _teacher_action_normalized(env)
+            _, _, done_arr, info = env.step(action)
+
+            state = env.sim_state["state"][:, 0, :]
+            if step % progress_every == 0:
+                current_s = env._project_to_centerline_s(state[:, 0], state[:, 1])
+                progress_delta = env.compute_progress_delta(current_s, prev_s)
+                prev_s = current_s
+            else:
+                progress_delta = jnp.zeros_like(prev_s, dtype=jnp.float32)
+
+            speed_now = jnp.abs(state[0, 3])
+            checkpoint_done = info.get("checkpoint_done", jnp.zeros((env.num_envs,), dtype=jnp.float32))
+            completed_now = jnp.any(checkpoint_done > 0.5)
+            collision_now = jnp.any(env.get_collisions() > 0.0)
+            done_now = jnp.any(done_arr > 0.5) | completed_now
+
+            active = ~done_seen
+            episode_progress = episode_progress + jnp.where(active, progress_delta[0], 0.0)
+            speed_sum = speed_sum + jnp.where(active, speed_now, 0.0)
+            speed_count = speed_count + jnp.where(active, jnp.int32(1), jnp.int32(0))
+            done_step = jnp.where((~done_seen) & done_now, jnp.int32(step), done_step)
+
+            completed = completed | completed_now
+            collided = collided | collision_now
+            done_seen = done_seen | done_now
+
+            if step % check_every == 0:
+                if bool(jax.device_get(done_seen)):
+                    steps = step
+                    break
+
+        (
+            done_seen_h,
+            completed_h,
+            collided_h,
+            episode_progress_h,
+            speed_sum_h,
+            speed_count_h,
+            done_step_h,
+        ) = jax.device_get(
+            (
+                done_seen,
+                completed,
+                collided,
+                episode_progress,
+                speed_sum,
+                speed_count,
+                done_step,
+            )
+        )
+
+        if bool(done_seen_h):
+            steps = int(done_step_h)
+        progress_pct = (float(episode_progress_h) / max(float(env.track_length), 1e-6)) * 100.0
+        avg_speed = float(speed_sum_h) / max(int(speed_count_h), 1)
+        lap_time_sec = (steps * float(env.sim.time_step)) if bool(completed_h) else float("inf")
+
+        return {
+            "steps": int(steps),
+            "completed": bool(completed_h),
+            "collided": bool(collided_h),
+            "progress_m": float(episode_progress_h),
+            "progress_pct": float(progress_pct),
+            "avg_speed_mps": float(avg_speed),
+            "lap_time_sec": float(lap_time_sec),
+        }
 
     done = False
     completed = False
@@ -315,6 +399,18 @@ def main():
     parser.add_argument("--video-fps", type=int, default=20)
     parser.add_argument("--video-size", type=int, default=900)
     parser.add_argument("--video-margin-m", type=float, default=20.0)
+    parser.add_argument(
+        "--done-check-interval",
+        type=int,
+        default=25,
+        help="In no-video mode, check done/collision on host every N steps to reduce sync overhead.",
+    )
+    parser.add_argument(
+        "--progress-eval-interval",
+        type=int,
+        default=5,
+        help="In no-video mode, evaluate centerline progress every N steps (larger is faster).",
+    )
     parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
 
@@ -371,7 +467,11 @@ def main():
     if args.save_rollout_videos:
         print(f"Rollout video save: ON (top-k={max(0, int(args.save_video_top_k))})")
     else:
-        print("Rollout video save: OFF")
+        print(
+            "Rollout video save: OFF "
+            f"(done check interval={max(int(args.done_check_interval), 1)}, "
+            f"progress eval interval={max(int(args.progress_eval_interval), 1)})"
+        )
 
     records = []
     combo_id = 0
@@ -427,6 +527,8 @@ def main():
                     speed_min=float(args.min_speed),
                     speed_max=float(args.max_speed),
                     video_path=None,
+                    done_check_interval=args.done_check_interval,
+                    progress_eval_interval=args.progress_eval_interval,
                 )
                 ep_results.append(result)
 
