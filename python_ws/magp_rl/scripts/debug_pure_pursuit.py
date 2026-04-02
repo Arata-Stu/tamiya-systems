@@ -15,6 +15,7 @@ import datetime as dt
 import itertools
 import math
 import sys
+import time
 from pathlib import Path
 from typing import List, Tuple
 
@@ -182,11 +183,16 @@ def run_pure_pursuit_episode(
     video_margin_m: float = 20.0,
     done_check_interval: int = 25,
     progress_eval_interval: int = 5,
+    complete_progress_threshold_pct: float = 100.0,
 ):
     waypoints_xy = np.asarray(jax.device_get(env.waypoints_xy), dtype=np.float32)
     pose = _make_start_pose_from_waypoints(waypoints_xy)
     env.reset(pose)
     prev_s = env.get_current_progress_s()
+    if float(complete_progress_threshold_pct) > 0.0:
+        progress_target_m = float(env.track_length) * float(complete_progress_threshold_pct) / 100.0
+    else:
+        progress_target_m = float("inf")
 
     # Fast path (no video): minimize host-device sync by keeping most accumulators on device.
     if video_path is None:
@@ -223,9 +229,11 @@ def run_pure_pursuit_episode(
             episode_progress = episode_progress + jnp.where(active, progress_delta[0], 0.0)
             speed_sum = speed_sum + jnp.where(active, speed_now, 0.0)
             speed_count = speed_count + jnp.where(active, jnp.int32(1), jnp.int32(0))
+            progress_completed_now = episode_progress >= progress_target_m
+            done_now = done_now | progress_completed_now
             done_step = jnp.where((~done_seen) & done_now, jnp.int32(step), done_step)
 
-            completed = completed | completed_now
+            completed = completed | completed_now | progress_completed_now
             collided = collided | collision_now
             done_seen = done_seen | done_now
 
@@ -314,6 +322,8 @@ def run_pure_pursuit_episode(
 
         checkpoint_done = info.get("checkpoint_done", jnp.zeros((env.num_envs,), dtype=jnp.float32))
         completed = bool(jax.device_get(jnp.any(checkpoint_done > 0.5)))
+        progress_completed = bool(episode_progress >= progress_target_m)
+        completed = completed or progress_completed
         done = bool(jax.device_get(jnp.any(done_arr > 0.5))) or completed
         if done:
             collisions = env.get_collisions()
@@ -411,6 +421,12 @@ def main():
         default=5,
         help="In no-video mode, evaluate centerline progress every N steps (larger is faster).",
     )
+    parser.add_argument(
+        "--complete-progress-threshold-pct",
+        type=float,
+        default=100.0,
+        help="Treat rollout as completed when progress reaches this percentage (<=0 disables).",
+    )
     parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
 
@@ -475,8 +491,17 @@ def main():
 
     records = []
     combo_id = 0
+    sim_steps_total = 0
 
     speed_profile_combos = list(itertools.product(speed_mode_list, lat_accel_list, smoothing_list))
+    planned_rollouts = len(speed_profile_combos) * len(teacher_combos) * int(args.episodes)
+    planned_steps_upper = planned_rollouts * int(args.max_steps)
+    print(
+        f"Sweep plan: speed_combos={len(speed_profile_combos)}, "
+        f"teacher_combos={len(teacher_combos)}, episodes={int(args.episodes)}"
+    )
+    print(f"Planned rollouts={planned_rollouts}, max simulated steps={planned_steps_upper}")
+    run_start = time.perf_counter()
     for speed_mode, lat_accel, smoothing in speed_profile_combos:
         cfg.env.reward.tal.speed_profile.mode = str(speed_mode)
         cfg.env.reward.tal.speed_profile.max_lateral_accel_mps2 = float(lat_accel)
@@ -529,8 +554,10 @@ def main():
                     video_path=None,
                     done_check_interval=args.done_check_interval,
                     progress_eval_interval=args.progress_eval_interval,
+                    complete_progress_threshold_pct=args.complete_progress_threshold_pct,
                 )
                 ep_results.append(result)
+            sim_steps_total += int(sum(r["steps"] for r in ep_results))
 
             completed_rate = float(np.mean([1.0 if r["completed"] else 0.0 for r in ep_results]))
             collision_rate = float(np.mean([1.0 if r["collided"] else 0.0 for r in ep_results]))
@@ -650,6 +677,7 @@ def main():
                 video_fps=args.video_fps,
                 video_size=args.video_size,
                 video_margin_m=args.video_margin_m,
+                complete_progress_threshold_pct=args.complete_progress_threshold_pct,
             )
     elif top_k > 0:
         print("")
@@ -658,6 +686,11 @@ def main():
     print("")
     print(f"Sweep CSV: {csv_path}")
     print(f"Artifacts: {out_dir}")
+    elapsed = max(time.perf_counter() - run_start, 1e-6)
+    print(
+        f"Elapsed: {elapsed:.2f}s | Simulated steps: {sim_steps_total} | "
+        f"Effective throughput: {sim_steps_total / elapsed:.1f} steps/s"
+    )
 
 
 if __name__ == "__main__":
