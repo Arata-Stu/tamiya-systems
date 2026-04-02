@@ -307,6 +307,11 @@ def main():
     parser.add_argument("--min-speed", type=float, default=0.5)
     parser.add_argument("--max-speed", type=float, default=5.0)
     parser.add_argument("--save-video-top-k", type=int, default=3)
+    parser.add_argument(
+        "--save-rollout-videos",
+        action="store_true",
+        help="Save rollout videos for top-k settings. Default: disabled for faster sweep.",
+    )
     parser.add_argument("--video-fps", type=int, default=20)
     parser.add_argument("--video-size", type=int, default=900)
     parser.add_argument("--video-margin-m", type=float, default=20.0)
@@ -363,6 +368,10 @@ def main():
             "Lookahead/Vgain sweep: OFF "
             f"(lookahead={teacher_combos[0][0]:.3f}, vgain={teacher_combos[0][1]:.3f})"
         )
+    if args.save_rollout_videos:
+        print(f"Rollout video save: ON (top-k={max(0, int(args.save_video_top_k))})")
+    else:
+        print("Rollout video save: OFF")
 
     records = []
     combo_id = 0
@@ -496,7 +505,7 @@ def main():
 
     # Save rollout videos for top-k settings.
     top_k = max(0, int(args.save_video_top_k))
-    if top_k > 0:
+    if args.save_rollout_videos and top_k > 0:
         print("")
         print(f"Saving rollout videos for top {top_k} settings...")
         for rank, rec in enumerate(records_sorted[:top_k], start=1):
@@ -540,6 +549,9 @@ def main():
                 video_size=args.video_size,
                 video_margin_m=args.video_margin_m,
             )
+    elif top_k > 0:
+        print("")
+        print("Skipping rollout video export (enable with --save-rollout-videos).")
 
     print("")
     print(f"Sweep CSV: {csv_path}")

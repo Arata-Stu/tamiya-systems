@@ -190,8 +190,7 @@ python3 scripts/debug_pure_pursuit.py \
   --lat-accel-list 2.5,3.0,3.5 \
   --smoothing-list 9 \
   --episodes 1 \
-  --max-steps 3000 \
-  --save-video-top-k 3
+  --max-steps 3000
 ```
 
 lookahead/vgain も同時にスイープしたい場合:
@@ -201,6 +200,14 @@ python3 scripts/debug_pure_pursuit.py \
   --sweep-lookahead-vgain \
   --lookahead-list 0.4,0.5,0.6 \
   --vgain-list 0.9,1.0,1.1
+```
+
+上位結果のロールアウト動画も保存したい場合:
+
+```bash
+python3 scripts/debug_pure_pursuit.py \
+  --save-rollout-videos \
+  --save-video-top-k 3
 ```
 
 出力先:
