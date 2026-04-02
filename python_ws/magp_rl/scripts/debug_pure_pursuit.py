@@ -472,6 +472,7 @@ def main():
     print(f"Map: {map_path}")
     print(f"Waypoints: {waypoints_path}")
     print(f"Vehicle Params: {vehicle_source}")
+    print(f"JAX Backend: {jax.default_backend()} | Devices: {jax.devices()}")
     print(f"Output Dir: {out_dir}")
     if args.sweep_lookahead_vgain:
         print(f"Lookahead/Vgain sweep: ON ({len(teacher_combos)} combos)")
