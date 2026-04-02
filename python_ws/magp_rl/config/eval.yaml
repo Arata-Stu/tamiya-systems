@@ -43,6 +43,12 @@ env:
       wheelbase: 0.3302
       vgain: 1.0
       default_speed_mps: 2.0
+      speed_profile:
+        mode: file_or_curvature # file | curvature | file_or_curvature
+        min_speed_mps: 0.5
+        max_speed_mps: null # nullならenv.max_speed
+        max_lateral_accel_mps2: 3.0
+        smoothing_window: 9
       schedule:
         enabled: true
         mode: linear # linear | cosine

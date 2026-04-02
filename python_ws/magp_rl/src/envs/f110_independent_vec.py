@@ -51,13 +51,33 @@ class F110IndependentVecEnv:
 
         tal_cfg = config.reward.get("tal", None)
         tal_default_speed = 2.0
+        tal_speed_mode = "file"
+        tal_speed_min = float(config.min_speed)
+        tal_speed_max = float(config.max_speed)
+        tal_speed_lat_accel = 6.0
+        tal_speed_smoothing = 9
         if tal_cfg is not None:
             tal_default_speed = float(tal_cfg.get("default_speed_mps", tal_default_speed))
+            speed_profile_cfg = tal_cfg.get("speed_profile", {})
+            tal_speed_mode = str(speed_profile_cfg.get("mode", tal_speed_mode))
+            min_speed_cfg = speed_profile_cfg.get("min_speed_mps", None)
+            max_speed_cfg = speed_profile_cfg.get("max_speed_mps", None)
+            tal_speed_min = float(config.min_speed if min_speed_cfg is None else min_speed_cfg)
+            tal_speed_max = float(config.max_speed if max_speed_cfg is None else max_speed_cfg)
+            tal_speed_lat_accel = float(
+                speed_profile_cfg.get("max_lateral_accel_mps2", tal_speed_lat_accel)
+            )
+            tal_speed_smoothing = int(speed_profile_cfg.get("smoothing_window", tal_speed_smoothing))
 
         waypoint_source = waypoints_path if waypoints_path is not None else config.waypoints_path
         waypoints_xy, waypoints_s, waypoints_speed = load_waypoints(
             waypoint_source,
             default_speed_mps=tal_default_speed,
+            speed_mode=tal_speed_mode,
+            min_speed_mps=tal_speed_min,
+            max_speed_mps=tal_speed_max,
+            max_lateral_accel_mps2=tal_speed_lat_accel,
+            smoothing_window=tal_speed_smoothing,
         )
         self.waypoints_xy = jnp.asarray(waypoints_xy, dtype=jnp.float32)
         self.waypoints_s = jnp.asarray(waypoints_s, dtype=jnp.float32)

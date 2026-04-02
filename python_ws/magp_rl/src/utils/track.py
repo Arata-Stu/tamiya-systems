@@ -5,6 +5,54 @@ import jax.numpy as jnp
 import numpy as np
 
 
+def _circular_smooth(values: np.ndarray, window: int) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float32)
+    window = int(max(window, 1))
+    if window <= 1 or values.shape[0] < 3:
+        return values
+    if window % 2 == 0:
+        window += 1
+    pad = window // 2
+    kernel = np.ones((window,), dtype=np.float32) / float(window)
+    padded = np.pad(values, (pad, pad), mode="wrap")
+    smoothed = np.convolve(padded, kernel, mode="valid")
+    return smoothed.astype(np.float32)
+
+
+def _curvature_speed_profile(
+    xy: np.ndarray,
+    min_speed_mps: float,
+    max_speed_mps: float,
+    max_lateral_accel_mps2: float,
+    smoothing_window: int,
+) -> np.ndarray:
+    xy = np.asarray(xy, dtype=np.float32)
+    if xy.shape[0] < 3:
+        return np.full((xy.shape[0],), float(max_speed_mps), dtype=np.float32)
+
+    prev_xy = np.roll(xy, shift=1, axis=0)
+    next_xy = np.roll(xy, shift=-1, axis=0)
+
+    vec_prev = xy - prev_xy
+    vec_next = next_xy - xy
+    vec_span = next_xy - prev_xy
+
+    a = np.linalg.norm(vec_prev, axis=1)
+    b = np.linalg.norm(vec_next, axis=1)
+    c = np.linalg.norm(vec_span, axis=1)
+
+    area2 = np.abs(vec_prev[:, 0] * vec_span[:, 1] - vec_prev[:, 1] * vec_span[:, 0])
+    denom = np.maximum(a * b * c, 1e-6)
+    curvature = 2.0 * area2 / denom
+    curvature = _circular_smooth(curvature.astype(np.float32), smoothing_window)
+
+    lat_acc = max(float(max_lateral_accel_mps2), 1e-3)
+    speed = np.sqrt(lat_acc / np.maximum(curvature, 1e-6))
+    speed = np.clip(speed, float(min_speed_mps), float(max_speed_mps))
+    speed = _circular_smooth(speed.astype(np.float32), smoothing_window)
+    return speed.astype(np.float32)
+
+
 def resolve_waypoints_path(path_str: str) -> Path:
     path = Path(path_str)
     if path.is_absolute() and path.exists():
@@ -22,7 +70,15 @@ def resolve_waypoints_path(path_str: str) -> Path:
     raise FileNotFoundError(f"Waypoints file not found: {path_str}")
 
 
-def load_waypoints(path_str: str, default_speed_mps: float = 2.0):
+def load_waypoints(
+    path_str: str,
+    default_speed_mps: float = 2.0,
+    speed_mode: str = "file",
+    min_speed_mps: float = 0.0,
+    max_speed_mps=None,
+    max_lateral_accel_mps2: float = 6.0,
+    smoothing_window: int = 9,
+):
     waypoint_path = resolve_waypoints_path(path_str)
     lines = waypoint_path.read_text(encoding="utf-8").splitlines()
     comment_lines = [ln.strip().lstrip("#").strip() for ln in lines if ln.strip().startswith("#")]
@@ -49,6 +105,7 @@ def load_waypoints(path_str: str, default_speed_mps: float = 2.0):
     has_s = "s_m" in columns
 
     speed = None
+    speed_from_file = False
 
     if has_s:
         s_idx = columns.index("s_m")
@@ -58,8 +115,10 @@ def load_waypoints(path_str: str, default_speed_mps: float = 2.0):
         xy = data[:, [x_idx, y_idx]]
         if "vx_mps" in columns:
             speed = data[:, columns.index("vx_mps")]
+            speed_from_file = True
         elif "v_mps" in columns:
             speed = data[:, columns.index("v_mps")]
+            speed_from_file = True
     else:
         xy = data[:, :2]
         diffs = np.diff(xy, axis=0)
@@ -70,12 +129,37 @@ def load_waypoints(path_str: str, default_speed_mps: float = 2.0):
         if data.shape[1] >= 6:
             # Common format: x, y, ..., vx, ...
             speed = data[:, 5]
+            speed_from_file = True
         else:
             speed = np.full((xy.shape[0],), float(default_speed_mps), dtype=np.float32)
 
+    speed_mode = str(speed_mode).strip().lower()
+    if speed_mode not in {"file", "curvature", "file_or_curvature"}:
+        raise ValueError(f"Unsupported speed_mode: {speed_mode}")
+
+    min_speed = float(min_speed_mps)
+    max_speed_clip = None if max_speed_mps is None else float(max_speed_mps)
+    if max_speed_clip is not None and max_speed_clip < min_speed:
+        max_speed_clip = min_speed
+    max_speed_for_curve = float(default_speed_mps) if max_speed_clip is None else max_speed_clip
+    if max_speed_for_curve < min_speed:
+        max_speed_for_curve = min_speed
+
+    if speed_mode == "curvature" or (speed_mode == "file_or_curvature" and not speed_from_file):
+        speed = _curvature_speed_profile(
+            xy,
+            min_speed_mps=min_speed,
+            max_speed_mps=max_speed_for_curve,
+            max_lateral_accel_mps2=float(max_lateral_accel_mps2),
+            smoothing_window=int(smoothing_window),
+        )
+
     speed = np.asarray(speed, dtype=np.float32)
     speed = np.nan_to_num(speed, nan=float(default_speed_mps), posinf=float(default_speed_mps), neginf=0.0)
-    speed = np.clip(speed, 0.0, None)
+    if max_speed_clip is None:
+        speed = np.clip(speed, min_speed, None)
+    else:
+        speed = np.clip(speed, min_speed, max_speed_clip)
 
     return xy, s, speed
 

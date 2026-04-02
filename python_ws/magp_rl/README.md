@@ -143,6 +143,57 @@ python3 train.py agent=sac \
 - `linear`: 線形減衰
 - `cosine`: コサイン減衰
 
+### 3.3.2 カーブで減速する教師速度（TAL）
+
+`centerline` のCSVは速度列を持たないため、従来は `default_speed_mps` の固定速度でした。  
+`env.reward.tal.speed_profile.mode=file_or_curvature` を使うと、速度列が無い場合に曲率ベース速度を自動生成します。
+
+```bash
+python3 train.py agent=sac \
+  env.track.name=BrandsHatch \
+  env.track.line_type=centerline \
+  env.reward.tal.enabled=true \
+  env.reward.tal.speed_profile.mode=file_or_curvature \
+  env.reward.tal.speed_profile.min_speed_mps=0.5 \
+  env.reward.tal.speed_profile.max_speed_mps=5.0 \
+  env.reward.tal.speed_profile.max_lateral_accel_mps2=3.0
+```
+
+`speed_profile.mode` の意味:
+
+- `file`: CSV速度列を使う（無い場合は `default_speed_mps`）
+- `curvature`: 常に曲率ベース速度を使う
+- `file_or_curvature`: CSV速度列があれば使い、無ければ曲率ベース速度を使う
+
+### 3.3.3 学習前デバッグ（Pure Pursuit スイープ + 可視化）
+
+学習前に、以下を確認できます。
+
+- waypoint速度プロファイル画像（速度で色分け）
+- Pure Pursuit 走行の完走率 / 衝突率 / 平均速度 / 進捗率
+- パラメータ比較CSV（どの設定が速く安定か）
+- 上位設定のロールアウト動画（軌跡を速度色で描画）
+
+```bash
+python3 scripts/debug_pure_pursuit.py \
+  --track-name Austin \
+  --line-type centerline \
+  --lookahead-list 0.6,0.8,1.0 \
+  --vgain-list 0.8,1.0,1.2 \
+  --speed-mode-list file_or_curvature \
+  --lat-accel-list 2.5,3.0,3.5 \
+  --smoothing-list 9 \
+  --episodes 1 \
+  --max-steps 3000 \
+  --save-video-top-k 3
+```
+
+出力先:
+
+- `records/pure_pursuit_debug/<track>_<line_type>_<timestamp>/pure_pursuit_sweep.csv`
+- `records/pure_pursuit_debug/<...>/waypoint_speed_*.png`
+- `records/pure_pursuit_debug/<...>/rank*.mp4`
+
 ### 3.4 Multi-Env 学習（推奨）
 
 ```bash
