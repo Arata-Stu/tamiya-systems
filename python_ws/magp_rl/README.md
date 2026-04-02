@@ -184,14 +184,23 @@ Pure Pursuit teacher の lookahead は以下で計算されます。
 python3 scripts/debug_pure_pursuit.py \
   --track-name Austin \
   --line-type centerline \
-  --lookahead-list 0.6,0.8,1.0 \
-  --vgain-list 0.8,1.0,1.2 \
+  --fixed-lookahead 0.5 \
+  --fixed-vgain 1.0 \
   --speed-mode-list file_or_curvature \
   --lat-accel-list 2.5,3.0,3.5 \
   --smoothing-list 9 \
   --episodes 1 \
   --max-steps 3000 \
   --save-video-top-k 3
+```
+
+lookahead/vgain も同時にスイープしたい場合:
+
+```bash
+python3 scripts/debug_pure_pursuit.py \
+  --sweep-lookahead-vgain \
+  --lookahead-list 0.4,0.5,0.6 \
+  --vgain-list 0.9,1.0,1.1
 ```
 
 出力先:

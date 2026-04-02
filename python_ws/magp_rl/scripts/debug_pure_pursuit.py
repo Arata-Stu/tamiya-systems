@@ -292,8 +292,15 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--episodes", type=int, default=1)
     parser.add_argument("--max-steps", type=int, default=3000)
-    parser.add_argument("--lookahead-list", type=str, default="0.6,0.8,1.0")
-    parser.add_argument("--vgain-list", type=str, default="0.8,1.0,1.2")
+    parser.add_argument("--lookahead-list", type=str, default="0.5")
+    parser.add_argument("--vgain-list", type=str, default="1.0")
+    parser.add_argument("--fixed-lookahead", type=float, default=0.5)
+    parser.add_argument("--fixed-vgain", type=float, default=1.0)
+    parser.add_argument(
+        "--sweep-lookahead-vgain",
+        action="store_true",
+        help="Enable lookahead/vgain sweep. Default behavior keeps them fixed.",
+    )
     parser.add_argument("--speed-mode-list", type=str, default="file_or_curvature")
     parser.add_argument("--lat-accel-list", type=str, default="2.0,2.5,3.0,3.5")
     parser.add_argument("--smoothing-list", type=str, default="9")
@@ -312,10 +319,14 @@ def main():
     lat_accel_list = _parse_float_list(args.lat_accel_list)
     smoothing_list = _parse_int_list(args.smoothing_list)
 
-    if not lookahead_list or not vgain_list:
-        raise ValueError("lookahead-list and vgain-list must not be empty.")
     if not speed_mode_list or not lat_accel_list or not smoothing_list:
         raise ValueError("speed-mode-list / lat-accel-list / smoothing-list must not be empty.")
+    if args.sweep_lookahead_vgain:
+        if not lookahead_list or not vgain_list:
+            raise ValueError("lookahead-list and vgain-list must not be empty.")
+        teacher_combos = list(itertools.product(lookahead_list, vgain_list))
+    else:
+        teacher_combos = [(float(args.fixed_lookahead), float(args.fixed_vgain))]
 
     run_ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = (
@@ -345,19 +356,24 @@ def main():
     print(f"Waypoints: {waypoints_path}")
     print(f"Vehicle Params: {vehicle_source}")
     print(f"Output Dir: {out_dir}")
+    if args.sweep_lookahead_vgain:
+        print(f"Lookahead/Vgain sweep: ON ({len(teacher_combos)} combos)")
+    else:
+        print(
+            "Lookahead/Vgain sweep: OFF "
+            f"(lookahead={teacher_combos[0][0]:.3f}, vgain={teacher_combos[0][1]:.3f})"
+        )
 
     records = []
     combo_id = 0
 
     speed_profile_combos = list(itertools.product(speed_mode_list, lat_accel_list, smoothing_list))
-    teacher_combos = list(itertools.product(lookahead_list, vgain_list))
-
     for speed_mode, lat_accel, smoothing in speed_profile_combos:
         cfg.env.reward.tal.speed_profile.mode = str(speed_mode)
         cfg.env.reward.tal.speed_profile.max_lateral_accel_mps2 = float(lat_accel)
         cfg.env.reward.tal.speed_profile.smoothing_window = int(smoothing)
-        cfg.env.reward.tal.lookahead_distance = float(lookahead_list[0])
-        cfg.env.reward.tal.vgain = float(vgain_list[0])
+        cfg.env.reward.tal.lookahead_distance = float(teacher_combos[0][0])
+        cfg.env.reward.tal.vgain = float(teacher_combos[0][1])
 
         env = _build_env_with_vehicle(
             cfg.env,
