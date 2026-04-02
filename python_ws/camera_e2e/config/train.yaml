@@ -8,9 +8,9 @@ ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
 dataset:
   sequence_length: 1
   input_channels: 3
-  image_height: 66
-  image_width: 200
-  crop_top_ratio: 0.35
+  image_height: 240
+  image_width: 320
+  crop_top_ratio: 0.0
   crop_bottom_ratio: 1.0
   pixel_mean: [0.5, 0.5, 0.5]
   pixel_std: [0.5, 0.5, 0.5]
@@ -31,4 +31,3 @@ model:
 hydra:
   run:
     dir: ./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
-

@@ -38,6 +38,7 @@ def main(args):
     print(f"Checkpoint Path: {checkpoint_path}")
     print(f"Output ONNX Path: {output_path}")
     print(f"Input Shape: (1, {args.channels}, {args.height}, {args.width})")
+    print(f"Input Normalization: {args.input_normalization}")
     print(f"Mean: {args.mean}")
     print(f"Std: {args.std}")
     print("---------------------")
@@ -62,15 +63,18 @@ def main(args):
         base_model.load_state_dict(checkpoint)
 
     base_model.eval()
-    model = NormalizedModel(base_model, mean=args.mean, std=args.std)
+    if args.input_normalization == "internal":
+        model = NormalizedModel(base_model, mean=args.mean, std=args.std)
+        dummy_input = torch.randint(
+            low=0,
+            high=255,
+            size=(1, args.channels, args.height, args.width),
+            dtype=torch.float32,
+        )
+    else:
+        model = base_model
+        dummy_input = torch.randn(1, args.channels, args.height, args.width, dtype=torch.float32)
     model.eval()
-
-    dummy_input = torch.randint(
-        low=0,
-        high=255,
-        size=(1, args.channels, args.height, args.width),
-        dtype=torch.float32,
-    )
 
     try:
         torch.onnx.export(
@@ -96,8 +100,8 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--checkpoint", type=str, required=True)
     parser.add_argument("-o", "--output", type=str, default=None)
     parser.add_argument("--channels", type=int, default=3)
-    parser.add_argument("--height", type=int, default=66)
-    parser.add_argument("--width", type=int, default=200)
+    parser.add_argument("--height", type=int, default=240)
+    parser.add_argument("--width", type=int, default=320)
     parser.add_argument("--num_outputs", type=int, default=2)
     parser.add_argument(
         "--mean",
@@ -112,6 +116,16 @@ if __name__ == "__main__":
         nargs=3,
         default=[0.5, 0.5, 0.5],
         help="Per-channel std used in training",
+    )
+    parser.add_argument(
+        "--input_normalization",
+        type=str,
+        choices=["external", "internal"],
+        default="external",
+        help=(
+            "external: input is already normalized (recommended with isaac_ros_dnn_image_encoder). "
+            "internal: model includes [0,255]->normalize step."
+        ),
     )
     args = parser.parse_args()
     main(args)

@@ -61,6 +61,11 @@ class ResizeImage:
             return sample
 
         is_nhwc = image.shape[-1] in (1, 3, 4)
+        current_h = image.shape[1] if is_nhwc else image.shape[2]
+        current_w = image.shape[2] if is_nhwc else image.shape[3]
+        if current_h == self.height and current_w == self.width:
+            return sample
+
         if is_nhwc:
             image = image.permute(0, 3, 1, 2)
 
@@ -117,4 +122,3 @@ class AddImageNoise:
         noise = torch.randn_like(image) * self.std
         sample["image"] = image + noise
         return sample
-

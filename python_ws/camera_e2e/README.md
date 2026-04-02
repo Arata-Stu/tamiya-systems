@@ -34,8 +34,9 @@ python3 2_train.py
 python3 export_onnx.py \
   --checkpoint ./ckpts/train/<date>/<time>/best_model.pth \
   --channels 3 \
-  --height 66 \
-  --width 200
+  --height 240 \
+  --width 320 \
+  --input_normalization external
 ```
 
 ## 4. Deploy (optional)
@@ -58,3 +59,16 @@ chmod +x 3_deploy_model.sh
 
 まずは `npy` で学習速度を優先し、必要なら別途 `png` をサンプル保存して確認する運用が実用的です。
 
+## 解像度方針 (ELP合わせ)
+
+デフォルトは ELP の典型入力に合わせて `320x240`（`W x H`）にしています。
+
+- `config/train.yaml`:
+  - `image_width: 320`
+  - `image_height: 240`
+  - `crop_top_ratio: 0.0`（画角スケール維持）
+
+## ROS2 推論時の正規化
+
+`isaac_ros_dnn_image_encoder` 側で `image_mean=[0.5,0.5,0.5]` / `image_stddev=[0.5,0.5,0.5]` を設定する場合、  
+`export_onnx.py` は `--input_normalization external`（デフォルト）でエクスポートしてください。

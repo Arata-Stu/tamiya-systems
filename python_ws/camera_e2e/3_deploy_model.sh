@@ -19,8 +19,8 @@ PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
 CHECKPOINT_BASE_DIR="${SCRIPT_DIR}/ckpts"
 
 CHANNELS="3"
-HEIGHT="66"
-WIDTH="200"
+HEIGHT="240"
+WIDTH="320"
 
 print_parameters() {
   echo "==================================================="
@@ -129,7 +129,8 @@ if [[ -z "$INPUT_ONNX_PATH" ]]; then
     --checkpoint "$SELECTED_PTH" \
     --channels "$CHANNELS" \
     --height "$HEIGHT" \
-    --width "$WIDTH"
+    --width "$WIDTH" \
+    --input_normalization external
 
   if [[ $? -ne 0 ]]; then
     echo "Error: ONNX export failed."
