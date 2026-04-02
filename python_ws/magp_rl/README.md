@@ -120,7 +120,8 @@ python3 train.py agent=sac \
   env.track.name=BrandsHatch \
   env.reward.tal.enabled=true \
   env.reward.tal.coef=0.1 \
-  env.reward.tal.lookahead_distance=0.8
+  env.reward.tal.lookahead_distance=0.5 \
+  env.reward.tal.lookahead_gain=0.3
 ```
 
 ### 3.3.1 TAL係数を徐々に弱める（スケジューラ）
@@ -164,6 +165,11 @@ python3 train.py agent=sac \
 - `file`: CSV速度列を使う（無い場合は `default_speed_mps`）
 - `curvature`: 常に曲率ベース速度を使う
 - `file_or_curvature`: CSV速度列があれば使い、無ければ曲率ベース速度を使う
+
+Pure Pursuit teacher の lookahead は以下で計算されます。
+
+- `lookahead = lookahead_distance + lookahead_gain * speed[m/s]`
+- デフォルト: `lookahead_distance=0.5`, `lookahead_gain=0.3`
 
 ### 3.3.3 学習前デバッグ（Pure Pursuit スイープ + 可視化）
 

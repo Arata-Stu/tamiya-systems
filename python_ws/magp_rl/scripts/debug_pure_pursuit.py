@@ -165,7 +165,7 @@ def _make_start_pose_from_waypoints(waypoints_xy: np.ndarray) -> np.ndarray:
 
 def _teacher_action_normalized(env: F110IndependentVecEnv):
     state = env.sim_state["state"][:, 0, :]
-    action = env.pp_teacher.act(state[:, 0], state[:, 1], state[:, 4])
+    action = env.pp_teacher.act(state[:, 0], state[:, 1], state[:, 4], state[:, 3])
     action = action.at[:, 0].set(jnp.clip(action[:, 0], env.min_steer, env.max_steer))
     action = action.at[:, 1].set(jnp.clip(action[:, 1], env.min_speed, env.max_speed))
     return env._to_normalized_action(action)
@@ -389,6 +389,7 @@ def main():
                 env.waypoints_s,
                 env.waypoints_speed,
                 lookahead_distance=float(lookahead),
+                lookahead_gain=float(cfg.env.reward.tal.get("lookahead_gain", 0.3)),
                 wheelbase=wheelbase,
                 vgain=float(vgain),
             )
@@ -502,6 +503,7 @@ def main():
                 env.waypoints_s,
                 env.waypoints_speed,
                 lookahead_distance=float(rec["lookahead_distance"]),
+                lookahead_gain=float(cfg.env.reward.tal.get("lookahead_gain", 0.3)),
                 wheelbase=float(cfg.env.reward.tal.wheelbase),
                 vgain=float(rec["vgain"]),
             )

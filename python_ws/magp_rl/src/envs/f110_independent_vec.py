@@ -112,7 +112,8 @@ class F110IndependentVecEnv:
         self.tal_steer_weight = float(tal_cfg.get("steer_weight", 1.0))
         self.tal_speed_weight = float(tal_cfg.get("speed_weight", 1.0))
 
-        lookahead = float(tal_cfg.get("lookahead_distance", 0.8))
+        lookahead = float(tal_cfg.get("lookahead_distance", 0.5))
+        lookahead_gain = float(tal_cfg.get("lookahead_gain", 0.3))
         wheelbase = float(tal_cfg.get("wheelbase", 0.17145 + 0.15875))
         vgain = float(tal_cfg.get("vgain", 1.0))
         self.pp_teacher = PurePursuitTeacher(
@@ -120,6 +121,7 @@ class F110IndependentVecEnv:
             self.waypoints_s,
             self.waypoints_speed,
             lookahead_distance=lookahead,
+            lookahead_gain=lookahead_gain,
             wheelbase=wheelbase,
             vgain=vgain,
         )
@@ -185,7 +187,7 @@ class F110IndependentVecEnv:
             return jnp.zeros((action_normalized.shape[0],), dtype=jnp.float32)
 
         state = self.sim_state["state"][:, 0, :]
-        teacher_action = self.pp_teacher.act(state[:, 0], state[:, 1], state[:, 4])
+        teacher_action = self.pp_teacher.act(state[:, 0], state[:, 1], state[:, 4], state[:, 3])
         teacher_action = teacher_action.at[:, 0].set(
             jnp.clip(teacher_action[:, 0], self.min_steer, self.max_steer)
         )

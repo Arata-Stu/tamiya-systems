@@ -58,7 +58,8 @@ env:
       coef: 0.1
       steer_weight: 1.0
       speed_weight: 0.25
-      lookahead_distance: 0.8
+      lookahead_distance: 0.5
+      lookahead_gain: 0.3 # lookahead = lookahead_distance + lookahead_gain * speed[m/s]
       wheelbase: 0.3302
       vgain: 1.0
       default_speed_mps: 2.0
