@@ -14,14 +14,14 @@
     <arg name="triton_input_tensor_names" default="input_scan" />
     <arg name="triton_output_tensor_names" default="output_control" />
     
-    <let name="input_tensor_topic" default="$(var scan_tensor_topic)" />
-    <let name="triton_output_topic" default="/triton_lidarnet/output_tensor" />
+    <let name="input_tensor_topic" value="$(var scan_tensor_topic)" />
+    <let name="triton_output_topic" value="/triton_lidarnet/output_tensor" />
 
     <arg name="output_control_topic_raw" default="/autonomous/cmd_drive_raw" />
     <arg name="output_filtered_control_topic" default="/autonomous/cmd_drive"/>
 
-    <let name="decoder_output_target" default="$(var output_control_topic_raw)" if="$(var control_filter)"/>
-    <let name="decoder_output_target" default="$(var output_filtered_control_topic)" unless="$(var control_filter)"/>
+    <let name="decoder_output_target" value="$(var output_control_topic_raw)" if="$(var control_filter)"/>
+    <let name="decoder_output_target" value="$(var output_filtered_control_topic)" unless="$(var control_filter)"/>
 
     <load_composable_node target="$(var container_name)">
         <composable_node
