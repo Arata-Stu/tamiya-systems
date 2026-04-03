@@ -16,6 +16,10 @@
     
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
+    <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
+    <arg name="ftg_param" default="$(find-pkg-share ftg_controller)/config/ftg_controller.param.yaml" />
+    <arg name="ftg_scan_topic" default="/scan" />
+    <arg name="ftg_velocity_topic" default="/current_velocity" />
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
@@ -59,6 +63,18 @@
         <arg name="image_height" value="$(var image_height)"/>
         <arg name="image_fps" value="$(var image_fps)"/>
     </include>
+
+    <!-- FTG Controller (Composable) -->
+    <group if="$(eval var('use_ftg') and var('use_lidar'))">
+        <include file="$(find-pkg-share ftg_controller)/launch/ftg_controller_component.launch.xml">
+            <arg name="ftg_controller_param" value="$(var ftg_param)"/>
+            <arg name="scan_topic" value="$(var ftg_scan_topic)"/>
+            <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="velocity_topic" value="$(var ftg_velocity_topic)"/>
+            <arg name="container_name" value="$(var lidar_container_name)"/>
+            <arg name="create_container" value="false"/>
+        </include>
+    </group>
 
     <!-- Rosbag2 Recorder Node -->
     <group if="$(var record)">

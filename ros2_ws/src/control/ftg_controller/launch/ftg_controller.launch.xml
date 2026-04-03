@@ -1,0 +1,17 @@
+<launch>
+  <arg name="ftg_controller_param"
+       default="$(find-pkg-share ftg_controller)/config/ftg_controller.param.yaml"/>
+  <arg name="scan_topic" default="/scan"/>
+  <arg name="drive_topic" default="/autonomous/cmd_drive"/>
+  <arg name="velocity_topic" default="/current_velocity"/>
+
+  <node pkg="ftg_controller"
+        exec="ftg_controller_node"
+        name="ftg_controller_node"
+        output="screen">
+    <param from="$(var ftg_controller_param)"/>
+    <remap from="scan" to="$(var scan_topic)"/>
+    <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
+    <remap from="current_velocity" to="$(var velocity_topic)"/>
+  </node>
+</launch>
