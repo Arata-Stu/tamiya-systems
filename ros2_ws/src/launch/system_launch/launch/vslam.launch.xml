@@ -6,6 +6,7 @@
     <arg name="vslam_param" default="$(find-pkg-share system_launch)/config/localization/vslam.param.yaml" />
     <arg name="save_map_path" default="" />
     <arg name="load_map_path" default="" />
+    <arg name="enable_localization_and_mapping" default="true" />
 
     
     <load_composable_node target="$(var camera_container_name)">
@@ -33,7 +34,8 @@
             <param from ="$(var vslam_param)"/>
             <param name="save_map_folder_path" value="$(var save_map_path)"/>
             <param name="load_map_folder_path" value="$(var load_map_path)"/>
-            
+            <param name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
+
             <remap from="/visual_slam/image_0" to="/camera/left/image_rect_mono"/>
             <remap from="/visual_slam/camera_info_0" to="/camera/left/camera_info"/>
             <remap from="/visual_slam/image_1" to="/camera/right/image_rect_mono"/>

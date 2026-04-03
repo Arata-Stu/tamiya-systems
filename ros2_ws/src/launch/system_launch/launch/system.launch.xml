@@ -21,6 +21,7 @@
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
     <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
+    <arg name="enable_localization_and_mapping" default="true" />
     
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
@@ -74,6 +75,7 @@
             <arg name="image_width" value="$(var image_width)"/>
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="camera_container_name" value="$(var camera_container_name)"/>
+            <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
         </include>
     </group>
 

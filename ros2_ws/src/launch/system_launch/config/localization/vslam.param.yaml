@@ -197,9 +197,9 @@
     # ============================================
     # Debug/Visualization Parameters
     # ============================================
-    enable_slam_visualization: true
-    enable_observations_view: true
-    enable_landmarks_view: true
+    enable_slam_visualization: false
+    enable_observations_view: false
+    enable_landmarks_view: false
     path_max_size: 1024
     verbosity: 0
     enable_debug_mode: false

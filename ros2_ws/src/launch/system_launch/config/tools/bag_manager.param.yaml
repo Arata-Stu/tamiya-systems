@@ -9,10 +9,14 @@
       - /camera/left/camera_info
       - /camera/right/image_raw
       - /camera/right/camera_info
-      - /camera/left/image_rect_mono
-      - /camera/right/image_rect_mono
+      # - /camera/left/image_rect_mono
+      # - /camera/right/image_rect_mono
       - /jetracer/cmd_drive
+      - /autonomous/cmd_drive
       - /joy
       - /tf
       - /tf_static
-      # - /odom
+      - /robot_description
+      # - /visual_slam/tracking/slam_path
+      # - /visual_slam/tracking/odometry
+      # - /visual_slam/status
