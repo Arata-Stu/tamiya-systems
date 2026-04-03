@@ -13,7 +13,7 @@
     # --- モード切替ボタン ---
     joy_button_idx:       3    # △ボタンで手動モード
     ack_button_idx:       0    # □ボタンで自律モード
-    localization_trigger_button_idx: 8   # shareボタンでlocalizationトリガ
+    localization_trigger_button_idx: 10   # shareボタンでlocalizationトリガ
 
     # --- メモボタン ---
     good_button_idx:      2    # ○ボタンでgood 
