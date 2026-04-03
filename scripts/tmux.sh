@@ -7,7 +7,7 @@ ROS_WS_PATH="${ISAAC_ROS_WS}"                       # ROS 2ワークスペース
 SETUP_SCRIPT="source /workspaces/install/setup.bash" # setup.bashへのフルパスを指定
 
 # --- 実行するコマンド群 ---
-CMD_BASE="ros2 launch system_launch system.launch.xml record:=false vslam:=false localization:=false use_camera:=false use_lidar:=false"
+CMD_BASE="ros2 launch system_launch system.launch.xml record:=false vslam:=true localization:=false use_camera:=true use_lidar:=true"
 CMD_MONITOR="ros2 launch system_launch monitor.launch.xml"
 CMD_JTOP="jtop"
 CMD_BAG="ros2 launch bag_manager_py bag_manager_node.launch.xml"
