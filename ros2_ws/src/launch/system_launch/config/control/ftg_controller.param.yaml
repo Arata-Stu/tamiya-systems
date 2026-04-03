@@ -1,0 +1,58 @@
+/**:
+  ros__parameters:
+    # true のとき、操舵角ベースの速度切替を無効化し mapping_speed を固定で使う。
+    mapping: true
+    # true のとき、RViz用マーカーを publish する。
+    # /scan_proc/markers, /best_gap/markers, /best_points/marker
+    debug: false
+
+    # FTG前処理の前に、LaserScan配列の両端から削る点数。
+    # 側方・後方の点で操舵が不安定になる場合は増やす。
+    range_offset: 120
+    # LiDAR平滑化の移動平均ウィンドウサイズ（valid畳み込み）。
+    # 3,5,7 など奇数推奨。大きいほど滑らかだが反応は遅くなる。
+    preprocess_conv_size: 3
+    # LiDAR距離の上限クリップ値 [m]。
+    max_lidar_dist: 8.0
+
+    # 距離が急増するエッジ周辺で上書きする点数（安全マージン）。
+    # 大きいほど保守的になり、コーナーで内側を突きにくい。
+    safety_radius: 3
+    # 障害物エッジ判定に使う距離ジャンプ閾値 [m]。
+    jump_threshold: 0.5
+
+    # true: 速度に応じて free-space 判定半径を動的変更。
+    # false: fixed_radius を常に使用。
+    use_dynamic_radius: false
+    # use_dynamic_radius=false のときに使う判定半径 [m]。
+    fixed_radius: 1.0
+    # 動的判定半径の上限 [m]。
+    max_gap_radius: 5.0
+    # 車両トレッド幅 [m]。動的半径計算に使用。
+    track_width: 0.5
+    # 想定する最大車速 [m/s]。
+    # 速度上限クランプと動的半径の正規化に使用。
+    max_speed: 1.0
+    # true: /current_velocity を購読して動的半径に使用。
+    # false: 直前に出した指令速度を使用。
+    use_velocity_topic: false
+
+    # 操舵角の絶対値クランプ [rad]。
+    steering_limit: 0.4
+    # 速度段（直線/緩いコーナー）の切替に使う操舵角閾値 [rad]。
+    straights_steering_angle: 0.1745329252   # pi/18
+    # 強いコーナー減速に入る操舵角閾値 [rad]。
+    mild_curve_angle: 0.5235987756           # pi/6
+    # 最も高速な直進段に入る操舵角閾値 [rad]。
+    ultra_straights_angle: 0.0523598776      # pi/60
+
+    # abs(steer) > mild_curve_angle のときの速度 [m/s]。
+    corners_speed: 0.6
+    # straights_steering_angle < abs(steer) <= mild_curve_angle の速度 [m/s]。
+    mild_corners_speed: 0.84
+    # ultra_straights_angle < abs(steer) <= straights_steering_angle の速度 [m/s]。
+    straights_speed: 1.02
+    # abs(steer) <= ultra_straights_angle の速度 [m/s]。
+    ultra_straights_speed: 1.2
+    # mapping=true のときにのみ使う固定速度 [m/s]。
+    mapping_speed: 0.2
