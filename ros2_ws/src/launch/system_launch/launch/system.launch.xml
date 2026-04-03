@@ -69,7 +69,6 @@
             <arg name="ftg_controller_param" value="$(var ftg_param)"/>
             <arg name="scan_topic" value="$(var ftg_scan_topic)"/>
             <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
-            <arg name="velocity_topic" value="$(var ftg_velocity_topic)"/>
             <arg name="container_name" value="$(var lidar_container_name)"/>
             <arg name="create_container" value="false"/>
         </include>
