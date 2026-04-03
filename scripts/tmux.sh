@@ -7,10 +7,8 @@ ROS_WS_PATH="${ISAAC_ROS_WS}"                       # ROS 2ワークスペース
 SETUP_SCRIPT="source /workspaces/install/setup.bash" # setup.bashへのフルパスを指定
 
 # --- 実行するコマンド群 ---
-CMD_BASE="ros2 launch system_launch system.launch.xml record:=false vslam:=true localization:=false use_camera:=true use_lidar:=true"
-CMD_MONITOR="ros2 launch system_launch monitor.launch.xml"
-CMD_JTOP="jtop"
-CMD_BAG="ros2 launch bag_manager_py bag_manager_node.launch.xml"
+CMD_BASE="ros2 launch system_launch system.launch.xml record:=false vslam:=true localization:=false use_camera:=true use_lidar:=true lidar_model:=t_mini_plus"
+CMD_MONITOR="bash /scripts/monitor.sh"
 
 # --- セッション名の決定 ---
 if [ -n "$1" ]; then
@@ -27,28 +25,25 @@ if [ $? -ne 0 ]; then
   tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_NAME"
 
   # ==========================================
-  # ウィンドウ1: "main" (ROSコマンド用・4分割)
+  # ウィンドウ1: "main" (ROSコマンド用・3分割: 上2つ、下1つ)
   # ==========================================
-  # 1. 縦に分割（上: pane 0, 下: pane 1）
+  # 1. まず画面を上下に分割（上: pane 0, 下: pane 1）
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_NAME".0
 
-  # 2. 上ペインを横に分割（左上: pane 0, 右上: pane 2）
+  # 2. 上のペインを左右に分割（左上: pane 0, 右上: pane 1）
+  #    ※この分割により、元々下にあったペインの番号は pane 2 に変わります。
   tmux split-window -h -t "$SESSION_NAME":"$WINDOW_NAME".0
 
-  # 3. 下ペインを横に分割（左下: pane 1, 右下: pane 3）
-  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_NAME".1
-
   # 各ペインで初期化コマンドを実行（環境変数設定・setup読み込み・クリア）
-  for pane in 0 1 2 3; do
+  for pane in 0 1 2; do
     tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".$pane \
       "export ROS_LOCALHOST_ONLY=0 && $SETUP_SCRIPT && clear" C-m
   done
 
   # 各ペインへ個別コマンドを送信 (Enter待ち状態)
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".0 "$CMD_BASE"         # 左上
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".2 "$CMD_BAG"          # 右上
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".1 "$CMD_MONITOR"      # 左下
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".3 "$CMD_JTOP"         # 右下
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".1 "$CMD_BAG"          # 右上（※必要に応じて別のコマンドに変更してください）
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_NAME".2 "$CMD_MONITOR"      # 下段全体
 
   # ==========================================
   # ウィンドウ2: "data" (データ確認用・2分割)
