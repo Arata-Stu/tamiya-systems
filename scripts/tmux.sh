@@ -28,7 +28,7 @@ if [ $? -ne 0 ]; then
   # ウィンドウ1: "main" (ROSコマンド用・2分割)
   # ==========================================
   # 画面を左右に2分割
-  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_NAME".0
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_NAME".0
 
   # 各ペインで初期化コマンドを実行（環境変数設定・setup読み込み・クリア）
   for pane in 0 1; do
@@ -47,7 +47,7 @@ if [ $? -ne 0 ]; then
   tmux new-window -t "$SESSION_NAME" -n "data"
 
   # 画面を縦に2分割（垂直線で左右に分割。上下にしたい場合は -v に変更）
-  tmux split-window -h -t "$SESSION_NAME":"data"
+  tmux split-window -v -t "$SESSION_NAME":"data"
 
   # 画面1 (pane 0) で cd /record/ を実行 (即時実行のため C-m を付与)
   tmux send-keys -t "$SESSION_NAME":"data".0 "cd /workspaces/record && clear" C-m
