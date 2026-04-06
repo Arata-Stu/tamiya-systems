@@ -64,7 +64,7 @@
     </include>
 
     <!-- FTG Controller (Composable) -->
-    <group if="$(eval var('use_ftg') and var('use_lidar'))">
+    <group if="$(eval '$(var use_ftg) and $(var use_lidar)')">
         <include file="$(find-pkg-share ftg_controller)/launch/ftg_controller_component.launch.xml">
             <arg name="ftg_controller_param" value="$(var ftg_param)"/>
             <arg name="scan_topic" value="$(var ftg_scan_topic)"/>
