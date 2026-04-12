@@ -7,7 +7,7 @@ ROS_WS_PATH="${ISAAC_ROS_WS}"                       # ROS 2ワークスペース
 SETUP_SCRIPT="source /workspaces/install/setup.bash" # setup.bashへのフルパスを指定
 
 # --- 実行するコマンド群 ---
-CMD_BASE="ros2 launch system_launch system.launch.xml record:=false vslam:=true localization:=false use_camera:=true use_lidar:=true lidar_model:=t_mini_plus use_ftg:=true"  # 左ペインで実行するROS 2起動コマンド
+CMD_BASE="ros2 launch system_launch system.launch.xml vslam:=true use_camera:=true use_lidar:=true use_ftg:=true localization:=false record:=false"  # 左ペインで実行するROS 2起動コマンド
 CMD_MONITOR="bash /scripts/monitor.sh"
 
 # --- セッション名の決定 ---

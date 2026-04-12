@@ -4,7 +4,7 @@
     <arg name="localization" default="false" description="run localization node"/>
     
     <arg name="use_lidar" default="true" description="use lidar"/>
-    <arg name="lidar_model" default="hokuyo" />
+    <arg name="lidar_model" default="t_mini_plus" />
     <arg name="lidar_container_name" default="lidar_container" />
 
     <arg name="use_camera" default="true" description="use camera"/>
@@ -64,7 +64,7 @@
     </include>
 
     <!-- FTG Controller (Composable) -->
-    <group if="$(eval '$(var use_ftg) and $(var use_lidar)')">
+    <group if="$(var use_ftg)">
         <include file="$(find-pkg-share ftg_controller)/launch/ftg_controller_component.launch.xml">
             <arg name="ftg_controller_param" value="$(var ftg_param)"/>
             <arg name="scan_topic" value="$(var ftg_scan_topic)"/>
