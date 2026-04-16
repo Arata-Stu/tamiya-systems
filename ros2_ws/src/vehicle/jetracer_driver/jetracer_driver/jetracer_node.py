@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
@@ -63,9 +64,21 @@ class JetRacerDriverNode(Node):
 
     def _on_param_update(self, params):
         """外部からのパラメータ変更をCoreに即時反映する。"""
+        result = SetParametersResult(successful=True)
         for p in params:
+            old_val = self.get_parameter(p.name).value if self.has_parameter(p.name) else None
             self.core.update_param(p.name, p.value)
-        return rclpy.parameter.ParameterValue()
+            if old_val != p.value:
+                if old_val is None:
+                    self.get_logger().info(
+                        f"Parameter set: {p.name} = {self._format_param_value(p.value)}"
+                    )
+                else:
+                    self.get_logger().info(
+                        f"Parameter updated: {p.name}: "
+                        f"{self._format_param_value(old_val)} -> {self._format_param_value(p.value)}"
+                    )
+        return result
 
     def _cmd_cb(self, msg: AckermannDriveStamped):
         """受信したAckermann指令をCoreへ渡す。"""
@@ -98,9 +111,24 @@ class JetRacerDriverNode(Node):
 
     def _shift_offset(self, name: str, direction: int):
         """オフセット値をステップ分増減させてパラメータを更新する。"""
-        step = self.get_parameter("offset_step").value
-        new_val = self.get_parameter(name).value + (step * direction)
-        self.set_parameters([Parameter(name, Parameter.Type.DOUBLE, new_val)])
+        step = float(self.get_parameter("offset_step").value)
+        current_val = float(self.get_parameter(name).value)
+        new_val = current_val + (step * direction)
+
+        results = self.set_parameters([Parameter(name, Parameter.Type.DOUBLE, new_val)])
+        if not results or not results[0].successful:
+            reason = results[0].reason if results else "unknown reason"
+            self.get_logger().error(
+                f"Failed to update {name}: "
+                f"{self._format_param_value(current_val)} -> "
+                f"{self._format_param_value(new_val)} ({reason})"
+            )
+
+    @staticmethod
+    def _format_param_value(value):
+        if isinstance(value, float):
+            return f"{value:.4f}"
+        return str(value)
 
 def main(args=None):
     rclpy.init(args=args)
