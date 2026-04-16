@@ -5,7 +5,7 @@
       name: footprint_filter
       type: laser_filters/LaserScanFootprintFilter
       params:
-        inscribed_radius: 0.15  # 15cm
+        inscribed_radius: 0.05  # 50 mm
 
     # フィルター2: メディアンフィルター (平滑化)
     filter2:
@@ -45,15 +45,10 @@
         neighbors: 10  # 高速走行を考慮し、近傍点は少なめに設定
         window: 1      # 0より1の方が安定することが多い
 
-    # フィルター5: 強度による最終選別 (Intensity)
+    # フィルター5: スキャン角のクロップ
     filter5:
-      name: intensity_clipper
-      type: laser_filters/LaserScanIntensityFilter
+      name: angle_crop_filter
+      type: laser_filters/LaserScanAngularBoundsFilter
       params:
-        # shadow_marker が印をつけた点 (強度0) を除去するため、
-        # 100未満の点はすべて削除
-        lower_threshold: 100.0
-        # 反射テープやダクトの異常反射 (高強度) を除去するため、
-        # 8000以上の点はすべて削除
-        upper_threshold: 8000.0
-        disp_histogram: 0
+        lower_angle: -2.343   # -135°（rad）
+        upper_angle:  2.343   #  135°（rad）

@@ -45,15 +45,9 @@
         neighbors: 10  # 高速走行を考慮し、近傍点は少なめに設定
         window: 1      # 0より1の方が安定することが多い
 
-    # フィルター5: 強度による最終選別 (Intensity)
     filter5:
-      name: intensity_clipper
-      type: laser_filters/LaserScanIntensityFilter
+      name: angle_crop_filter
+      type: laser_filters/LaserScanAngularBoundsFilter
       params:
-        # shadow_marker が印をつけた点 (強度0) を除去するため、
-        # 100未満の点はすべて削除
-        lower_threshold: 100.0
-        # 反射テープやダクトの異常反射 (高強度) を除去するため、
-        # 8000以上の点はすべて削除
-        upper_threshold: 8000.0
-        disp_histogram: 0
+        lower_angle: -2.35619   # -135°（rad）
+        upper_angle:  2.35619   #  135°（rad）

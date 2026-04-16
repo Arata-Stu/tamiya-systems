@@ -1,9 +1,13 @@
-/**:
+ydlidar_ros2_driver_node:
   ros__parameters:
     port: /dev/ttyUSB0
     frame_id: laser
+    reversion: false
+    inverted: false
+    rotate_angle: 1.5707963
     
     # ソフトウェア的にカットするスキャン角(Field of View) [radian]
-    # -135°～135° 270°
-    angle_min: -2.343
-    angle_max:  2.343
+    # angle_min: -2.343
+    # angle_max:  2.343
+    angle_min: -3.14159
+    angle_max:  3.14159
