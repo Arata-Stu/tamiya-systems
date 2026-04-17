@@ -5,6 +5,9 @@
     steer_scale:          1.0
     timer_hz:             100.0
     joy_timeout_sec:      0.05
+    enable_emergency_override: true
+    emergency_signal_timeout_sec: 0.3
+    emergency_cmd_timeout_sec: 0.3
 
     # --- スティック設定 ---
     axis_speed_idx:       1    # 左スティック上下（↑:+前進, ↓:-後退）

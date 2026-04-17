@@ -1,5 +1,7 @@
 #include "teleop_manager/teleop_manager_node.hpp"
 
+#include <algorithm>
+
 using std::placeholders::_1;
 
 namespace {
@@ -27,6 +29,13 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   joy_timeout_sec_ = this->declare_parameter("joy_timeout_sec", 0.5);
   double update_rate_hz = this->declare_parameter("timer_hz", 50.0);
 
+  enable_emergency_override_ =
+      this->declare_parameter("enable_emergency_override", true);
+  emergency_signal_timeout_sec_ =
+      std::max(0.0, this->declare_parameter("emergency_signal_timeout_sec", 0.3));
+  emergency_cmd_timeout_sec_ =
+      std::max(0.0, this->declare_parameter("emergency_cmd_timeout_sec", 0.3));
+
   core_ = std::make_unique<TeleopManagerCore>(config);
 
   // Subscribers
@@ -36,6 +45,13 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
       this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
           "autonomous/cmd_drive", 10,
           std::bind(&TeleopManagerNode::ack_callback, this, _1));
+  emergency_ack_sub_ =
+      this->create_subscription<ackermann_msgs::msg::AckermannDriveStamped>(
+          "emergency/cmd_drive", 10,
+          std::bind(&TeleopManagerNode::emergency_ack_callback, this, _1));
+  emergency_signal_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "emergency/signal", 10,
+      std::bind(&TeleopManagerNode::emergency_signal_callback, this, _1));
 
   // Publishers
   drive_pub_ =
@@ -59,11 +75,19 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
 
   // Timer Initialization
   auto timer_period = std::chrono::duration<double>(1.0 / update_rate_hz);
-  timer_ = this->create_wall_timer(
-      timer_period,
-      std::bind(&TeleopManagerNode::timer_callback, this));
+  timer_ =
+      this->create_wall_timer(timer_period,
+                              std::bind(&TeleopManagerNode::timer_callback, this));
 
   last_joy_msg_time_ = this->now();
+  last_emergency_signal_time_ = this->now();
+  last_emergency_msg_time_ = this->now();
+
+  RCLCPP_INFO(this->get_logger(),
+              "Emergency override in teleop_manager: %s "
+              "(signal timeout=%.2f s, cmd timeout=%.2f s)",
+              enable_emergency_override_ ? "enabled" : "disabled",
+              emergency_signal_timeout_sec_, emergency_cmd_timeout_sec_);
 
   // 動的パラメータ変更のコールバックを登録
   param_callback_handle_ = this->add_on_set_parameters_callback(
@@ -72,10 +96,10 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
         result.successful = true;
 
         for (const auto &param : parameters) {
-          if (param.get_name() == "update_rate_hz") {
+          if (param.get_name() == "update_rate_hz" ||
+              param.get_name() == "timer_hz") {
             double new_hz = param.as_double();
             if (new_hz > 0.0) {
-              // 既存のタイマーをキャンセルして新しい周期で再作成
               if (this->timer_) {
                 this->timer_->cancel();
               }
@@ -83,11 +107,18 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
               this->timer_ = this->create_wall_timer(
                   new_period,
                   std::bind(&TeleopManagerNode::timer_callback, this));
-              RCLCPP_INFO(this->get_logger(), "Update rate changed to %.2f Hz", new_hz);
+              RCLCPP_INFO(this->get_logger(), "Update rate changed to %.2f Hz",
+                          new_hz);
             } else {
               result.successful = false;
-              result.reason = "update_rate_hz must be greater than 0.0";
+              result.reason = "timer_hz must be greater than 0.0";
             }
+          } else if (param.get_name() == "enable_emergency_override") {
+            this->enable_emergency_override_ = param.as_bool();
+          } else if (param.get_name() == "emergency_signal_timeout_sec") {
+            this->emergency_signal_timeout_sec_ = std::max(0.0, param.as_double());
+          } else if (param.get_name() == "emergency_cmd_timeout_sec") {
+            this->emergency_cmd_timeout_sec_ = std::max(0.0, param.as_double());
           }
         }
         return result;
@@ -97,8 +128,6 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
 void TeleopManagerNode::joy_callback(
     const sensor_msgs::msg::Joy::SharedPtr msg) {
   last_joy_msg_time_ = this->now();
-  // sensor_msgs::msg::Joy buttons are int32, explicitly cast or construct
-  // vector if needed. std::vector<int> expected by core.
   std::vector<int> buttons;
   buttons.reserve(msg->buttons.size());
   for (auto b : msg->buttons) {
@@ -110,6 +139,45 @@ void TeleopManagerNode::joy_callback(
 void TeleopManagerNode::ack_callback(
     const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg) {
   last_autonomy_msg_ = *msg;
+}
+
+void TeleopManagerNode::emergency_ack_callback(
+    const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg) {
+  last_emergency_msg_ = *msg;
+  last_emergency_msg_time_ = this->now();
+  has_emergency_msg_ = true;
+}
+
+void TeleopManagerNode::emergency_signal_callback(
+    const std_msgs::msg::Bool::SharedPtr msg) {
+  emergency_signal_active_ = msg->data;
+  last_emergency_signal_time_ = this->now();
+}
+
+bool TeleopManagerNode::IsEmergencySignalActive() const {
+  if (!enable_emergency_override_ || !emergency_signal_active_) {
+    return false;
+  }
+
+  if (emergency_signal_timeout_sec_ <= 0.0) {
+    return true;
+  }
+
+  return (this->now() - last_emergency_signal_time_).seconds() <=
+         emergency_signal_timeout_sec_;
+}
+
+bool TeleopManagerNode::HasFreshEmergencyCommand() const {
+  if (!has_emergency_msg_) {
+    return false;
+  }
+
+  if (emergency_cmd_timeout_sec_ <= 0.0) {
+    return true;
+  }
+
+  return (this->now() - last_emergency_msg_time_).seconds() <=
+         emergency_cmd_timeout_sec_;
 }
 
 void TeleopManagerNode::timer_callback() {
@@ -127,6 +195,23 @@ void TeleopManagerNode::timer_callback() {
   drive_msg.drive.acceleration = 0.0;
   drive_msg.drive.steering_angle = cmd.steering_angle;
   drive_msg.drive.steering_angle_velocity = cmd.steering_velocity;
+
+  if (IsEmergencySignalActive()) {
+    if (HasFreshEmergencyCommand()) {
+      drive_msg.drive = last_emergency_msg_.drive;
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                           "Emergency override applied in teleop_manager.");
+    } else {
+      drive_msg.drive.speed = 0.0;
+      drive_msg.drive.acceleration = 0.0;
+      drive_msg.drive.steering_angle = 0.0;
+      drive_msg.drive.steering_angle_velocity = 0.0;
+      RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 1000,
+          "Emergency signal active, but emergency command is stale. "
+          "Publishing forced stop.");
+    }
+  }
 
   drive_pub_->publish(drive_msg);
 

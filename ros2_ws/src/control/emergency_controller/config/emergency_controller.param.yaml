@@ -1,0 +1,34 @@
+/**:
+  ros__parameters:
+    # 前方判定の半角 [deg]。この範囲内の最短距離で危険判定する。
+    front_angle_deg: 55.0
+    # 左右の逃げ方向を決める参照範囲の半角 [deg]。
+    side_angle_deg: 75.0
+
+    # 緊急停止に入る閾値 [m]。
+    stop_distance_m: 0.35
+    # 減速オーバライドに入る閾値 [m]。
+    slow_distance_m: 0.80
+
+    # 減速オーバライド時の速度上限 [m/s]。
+    slow_speed_mps: 0.40
+    # 緊急停止時の速度 [m/s]。
+    stop_speed_mps: 0.0
+
+    # 緊急オーバライドで許容する最大操舵角 [rad]。
+    max_override_steer: 0.40
+    # 緊急停止時、回避操舵が小さすぎる場合の最小操舵角 [rad]。
+    min_turn_steer: 0.15
+    # 左右クリアランス差を操舵バイアスに変換するゲイン。
+    steer_bias_gain: 1.20
+
+    # LiDAR値の上限クリップ [m]。
+    max_considered_range_m: 8.0
+
+    # scan更新が止まったとみなす時間 [s]。
+    scan_timeout_sec: 0.25
+    # true のとき、scan timeoutで緊急停止オーバライドを有効化。
+    stop_on_scan_timeout: true
+
+    # true のとき、override時のみ /emergency/cmd_drive を publish。
+    publish_override_only: false

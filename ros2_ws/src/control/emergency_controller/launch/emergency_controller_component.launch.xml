@@ -1,0 +1,30 @@
+<launch>
+  <arg name="emergency_controller_param"
+       default="$(find-pkg-share emergency_controller)/config/emergency_controller.param.yaml"/>
+  <arg name="scan_topic" default="/scan"/>
+  <arg name="input_drive_topic" default="/autonomous/cmd_drive"/>
+  <arg name="output_drive_topic" default="/emergency/cmd_drive"/>
+  <arg name="signal_topic" default="/emergency/signal"/>
+
+  <arg name="container_name" default="lidar_container"/>
+  <arg name="create_container" default="false"/>
+
+  <group if="$(var create_container)">
+    <node pkg="rclcpp_components"
+          exec="component_container"
+          name="$(var container_name)"
+          output="screen"/>
+  </group>
+
+  <load_composable_node target="$(var container_name)">
+    <composable_node pkg="emergency_controller"
+                     plugin="emergency_controller::EmergencyControllerComponent"
+                     name="emergency_controller_node">
+      <param from="$(var emergency_controller_param)"/>
+      <remap from="scan" to="$(var scan_topic)"/>
+      <remap from="input/cmd_drive" to="$(var input_drive_topic)"/>
+      <remap from="emergency/cmd_drive" to="$(var output_drive_topic)"/>
+      <remap from="emergency/signal" to="$(var signal_topic)"/>
+    </composable_node>
+  </load_composable_node>
+</launch>

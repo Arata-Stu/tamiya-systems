@@ -2,6 +2,8 @@
 
   <arg name="teleop_param"  default="$(find-pkg-share teleop_manager)/config/teleop.param.yaml"/>
   <arg name="autonomous_control_topic" default="/autonomous/cmd_drive"/>
+  <arg name="emergency_control_topic" default="/emergency/cmd_drive"/>
+  <arg name="emergency_signal_topic" default="/emergency/signal"/>
   <arg name="vehicle_control_topic" default="/jetracer/cmd_drive"/>
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
   <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
@@ -27,6 +29,10 @@
     <remap from="/joy" to="/joy"/>
     <!-- AI制御コマンド -->
     <remap from="autonomous/cmd_drive" to="$(var autonomous_control_topic)"/>
+    <!-- 緊急オーバライド制御コマンド -->
+    <remap from="emergency/cmd_drive" to="$(var emergency_control_topic)"/>
+    <!-- 緊急オーバライド信号 -->
+    <remap from="emergency/signal" to="$(var emergency_signal_topic)"/>
     <!-- RCカーへの入力 -->
     <remap from="cmd_drive" to="$(var vehicle_control_topic)"/> 
     <!-- rosbag制御トリガ -->
