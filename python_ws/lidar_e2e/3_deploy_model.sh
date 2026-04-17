@@ -14,7 +14,7 @@ SCAN_POINTS="320"           # LiDARの点数（トレーニング時と一致さ
 INPUT_TENSOR_NAME="scan_input"
 PROJECT_NAME="isaac_ros_lidar_e2e_control"
 CONFIG_FILE="tinylidarnet_config.pbtxt"
-PRECISION="fp16"             # fp16 or fp32
+PRECISION="fp16"             # Deployment policy: keep TensorRT compute in FP16
 MAX_BATCH_SIZE="1"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
@@ -95,19 +95,10 @@ function setup_model() {
   # ONNXをコピー（Tritonの慣習でmodel.onnxにリネーム）
   cp "${INPUT_ONNX_PATH}" "${version_path}/model.onnx"
 
-  local precision_flag=""
-  case "$PRECISION" in
-    fp16)
-      precision_flag="--fp16"
-      ;;
-    fp32)
-      precision_flag=""
-      ;;
-    *)
-      echo "❌ Error: unsupported PRECISION='${PRECISION}'. Use fp16 or fp32."
-      exit 1
-      ;;
-  esac
+  if [[ "$PRECISION" != "fp16" ]]; then
+    echo "❌ Error: unsupported PRECISION='${PRECISION}'. This script is fixed to fp16 policy."
+    exit 1
+  fi
 
   echo "🔄 TensorRTエンジン (.plan) へ変換中..."
   # trtexecによる変換。ScanEncoderNodeの [1, 1, Points] に合わせて形状を指定。
@@ -117,7 +108,7 @@ function setup_model() {
     --minShapes=${INPUT_TENSOR_NAME}:1x1x${SCAN_POINTS} \
     --optShapes=${INPUT_TENSOR_NAME}:1x1x${SCAN_POINTS} \
     --maxShapes=${INPUT_TENSOR_NAME}:${MAX_BATCH_SIZE}x1x${SCAN_POINTS} \
-    ${precision_flag} \
+    --fp16 \
     --verbose
   
   if [[ $? -ne 0 ]]; then

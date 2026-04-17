@@ -12,7 +12,7 @@ MODEL_NAME="pilotnet"
 INPUT_TENSOR_NAME="image_input"
 PROJECT_NAME="isaac_ros_camera_e2e_control"
 CONFIG_FILE="pilotnet_config.pbtxt"
-PRECISION="fp16"       # fp16 or fp32
+PRECISION="fp16"       # Deployment policy: keep TensorRT compute in FP16
 MAX_BATCH_SIZE="1"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
@@ -81,19 +81,10 @@ setup_model() {
   mkdir -p "${version_path}"
   cp "${INPUT_ONNX_PATH}" "${version_path}/model.onnx"
 
-  local precision_flag=""
-  case "$PRECISION" in
-    fp16)
-      precision_flag="--fp16"
-      ;;
-    fp32)
-      precision_flag=""
-      ;;
-    *)
-      echo "Error: unsupported PRECISION='${PRECISION}'. Use fp16 or fp32."
-      exit 1
-      ;;
-  esac
+  if [[ "$PRECISION" != "fp16" ]]; then
+    echo "Error: unsupported PRECISION='${PRECISION}'. This script is fixed to fp16 policy."
+    exit 1
+  fi
 
   echo "Converting ONNX to TensorRT engine..."
   /usr/src/tensorrt/bin/trtexec \
@@ -102,7 +93,7 @@ setup_model() {
     --minShapes=${INPUT_TENSOR_NAME}:1x${CHANNELS}x${HEIGHT}x${WIDTH} \
     --optShapes=${INPUT_TENSOR_NAME}:1x${CHANNELS}x${HEIGHT}x${WIDTH} \
     --maxShapes=${INPUT_TENSOR_NAME}:${MAX_BATCH_SIZE}x${CHANNELS}x${HEIGHT}x${WIDTH} \
-    ${precision_flag} \
+    --fp16 \
     --verbose
 
   if [[ $? -ne 0 ]]; then
