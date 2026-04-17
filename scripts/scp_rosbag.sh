@@ -25,8 +25,12 @@ REMOTE_BASE_DIR=${REMOTE_BASE_DIR:-$DEFAULT_REMOTE_BASE_DIR}
 echo ""
 echo "リモートサーバー (${REMOTE_IP}) からディレクトリ一覧を取得中..."
 
-# ssh経由でfindコマンドを実行し、結果を配列に格納
-IFS=$'\n' read -r -d '' -a dirs < <(ssh "${REMOTE_USER}@${REMOTE_IP}" "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" 2>/dev/null)
+# ★修正ポイント: whileループを使って、複数件の結果を最後まで確実に配列へ格納する
+# ssh に -n を付けて、標準入力を奪わないように安全対策
+dirs=()
+while IFS= read -r -d '' d; do
+    dirs+=("$d")
+done < <(ssh -n "${REMOTE_USER}@${REMOTE_IP}" "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" 2>/dev/null)
 
 if [ ${#dirs[@]} -eq 0 ]; then
     echo "エラー: リモートの '$REMOTE_BASE_DIR' にディレクトリが見つからないか、SSH接続に失敗しました。"
@@ -95,12 +99,11 @@ if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     # scpの引数用配列を作成
     SCP_TARGETS=()
     for d in "${SELECTED_DIRS[@]}"; do
-        # リモートパスにスペースが含まれている場合のエスケープ処理
         escaped_dir=$(echo "$d" | sed 's/ /\\ /g')
         SCP_TARGETS+=("${REMOTE_USER}@${REMOTE_IP}:$escaped_dir")
     done
     
-    # scpコマンドの実行 (複数ディレクトリを一度に取得)
+    # scpコマンドの実行
     scp -r "${SCP_TARGETS[@]}" "$LOCAL_DEST_DIR"
     
     if [ $? -eq 0 ]; then
