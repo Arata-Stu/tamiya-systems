@@ -6,7 +6,7 @@
     <arg name="lidarnet_decoder_node_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/lidarnet_decoder_node.param.yaml" />
     <arg name="container_name" default="lidar_container" />
     <arg name="model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
-    <arg name="model_name" default="lidarnet" />
+    <arg name="model_name" default="tinylidarnet" />
 
     <arg name="scan_topic" default="/scan" />
     <arg name="scan_tensor_topic" default="/encoder/scan_tensor" />

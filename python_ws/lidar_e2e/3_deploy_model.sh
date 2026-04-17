@@ -16,8 +16,9 @@ PROJECT_NAME="isaac_ros_lidar_e2e_control"
 CONFIG_FILE="tinylidarnet_config.pbtxt"
 PRECISION="fp16"             # fp16 or fp32
 MAX_BATCH_SIZE="1"
-PYTHON_CONVERT_SCRIPT="export_onnx.py"
-CHECKPOINT_BASE_DIR="../ckpts/tinylidarnet"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
+CHECKPOINT_BASE_DIR="${SCRIPT_DIR}/ckpts"
 
 # --- 関数の定義 ---
 
@@ -37,29 +38,34 @@ function print_parameters() {
 
 function select_checkpoint_interactive() {
   local options=()
-  # チェックポイントディレクトリを検索
-  while IFS= read -r dir; do
-    options+=("$(basename "$dir")")
-  done < <(find "${CHECKPOINT_BASE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
+
+  if [[ ! -d "${CHECKPOINT_BASE_DIR}" ]]; then
+    echo "❌ Error: checkpoint directory not found: ${CHECKPOINT_BASE_DIR}" >&2
+    exit 1
+  fi
+
+  # best_model.pth を再帰的に検索
+  while IFS= read -r pth; do
+    options+=("${pth}")
+  done < <(find "${CHECKPOINT_BASE_DIR}" -type f -name "best_model.pth" | sort)
 
   if [[ ${#options[@]} -eq 0 ]]; then
-    echo "❌ Error: ${CHECKPOINT_BASE_DIR} 内にディレクトリが見つかりません。" >&2
+    echo "❌ Error: ${CHECKPOINT_BASE_DIR} 内に best_model.pth が見つかりません。" >&2
     exit 1
   fi
   options+=("終了 (Quit)")
 
-  echo "--- 1. チェックポイントディレクトリを選択してください ---" >&2
+  echo "--- 1. チェックポイントファイルを選択してください ---" >&2
   PS3="番号を入力してください: "
   select opt in "${options[@]}"; do
     if [[ "$opt" == "終了 (Quit)" ]]; then
       exit 1
     elif [[ -n "$opt" ]]; then
-      local pth_file="${CHECKPOINT_BASE_DIR}/${opt}/best_model.pth"
-      if [[ -f "$pth_file" ]]; then
-        echo "$pth_file"
+      if [[ -f "$opt" ]]; then
+        echo "$opt"
         return 0
       else
-        echo "❌ Error: $opt 内に best_model.pth が見つかりません。" >&2
+        echo "❌ Error: file not found: $opt" >&2
       fi
     fi
   done
@@ -112,10 +118,10 @@ function setup_model() {
   local pkg_share_path=$(ros2 pkg prefix ${PROJECT_NAME} --share 2>/dev/null)
   local config_source_path="${pkg_share_path}/config/${CONFIG_FILE}"
 
-  # 2. パッケージ内にない場合、カレントディレクトリの config/ を検索
+  # 2. パッケージ内にない場合、スクリプト配置ディレクトリの config/ を検索
   if [[ ! -f "$config_source_path" ]]; then
-    if [[ -f "./config/${CONFIG_FILE}" ]]; then
-      config_source_path="./config/${CONFIG_FILE}"
+    if [[ -f "${SCRIPT_DIR}/config/${CONFIG_FILE}" ]]; then
+      config_source_path="${SCRIPT_DIR}/config/${CONFIG_FILE}"
     else
       echo "❌ Error: '${CONFIG_FILE}' が見つかりません。"
       exit 1
