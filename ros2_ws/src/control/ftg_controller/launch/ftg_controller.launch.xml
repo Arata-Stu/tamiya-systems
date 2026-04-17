@@ -1,6 +1,6 @@
 <launch>
   <arg name="ftg_controller_param"
-       default="$(find-pkg-share ftg_controller)/config/ftg_controller.param.yaml"/>
+       default="$(find-pkg-share ftg_controller)/config/control/ftg_controller.param.yaml"/>
   <arg name="scan_topic" default="/scan"/>
   <arg name="drive_topic" default="/autonomous/cmd_drive"/>
   <arg name="velocity_topic" default="/current_velocity"/>

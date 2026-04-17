@@ -17,7 +17,7 @@
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
     <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
-    <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/ftg_controller.param.yaml" />
+    <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
