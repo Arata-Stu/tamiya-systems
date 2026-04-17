@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層対応) ==="
+echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層厳密対応) ==="
 
 # ==========================================
 # デフォルト設定
@@ -15,7 +15,6 @@ DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/tineli
 read -p "ベースディレクトリを入力 (Enterで '${DEFAULT_BASE_DIR}'): " BASE_DIR
 BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
 
-# 相対パス表示を綺麗にするため、末尾の / を確実につける
 BASE_DIR="${BASE_DIR%/}/"
 
 if [ ! -d "$BASE_DIR" ]; then
@@ -24,20 +23,18 @@ if [ ! -d "$BASE_DIR" ]; then
 fi
 
 # 2. ベースディレクトリ内のディレクトリを配列に取得
-# ★ -maxdepth 2 に変更し、2階層まで探索するようにしました
-IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -maxdepth 2 -mindepth 1 -type d -print0)
+IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -print0 | sort -z)
 
 if [ ${#dirs[@]} -eq 0 ]; then
-    echo "エラー: '$BASE_DIR' の中にディレクトリが見つかりません。"
+    echo "エラー: '$BASE_DIR' の中に2階層目のディレクトリが見つかりません。"
     exit 1
 fi
 
-# 3. 送信ディレクトリの選択 (複数選択対応)
+# 3. 送信ディレクトリの選択
 echo ""
 echo "送信するディレクトリを以下の番号から選択してください:"
 i=1
 for d in "${dirs[@]}"; do
-    # ★ basename ではなく、BASE_DIRからの相対パスで表示し、親ディレクトリをわかりやすくする
     rel_path="${d#$BASE_DIR}"
     echo "  $i) $rel_path"
     ((i++))
@@ -51,7 +48,6 @@ if [ -z "$DIR_CHOICES" ]; then
     exit 1
 fi
 
-# 入力された番号を解析して送信対象リストを作成
 SELECTED_DIRS=()
 for choice in $DIR_CHOICES; do
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dirs[@]}" ]; then
@@ -66,14 +62,7 @@ if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
     exit 1
 fi
 
-echo "-> 選択されたディレクトリ:"
-for d in "${SELECTED_DIRS[@]}"; do
-    # ここも相対パスで表示
-    echo "   - ${d#$BASE_DIR}"
-done
-echo ""
-
-# 4. リモート情報の入力 (Enterでデフォルト値適用)
+# 4. リモート情報の入力
 read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
 REMOTE_USER=${REMOTE_USER:-$DEFAULT_REMOTE_USER}
 
@@ -88,19 +77,23 @@ echo ""
 echo "================ 転送内容の確認 ================"
 echo "送信元ディレクトリ (${#SELECTED_DIRS[@]}件):"
 for d in "${SELECTED_DIRS[@]}"; do
-    echo "  - $d"
+    echo "  - ${d#$BASE_DIR}"
 done
 echo "送信先宛先        : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
 echo "================================================"
 
-# 実行確認
 read -p "この内容で転送を開始しますか？ (Y/n, Enterで実行): " CONFIRM
 CONFIRM=${CONFIRM:-y} 
 
 if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "転送を開始します..."
     
-    # scpコマンドの実行 (配列を展開して複数指定)
+    # ★ 追加：リモート側にディレクトリが存在しない場合の対策
+    # 事前に mkdir -p を実行し、ディレクトリを確実に存在させる
+    echo "リモートの送信先ディレクトリを確認・作成しています..."
+    ssh "${REMOTE_USER}@${REMOTE_IP}" "mkdir -p \"${REMOTE_DIR}\""
+    
+    # scpコマンドの実行
     scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
     
     if [ $? -eq 0 ]; then
