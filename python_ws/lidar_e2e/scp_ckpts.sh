@@ -1,13 +1,14 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層厳密対応) ==="
+echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層厳密・複数IP対応) ==="
 
 # ==========================================
 # デフォルト設定
 # ==========================================
 DEFAULT_BASE_DIR="./ckpts/train/"
 DEFAULT_REMOTE_USER="tamiya"
-DEFAULT_REMOTE_IP="192.168.55.1"
+# ★ 複数IPのリストを定義
+DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
 DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/tinylidarnet/"
 # ==========================================
 
@@ -66,13 +67,39 @@ if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
     exit 1
 fi
 
-# 4. リモート情報の入力 (Enterでデフォルト値適用)
+# 4. リモート情報の入力
+echo ""
 read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
 REMOTE_USER=${REMOTE_USER:-$DEFAULT_REMOTE_USER}
 
-read -p "相手のIPアドレス (Enterで '${DEFAULT_REMOTE_IP}'): " REMOTE_IP
-REMOTE_IP=${REMOTE_IP:-$DEFAULT_REMOTE_IP}
+# ★ IPアドレスの選択ロジック
+echo ""
+echo "相手のIPアドレスを選択、または直接入力してください:"
+i=1
+for ip in "${DEFAULT_REMOTE_IPS[@]}"; do
+    if [ $i -eq 1 ]; then
+        echo "  $i) $ip (Enterのデフォルト)"
+    else
+        echo "  $i) $ip"
+    fi
+    ((i++))
+done
+echo ""
 
+read -p "番号、またはIPを直接入力 (Enterで '${DEFAULT_REMOTE_IPS[0]}'): " IP_CHOICE
+
+if [ -z "$IP_CHOICE" ]; then
+    # Enterのみの場合は1つ目のIPを使用
+    REMOTE_IP="${DEFAULT_REMOTE_IPS[0]}"
+elif [[ "$IP_CHOICE" =~ ^[0-9]+$ ]] && [ "$IP_CHOICE" -ge 1 ] && [ "$IP_CHOICE" -le "${#DEFAULT_REMOTE_IPS[@]}" ]; then
+    # 番号が入力された場合は配列から取得
+    REMOTE_IP="${DEFAULT_REMOTE_IPS[$((IP_CHOICE-1))]}"
+else
+    # 番号以外の文字列が入力された場合はそれを直接IPとして扱う
+    REMOTE_IP="$IP_CHOICE"
+fi
+
+echo ""
 read -p "送信先のディレクトリパス (Enterで '${DEFAULT_REMOTE_DIR}'): " REMOTE_DIR
 REMOTE_DIR=${REMOTE_DIR:-$DEFAULT_REMOTE_DIR}
 

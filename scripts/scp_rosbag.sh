@@ -1,48 +1,42 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 受信(ダウンロード)スクリプト ==="
+echo "=== インタラクティブ SCP 転送スクリプト (複数IP・2階層対応) ==="
 
 # ==========================================
 # デフォルト設定
 # ==========================================
+DEFAULT_BASE_DIR="./ckpts/train/"
 DEFAULT_REMOTE_USER="tamiya"
-DEFAULT_REMOTE_IP="192.168.55.1"
-DEFAULT_REMOTE_BASE_DIR="/home/tamiya/workspace/tamiya-systems/ros2_ws/record/"
-DEFAULT_LOCAL_DEST_DIR="/home/arata-22/workspace/ros2_ws/record/"
+# ★ IPアドレスを配列（リスト）で複数定義
+DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/pilotnet/"
 # ==========================================
 
-# 1. リモート情報の入力 (Enterでデフォルト値適用)
-read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
-REMOTE_USER=${REMOTE_USER:-$DEFAULT_REMOTE_USER}
+# 1. ベースディレクトリの指定
+read -p "ベースディレクトリを入力 (Enterで '${DEFAULT_BASE_DIR}'): " BASE_DIR
+BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
+BASE_DIR="${BASE_DIR%/}/"
 
-read -p "相手のIPアドレス (Enterで '${DEFAULT_REMOTE_IP}'): " REMOTE_IP
-REMOTE_IP=${REMOTE_IP:-$DEFAULT_REMOTE_IP}
-
-read -p "取得元のベースディレクトリ (Enterで '${DEFAULT_REMOTE_BASE_DIR}'): " REMOTE_BASE_DIR
-REMOTE_BASE_DIR=${REMOTE_BASE_DIR:-$DEFAULT_REMOTE_BASE_DIR}
-
-# 2. リモートサーバーからディレクトリ一覧を取得
-echo ""
-echo "リモートサーバー (${REMOTE_IP}) からディレクトリ一覧を取得中..."
-
-# ★修正ポイント: whileループを使って、複数件の結果を最後まで確実に配列へ格納する
-# ssh に -n を付けて、標準入力を奪わないように安全対策
-dirs=()
-while IFS= read -r -d '' d; do
-    dirs+=("$d")
-done < <(ssh -n "${REMOTE_USER}@${REMOTE_IP}" "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" 2>/dev/null)
-
-if [ ${#dirs[@]} -eq 0 ]; then
-    echo "エラー: リモートの '$REMOTE_BASE_DIR' にディレクトリが見つからないか、SSH接続に失敗しました。"
+if [ ! -d "$BASE_DIR" ]; then
+    echo "エラー: ディレクトリ '$BASE_DIR' が見つかりません。"
     exit 1
 fi
 
-# 3. ダウンロードするディレクトリの選択 (複数選択対応)
+# 2. ベースディレクトリ内のディレクトリを配列に取得
+IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -print0 | sort -z)
+
+if [ ${#dirs[@]} -eq 0 ]; then
+    echo "エラー: '$BASE_DIR' の中に2階層目のディレクトリが見つかりません。"
+    exit 1
+fi
+
+# 3. 送信ディレクトリの選択 (複数選択対応)
 echo ""
-echo "ダウンロードするディレクトリを以下の番号から選択してください:"
+echo "送信するディレクトリを以下の番号から選択してください:"
 i=1
 for d in "${dirs[@]}"; do
-    echo "  $i) $(basename "$d")"
+    rel_path="${d#$BASE_DIR}"
+    echo "  $i) $rel_path"
     ((i++))
 done
 echo ""
@@ -68,49 +62,66 @@ if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
     exit 1
 fi
 
-# 4. ローカルの保存先の指定
+# 4. リモート情報の入力
 echo ""
-read -p "ローカルの保存先ディレクトリを入力 (Enterで '${DEFAULT_LOCAL_DEST_DIR}'): " LOCAL_DEST_DIR
-LOCAL_DEST_DIR=${LOCAL_DEST_DIR:-$DEFAULT_LOCAL_DEST_DIR}
+read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
+REMOTE_USER=${REMOTE_USER:-$DEFAULT_REMOTE_USER}
 
-# 保存先が存在しない場合は自動で作成
-if [ ! -d "$LOCAL_DEST_DIR" ]; then
-    mkdir -p "$LOCAL_DEST_DIR"
-    echo "-> 保存先ディレクトリ '$LOCAL_DEST_DIR' を作成しました。"
+# ★ IPアドレスの選択ロジック
+echo ""
+echo "相手のIPアドレスを選択、または直接入力してください:"
+i=1
+for ip in "${DEFAULT_REMOTE_IPS[@]}"; do
+    if [ $i -eq 1 ]; then
+        echo "  $i) $ip (Enterのデフォルト)"
+    else
+        echo "  $i) $ip"
+    fi
+    ((i++))
+done
+echo ""
+
+read -p "番号、またはIPを直接入力 (Enterで '${DEFAULT_REMOTE_IPS[0]}'): " IP_CHOICE
+
+if [ -z "$IP_CHOICE" ]; then
+    # Enterのみの場合は1つ目のIPを使用
+    REMOTE_IP="${DEFAULT_REMOTE_IPS[0]}"
+elif [[ "$IP_CHOICE" =~ ^[0-9]+$ ]] && [ "$IP_CHOICE" -ge 1 ] && [ "$IP_CHOICE" -le "${#DEFAULT_REMOTE_IPS[@]}" ]; then
+    # 番号が入力された場合は配列から取得
+    REMOTE_IP="${DEFAULT_REMOTE_IPS[$((IP_CHOICE-1))]}"
+else
+    # 番号以外の文字列（例: 192.168.1.100）が入力された場合はそれを直接IPとして扱う
+    REMOTE_IP="$IP_CHOICE"
 fi
+
+echo ""
+read -p "送信先のディレクトリパス (Enterで '${DEFAULT_REMOTE_DIR}'): " REMOTE_DIR
+REMOTE_DIR=${REMOTE_DIR:-$DEFAULT_REMOTE_DIR}
 
 # 5. 最終確認
 echo ""
 echo "================ 転送内容の確認 ================"
-echo "取得元サーバー: ${REMOTE_USER}@${REMOTE_IP}"
-echo "ダウンロード対象 (${#SELECTED_DIRS[@]}件):"
+echo "送信元ディレクトリ (${#SELECTED_DIRS[@]}件):"
 for d in "${SELECTED_DIRS[@]}"; do
-    echo "  - $(basename "$d")"
+    echo "  - ${d#$BASE_DIR}"
 done
-echo "ローカル保存先: $LOCAL_DEST_DIR"
+echo "送信先宛先        : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
 echo "================================================"
 
-read -p "この内容でダウンロードを開始しますか？ (Y/n, Enterで実行): " CONFIRM
+read -p "この内容で転送を開始しますか？ (Y/n, Enterで実行): " CONFIRM
 CONFIRM=${CONFIRM:-y} 
 
 if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "ダウンロードを開始します..."
-    
-    # scpの引数用配列を作成
-    SCP_TARGETS=()
-    for d in "${SELECTED_DIRS[@]}"; do
-        escaped_dir=$(echo "$d" | sed 's/ /\\ /g')
-        SCP_TARGETS+=("${REMOTE_USER}@${REMOTE_IP}:$escaped_dir")
-    done
+    echo "転送を開始します..."
     
     # scpコマンドの実行
-    scp -r "${SCP_TARGETS[@]}" "$LOCAL_DEST_DIR"
+    scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
     
     if [ $? -eq 0 ]; then
-        echo "✅ ダウンロードが正常に完了しました！"
+        echo "✅ 転送が正常に完了しました！"
     else
-        echo "❌ ダウンロード中にエラーが発生しました。"
+        echo "❌ 転送中にエラーが発生しました。"
     fi
 else
-    echo "キャンセルしました。"
+    echo "転送をキャンセルしました。"
 fi
