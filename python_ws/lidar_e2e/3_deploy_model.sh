@@ -95,6 +95,20 @@ function setup_model() {
   # ONNXをコピー（Tritonの慣習でmodel.onnxにリネーム）
   cp "${INPUT_ONNX_PATH}" "${version_path}/model.onnx"
 
+  local precision_flag=""
+  case "$PRECISION" in
+    fp16)
+      precision_flag="--fp16"
+      ;;
+    fp32)
+      precision_flag=""
+      ;;
+    *)
+      echo "❌ Error: unsupported PRECISION='${PRECISION}'. Use fp16 or fp32."
+      exit 1
+      ;;
+  esac
+
   echo "🔄 TensorRTエンジン (.plan) へ変換中..."
   # trtexecによる変換。ScanEncoderNodeの [1, 1, Points] に合わせて形状を指定。
   /usr/src/tensorrt/bin/trtexec \
@@ -103,7 +117,7 @@ function setup_model() {
     --minShapes=${INPUT_TENSOR_NAME}:1x1x${SCAN_POINTS} \
     --optShapes=${INPUT_TENSOR_NAME}:1x1x${SCAN_POINTS} \
     --maxShapes=${INPUT_TENSOR_NAME}:${MAX_BATCH_SIZE}x1x${SCAN_POINTS} \
-    --${PRECISION} \
+    ${precision_flag} \
     --verbose
   
   if [[ $? -ne 0 ]]; then
