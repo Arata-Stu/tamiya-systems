@@ -1,19 +1,22 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 転送スクリプト (複数選択対応) ==="
+echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層対応) ==="
 
 # ==========================================
 # デフォルト設定
 # ==========================================
-DEFAULT_BASE_DIR="./ckpts/"
+DEFAULT_BASE_DIR="./ckpts/train/"
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IP="192.168.55.1"
-DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/tinylidarnet"
+DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/tinylidarnet/"
 # ==========================================
 
 # 1. ベースディレクトリの指定
 read -p "ベースディレクトリを入力 (Enterで '${DEFAULT_BASE_DIR}'): " BASE_DIR
 BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
+
+# 相対パス表示を綺麗にするため、末尾の / を確実につける
+BASE_DIR="${BASE_DIR%/}/"
 
 if [ ! -d "$BASE_DIR" ]; then
     echo "エラー: ディレクトリ '$BASE_DIR' が見つかりません。"
@@ -21,7 +24,8 @@ if [ ! -d "$BASE_DIR" ]; then
 fi
 
 # 2. ベースディレクトリ内のディレクトリを配列に取得
-IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -maxdepth 1 -mindepth 1 -type d -print0)
+# ★ -maxdepth 2 に変更し、2階層まで探索するようにしました
+IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -maxdepth 2 -mindepth 1 -type d -print0)
 
 if [ ${#dirs[@]} -eq 0 ]; then
     echo "エラー: '$BASE_DIR' の中にディレクトリが見つかりません。"
@@ -33,7 +37,9 @@ echo ""
 echo "送信するディレクトリを以下の番号から選択してください:"
 i=1
 for d in "${dirs[@]}"; do
-    echo "  $i) $(basename "$d")"
+    # ★ basename ではなく、BASE_DIRからの相対パスで表示し、親ディレクトリをわかりやすくする
+    rel_path="${d#$BASE_DIR}"
+    echo "  $i) $rel_path"
     ((i++))
 done
 echo ""
@@ -62,7 +68,8 @@ fi
 
 echo "-> 選択されたディレクトリ:"
 for d in "${SELECTED_DIRS[@]}"; do
-    echo "   - $(basename "$d")"
+    # ここも相対パスで表示
+    echo "   - ${d#$BASE_DIR}"
 done
 echo ""
 
@@ -94,7 +101,6 @@ if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "転送を開始します..."
     
     # scpコマンドの実行 (配列を展開して複数指定)
-    # 実際のコマンドイメージ: scp -r dir1 dir2 tamiya@192...:/path
     scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
     
     if [ $? -eq 0 ]; then
