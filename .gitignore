@@ -8,6 +8,8 @@ run/
 runs/
 output/
 outputs/
+dataset/
+datasets/
 lib/
 
 # Byte-compiled / optimized / DLL files

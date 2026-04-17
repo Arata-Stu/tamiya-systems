@@ -3,13 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 
-
 def _init_weights(m):
     if isinstance(m, (nn.Linear, nn.Conv2d)):
         init.kaiming_normal_(m.weight, mode="fan_in", nonlinearity="relu")
         if m.bias is not None:
             init.constant_(m.bias, 0)
-
 
 class PilotNetControl(nn.Module):
     """
@@ -22,10 +20,8 @@ class PilotNetControl(nn.Module):
         self,
         num_outputs: int = 2,
         input_channels: int = 3,
-        input_height: int = 66,
-        input_width: int = 200,
-        pooled_height: int = 1,
-        pooled_width: int = 18,
+        input_height: int = 240,  # 今回の学習サイズをデフォルトに設定
+        input_width: int = 320,
     ):
         super().__init__()
         self.conv1 = nn.Conv2d(input_channels, 24, kernel_size=5, stride=2)
@@ -33,13 +29,21 @@ class PilotNetControl(nn.Module):
         self.conv3 = nn.Conv2d(36, 48, kernel_size=5, stride=2)
         self.conv4 = nn.Conv2d(48, 64, kernel_size=3, stride=1)
         self.conv5 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-        self.adaptive_pool = nn.AdaptiveAvgPool2d((pooled_height, pooled_width))
+        
+        # 次元を効率的に削減するMaxPool層
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
+        # 動的入力次元の計算（変更なし：poolを適用してサイズを測る）
         with torch.no_grad():
             dummy_input = torch.zeros(1, input_channels, input_height, input_width)
-            x = self.adaptive_pool(self._forward_conv(dummy_input))
+            # 畳み込み -> プーリングの順で通過させた後のサイズを取得
+            x = self.pool(self._forward_conv(dummy_input))
             flatten_dim = x.view(1, -1).shape[1]
+            
+            # デバッグ用に確認したい場合は以下のコメントアウトを外してください
+            # print(f"Flatten dimension calculated: {flatten_dim}")
 
+        # 計算された次元数を元にFC層を定義
         self.fc1 = nn.Linear(flatten_dim, 1164)
         self.fc2 = nn.Linear(1164, 100)
         self.fc3 = nn.Linear(100, 50)
@@ -68,7 +72,9 @@ class PilotNetControl(nn.Module):
             x = x[:, :3, :, :]
 
         x = self._forward_conv(x)
-        x = self.adaptive_pool(x)
+        
+        x = self.pool(x)
+        
         x = x.view(x.size(0), -1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
