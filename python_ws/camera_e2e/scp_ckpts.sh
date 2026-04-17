@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層対応) ==="
+echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層厳密対応) ==="
 
 # ==========================================
 # デフォルト設定
@@ -24,11 +24,12 @@ if [ ! -d "$BASE_DIR" ]; then
 fi
 
 # 2. ベースディレクトリ内のディレクトリを配列に取得
-# ★ -maxdepth 2 に変更し、2階層まで探索するようにしました
-IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -maxdepth 2 -mindepth 1 -type d -print0)
+# ★ -mindepth 2 -maxdepth 2 に変更し「必ず2階層目」のみを取得
+# ★ sort -z を追加し、日付等の名前順で綺麗に並ぶようにしました
+IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -print0 | sort -z)
 
 if [ ${#dirs[@]} -eq 0 ]; then
-    echo "エラー: '$BASE_DIR' の中にディレクトリが見つかりません。"
+    echo "エラー: '$BASE_DIR' の中に2階層目のディレクトリが見つかりません。"
     exit 1
 fi
 
@@ -37,7 +38,7 @@ echo ""
 echo "送信するディレクトリを以下の番号から選択してください:"
 i=1
 for d in "${dirs[@]}"; do
-    # ★ basename ではなく、BASE_DIRからの相対パスで表示し、親ディレクトリをわかりやすくする
+    # BASE_DIR部分を削り取り、綺麗な「親/子 (例: date/time)」の相対パスにする
     rel_path="${d#$BASE_DIR}"
     echo "  $i) $rel_path"
     ((i++))
@@ -68,7 +69,6 @@ fi
 
 echo "-> 選択されたディレクトリ:"
 for d in "${SELECTED_DIRS[@]}"; do
-    # ここも相対パスで表示
     echo "   - ${d#$BASE_DIR}"
 done
 echo ""
@@ -88,7 +88,7 @@ echo ""
 echo "================ 転送内容の確認 ================"
 echo "送信元ディレクトリ (${#SELECTED_DIRS[@]}件):"
 for d in "${SELECTED_DIRS[@]}"; do
-    echo "  - $d"
+    echo "  - ${d#$BASE_DIR}"
 done
 echo "送信先宛先        : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
 echo "================================================"
@@ -100,7 +100,7 @@ CONFIRM=${CONFIRM:-y}
 if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "転送を開始します..."
     
-    # scpコマンドの実行 (配列を展開して複数指定)
+    # scpコマンドの実行
     scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
     
     if [ $? -eq 0 ]; then

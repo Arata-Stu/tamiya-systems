@@ -8,7 +8,7 @@ echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2�
 DEFAULT_BASE_DIR="./ckpts/train/"
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IP="192.168.55.1"
-DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/tinylidarnet/"
+DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/tinelidarnet/"
 # ==========================================
 
 # 1. ベースディレクトリの指定
