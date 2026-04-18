@@ -38,9 +38,9 @@ choose_mode_interactive() {
   fi
 
   while true; do
-    echo "Select mode:"
-    echo "  1) $MODE_TAMIYA (current setup)"
-    echo "  2) $MODE_PYTHON (study setup)"
+    echo "Select mode:" >&2
+    echo "  1) $MODE_TAMIYA (current setup)" >&2
+    echo "  2) $MODE_PYTHON (study setup)" >&2
     read -r -p "Enter 1 or 2: " answer
 
     case "$answer" in
@@ -53,7 +53,7 @@ choose_mode_interactive() {
         return
         ;;
       *)
-        echo "Invalid choice: $answer"
+        echo "Invalid choice: $answer" >&2
         ;;
     esac
   done
