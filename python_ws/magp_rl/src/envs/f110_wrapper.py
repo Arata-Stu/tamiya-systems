@@ -318,6 +318,14 @@ class F110EnvWrapper:
         tal_reward = self._compute_tal_reward(action_normalized)
         action_physical_all = self._compose_action_physical(action_normalized)
         next_obs_dict, reward_all, done, info = self.sim.step(action_physical_all)
+        reward_all = jnp.asarray(reward_all, dtype=jnp.float32)
+        if reward_all.ndim == 0:
+            reward_all = jnp.full((self.num_agents,), reward_all, dtype=jnp.float32)
+        elif reward_all.shape[0] != self.num_agents:
+            raise ValueError(
+                f"Invalid reward shape from simulator: expected first dim {self.num_agents}, "
+                f"got {reward_all.shape}"
+            )
 
         next_obs = self._normalize_obs(next_obs_dict)
         current_s_all = self._project_to_centerline_s(
