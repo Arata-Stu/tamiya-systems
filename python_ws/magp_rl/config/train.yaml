@@ -1,14 +1,14 @@
 defaults:
-  - agent: ppo
+  - agent: sac
   - vehicle: tamiya
   - _self_
 
 train:
   seed: 42
-  total_timesteps: 1000000
+  total_timesteps: 10000000
   num_envs: 128
   num_agents: null # legacy alias (prefer num_envs)
-  max_episode_steps: 20000
+  max_episode_steps: 10000
   quiet_absl: true
 
   tensorboard:
@@ -36,7 +36,7 @@ env:
 
   track:
     root: '../f1tenth_racetracks'
-    name: 'Austin'
+    name: 'BrandsHatch'
     line_type: 'centerline' # centerline | raceline
 
   map_path: null
@@ -87,7 +87,7 @@ env:
 eval:
   checkpoint_dir: null
   episodes: 5
-  max_steps: 20000
+  max_steps: 2000
   num_envs: 1
   num_agents: null # legacy alias (prefer num_envs)
 
