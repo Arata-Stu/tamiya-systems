@@ -72,6 +72,40 @@ def get_parallel_mode(env_cfg: DictConfig) -> str:
     return str(parallel_cfg.get("mode", "independent")).lower()
 
 
+def get_race_control_mode(env_cfg: DictConfig) -> str:
+    race_cfg = env_cfg.get("race", None)
+    if race_cfg is None:
+        return "selfplay"
+    return str(race_cfg.get("control_mode", "selfplay")).lower()
+
+
+def get_race_num_agents(env_cfg: DictConfig, fallback: int) -> int:
+    race_cfg = env_cfg.get("race", None)
+    if race_cfg is None:
+        return int(fallback)
+    configured = race_cfg.get("num_agents", None)
+    if configured is None:
+        return int(fallback)
+    return int(configured)
+
+
+def get_race_ego_idx(env_cfg: DictConfig) -> int:
+    race_cfg = env_cfg.get("race", None)
+    if race_cfg is None:
+        return 0
+    return int(race_cfg.get("ego_idx", 0))
+
+
+def get_race_npc_controller(env_cfg: DictConfig) -> str:
+    race_cfg = env_cfg.get("race", None)
+    if race_cfg is None:
+        return "pure_pursuit"
+    npc_cfg = race_cfg.get("npc", None)
+    if npc_cfg is None:
+        return "pure_pursuit"
+    return str(npc_cfg.get("controller", "pure_pursuit"))
+
+
 def get_train_env_count(cfg: DictConfig) -> int:
     legacy = cfg.train.get("num_agents", None)
     if legacy is not None:
@@ -111,10 +145,16 @@ def build_env(
             seed=cfg.train.seed,
         )
     elif parallel_mode == "race":
+        race_control_mode = get_race_control_mode(cfg.env)
+        race_num_agents = get_race_num_agents(cfg.env, fallback=num_envs)
+        race_ego_idx = get_race_ego_idx(cfg.env)
+        race_npc_controller = get_race_npc_controller(cfg.env)
+        if race_control_mode == "npc" and race_num_agents < 2:
+            raise ValueError("env.race.num_agents must be >= 2 when env.race.control_mode=npc.")
         sim = F110JaxSimulator(
             map_path=map_path,
             map_ext=map_ext,
-            num_agents=num_envs,
+            num_agents=race_num_agents,
             params=vehicle_params,
             seed=cfg.train.seed,
             integrator=Integrator.RK4,
@@ -122,17 +162,25 @@ def build_env(
             fov=scan_fov,
             max_range=max_lidar_range,
         )
-        env = F110EnvWrapper(sim, cfg.env, waypoints_path=waypoints_path)
+        env = F110EnvWrapper(
+            sim,
+            cfg.env,
+            waypoints_path=waypoints_path,
+            control_mode=race_control_mode,
+            npc_controller=race_npc_controller,
+            ego_idx=race_ego_idx,
+        )
     else:
         raise ValueError(f"Unsupported env.parallel.mode: {parallel_mode}")
 
     return env, parallel_mode
 
 
-def make_start_poses(parallel_mode: str, num_envs: int):
+def make_start_poses(parallel_mode: str, num_envs: int, num_sim_agents: int | None = None):
     if parallel_mode == "independent":
         return generate_independent_poses(num_envs)
-    return generate_initial_poses(num_envs)
+    agent_count = int(num_envs if num_sim_agents is None else num_sim_agents)
+    return generate_initial_poses(agent_count)
 
 
 def _compute_tal_coef(cfg: DictConfig, global_step: int):
@@ -249,7 +297,8 @@ def train_ppo(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
     denom = cfg.agent.num_steps * num_envs
     num_updates = max(1, int(np.ceil(cfg.train.total_timesteps / max(denom, 1))))
 
-    poses = make_start_poses(parallel_mode, num_envs)
+    race_agents = int(getattr(env, "num_agents", num_envs))
+    poses = make_start_poses(parallel_mode, num_envs, num_sim_agents=race_agents)
     obs = env.reset(poses)
     prev_s = env.get_current_progress_s()
 
@@ -419,7 +468,8 @@ def train_sac(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
         seed=cfg.train.seed,
     )
 
-    poses = make_start_poses(parallel_mode, num_envs)
+    race_agents = int(getattr(env, "num_agents", num_envs))
+    poses = make_start_poses(parallel_mode, num_envs, num_sim_agents=race_agents)
     obs = env.reset(poses)
     prev_s = env.get_current_progress_s()
 
@@ -617,7 +667,8 @@ def train_td3(cfg, env, writer, ckpt_dir, rng, num_envs, parallel_mode):
         seed=cfg.train.seed,
     )
 
-    poses = make_start_poses(parallel_mode, num_envs)
+    race_agents = int(getattr(env, "num_agents", num_envs))
+    poses = make_start_poses(parallel_mode, num_envs, num_sim_agents=race_agents)
     obs = env.reset(poses)
     prev_s = env.get_current_progress_s()
 
@@ -834,6 +885,14 @@ def main(cfg: DictConfig):
         max_lidar_range=max_lidar_range,
     )
     print(f"Parallel Mode: {parallel_mode} | Vector Size: {env.num_envs}")
+    if parallel_mode == "race":
+        print(
+            "Race Mode Details: "
+            f"control_mode={env.control_mode}, "
+            f"num_agents={env.num_agents}, "
+            f"learned_agents={env.num_envs}, "
+            f"ego_idx={env.ego_idx}"
+        )
     print(f"LiDAR: beams={scan_beams}, fov={scan_fov:.6f} rad, max_range={max_lidar_range:.3f} m")
 
     writer = maybe_make_writer(cfg, project_root)

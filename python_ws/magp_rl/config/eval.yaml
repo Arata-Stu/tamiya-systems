@@ -7,6 +7,14 @@ env:
   parallel:
     mode: independent # independent | race
 
+  race:
+    control_mode: selfplay # selfplay | npc
+    num_agents: null # if null, use eval.num_envs
+    ego_idx: 0
+    npc:
+      controller: pure_pursuit # pure_pursuit
+      speed_scale: 0.6 # npc only: scale for non-ego target speed (e.g. 0.9)
+
   track:
     root: '../f1tenth_racetracks'
     name: 'Austin'
