@@ -78,7 +78,7 @@ env:
         max_lateral_accel_mps2: 3.0
         smoothing_window: 9
       schedule:
-        enabled: true
+        enabled: false
         mode: linear # linear | cosine
         start_step: 0
         decay_steps: 1000000
@@ -87,7 +87,7 @@ env:
 eval:
   checkpoint_dir: null
   episodes: 5
-  max_steps: 2000
+  max_steps: 20000
   num_envs: 1
   num_agents: null # legacy alias (prefer num_envs)
 
