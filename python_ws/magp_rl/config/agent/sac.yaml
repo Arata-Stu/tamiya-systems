@@ -9,7 +9,7 @@ tau: 0.005
 batch_size: 256
 replay_size: 200000
 start_steps: 5000
-update_after: 1000
+update_after: 10000
 updates_per_step: 1
 target_entropy_scale: 1.0
 
