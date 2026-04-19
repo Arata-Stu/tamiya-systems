@@ -1,127 +1,111 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 転送スクリプト (複数IP・2階層対応) ==="
+echo "=== インタラクティブ rsync 受信スクリプト ==="
 
 # ==========================================
 # デフォルト設定
 # ==========================================
-DEFAULT_BASE_DIR="./ckpts/train/"
 DEFAULT_REMOTE_USER="tamiya"
-# ★ IPアドレスを配列（リスト）で複数定義
-DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
-DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/pilotnet/"
+IP_CANDIDATES=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+DEFAULT_REMOTE_BASE_DIR="/home/tamiya/workspace/tamiya-systems/record/"
+DEFAULT_LOCAL_DEST_DIR="/home/arata-22/workspace/tamiya-systems/record/"
 # ==========================================
 
-# 1. ベースディレクトリの指定
-read -p "ベースディレクトリを入力 (Enterで '${DEFAULT_BASE_DIR}'): " BASE_DIR
-BASE_DIR=${BASE_DIR:-$DEFAULT_BASE_DIR}
-BASE_DIR="${BASE_DIR%/}/"
-
-if [ ! -d "$BASE_DIR" ]; then
-    echo "エラー: ディレクトリ '$BASE_DIR' が見つかりません。"
-    exit 1
-fi
-
-# 2. ベースディレクトリ内のディレクトリを配列に取得
-IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -print0 | sort -z)
-
-if [ ${#dirs[@]} -eq 0 ]; then
-    echo "エラー: '$BASE_DIR' の中に2階層目のディレクトリが見つかりません。"
-    exit 1
-fi
-
-# 3. 送信ディレクトリの選択 (複数選択対応)
-echo ""
-echo "送信するディレクトリを以下の番号から選択してください:"
-i=1
-for d in "${dirs[@]}"; do
-    rel_path="${d#$BASE_DIR}"
-    echo "  $i) $rel_path"
-    ((i++))
-done
-echo ""
-
-read -p "番号をスペース区切りで入力してください (例: 1 3 4): " DIR_CHOICES
-
-if [ -z "$DIR_CHOICES" ]; then
-    echo "エラー: ディレクトリが選択されませんでした。"
-    exit 1
-fi
-
-SELECTED_DIRS=()
-for choice in $DIR_CHOICES; do
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dirs[@]}" ]; then
-        SELECTED_DIRS+=("${dirs[$((choice-1))]}")
-    else
-        echo "警告: 無効な入力 '$choice' はスキップされます。"
-    fi
-done
-
-if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
-    echo "エラー: 有効なディレクトリが1つも選択されませんでした。"
-    exit 1
-fi
-
-# 4. リモート情報の入力
-echo ""
+# 1. 接続情報の入力
 read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
 REMOTE_USER=${REMOTE_USER:-$DEFAULT_REMOTE_USER}
 
-# ★ IPアドレスの選択ロジック
 echo ""
-echo "相手のIPアドレスを選択、または直接入力してください:"
-i=1
-for ip in "${DEFAULT_REMOTE_IPS[@]}"; do
-    if [ $i -eq 1 ]; then
-        echo "  $i) $ip (Enterのデフォルト)"
-    else
-        echo "  $i) $ip"
-    fi
-    ((i++))
+echo "接続先IPアドレスを選択してください:"
+for i in "${!IP_CANDIDATES[@]}"; do
+    echo "  $((i+1))) ${IP_CANDIDATES[$i]}"
 done
+echo "  n) 新しいIPを手動入力する"
+read -p "番号を選択 (1-${#IP_CANDIDATES[@]} / n): " IP_CHOICE
+
+case "$IP_CHOICE" in
+    [1-9]) REMOTE_IP=${IP_CANDIDATES[$((IP_CHOICE-1))]} ;;
+    n|N)   read -p "IPアドレスを入力: " REMOTE_IP ;;
+    *)     REMOTE_IP=${IP_CANDIDATES[0]}; echo "-> ${REMOTE_IP} を使用します。" ;;
+esac
+
+read -p "リモートのベースディレクトリ (Enterで '${DEFAULT_REMOTE_BASE_DIR}'): " REMOTE_BASE_DIR
+REMOTE_BASE_DIR=${REMOTE_BASE_DIR:-$DEFAULT_REMOTE_BASE_DIR}
+
+# 2. 取得モードの選択
 echo ""
+echo "ディレクトリの指定方法を選んでください:"
+echo "  1) リモートから一覧を取得して選択 (時間がかかる場合があります)"
+echo "  2) ディレクトリ名を直接入力する"
+read -p "選択 (1 or 2): " MODE_CHOICE
 
-read -p "番号、またはIPを直接入力 (Enterで '${DEFAULT_REMOTE_IPS[0]}'): " IP_CHOICE
+SELECTED_DIRS=()
 
-if [ -z "$IP_CHOICE" ]; then
-    # Enterのみの場合は1つ目のIPを使用
-    REMOTE_IP="${DEFAULT_REMOTE_IPS[0]}"
-elif [[ "$IP_CHOICE" =~ ^[0-9]+$ ]] && [ "$IP_CHOICE" -ge 1 ] && [ "$IP_CHOICE" -le "${#DEFAULT_REMOTE_IPS[@]}" ]; then
-    # 番号が入力された場合は配列から取得
-    REMOTE_IP="${DEFAULT_REMOTE_IPS[$((IP_CHOICE-1))]}"
+if [ "$MODE_CHOICE" = "1" ]; then
+    # --- モード1: 自動取得 ---
+    echo "リモートサーバー (${REMOTE_IP}) からディレクトリ一覧を取得中..."
+    dirs=()
+    while IFS= read -r -d '' d; do
+        dirs+=("$d")
+    done < <(ssh -n -o ConnectTimeout=5 "${REMOTE_USER}@${REMOTE_IP}" "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" 2>/dev/null)
+
+    if [ ${#dirs[@]} -eq 0 ]; then
+        echo "エラー: ディレクトリが見つからないか、接続に失敗しました。"
+        exit 1
+    fi
+
+    echo ""
+    echo "取得対象を選択 (例: 1 3):"
+    for i in "${!dirs[@]}"; do
+        printf "  %2d) %s\n" "$((i+1))" "$(basename "${dirs[$i]}")"
+    done
+    read -p "番号を入力: " DIR_CHOICES
+    for choice in $DIR_CHOICES; do
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dirs[@]}" ]; then
+            SELECTED_DIRS+=("${dirs[$((choice-1))]}")
+        fi
+    done
 else
-    # 番号以外の文字列（例: 192.168.1.100）が入力された場合はそれを直接IPとして扱う
-    REMOTE_IP="$IP_CHOICE"
+    # --- モード2: 手動入力 ---
+    echo ""
+    echo "ベースディレクトリ: $REMOTE_BASE_DIR"
+    read -p "転送したいディレクトリ名を入力してください (スペース区切り可): " MANUAL_INPUT
+    for name in $MANUAL_INPUT; do
+        # 入力された名前がパス形式でない場合は、ベースディレクトリを付与
+        if [[ "$name" = /* ]]; then
+            SELECTED_DIRS+=("$name")
+        else
+            # 末尾のスラッシュを考慮して結合
+            SELECTED_DIRS+=("${REMOTE_BASE_DIR%/}/$name")
+        fi
+    done
 fi
 
+if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
+    echo "エラー: 対象が選択されていません。"
+    exit 1
+fi
+
+# 3. 保存先と実行
 echo ""
-read -p "送信先のディレクトリパス (Enterで '${DEFAULT_REMOTE_DIR}'): " REMOTE_DIR
-REMOTE_DIR=${REMOTE_DIR:-$DEFAULT_REMOTE_DIR}
+read -p "ローカル保存先 (Enterで '${DEFAULT_LOCAL_DEST_DIR}'): " LOCAL_DEST_DIR
+LOCAL_DEST_DIR=${LOCAL_DEST_DIR:-$DEFAULT_LOCAL_DEST_DIR}
+mkdir -p "$LOCAL_DEST_DIR"
 
-# 5. 最終確認
 echo ""
-echo "================ 転送内容の確認 ================"
-echo "送信元ディレクトリ (${#SELECTED_DIRS[@]}件):"
-for d in "${SELECTED_DIRS[@]}"; do
-    echo "  - ${d#$BASE_DIR}"
-done
-echo "送信先宛先        : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
-echo "================================================"
+echo "================ 転送内容 ================"
+echo "リモート: ${REMOTE_USER}@${REMOTE_IP}"
+for d in "${SELECTED_DIRS[@]}"; do echo "  - $d"; done
+echo "保存先  : $LOCAL_DEST_DIR"
+echo "=========================================="
 
-read -p "この内容で転送を開始しますか？ (Y/n, Enterで実行): " CONFIRM
-CONFIRM=${CONFIRM:-y} 
-
-if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "転送を開始します..."
-    
-    # scpコマンドの実行
-    scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
-    
-    if [ $? -eq 0 ]; then
-        echo "✅ 転送が正常に完了しました！"
-    else
-        echo "❌ 転送中にエラーが発生しました。"
-    fi
+read -p "rsyncを開始しますか？ (Y/n): " CONFIRM
+if [[ "${CONFIRM:-y}" =~ ^[Yy]$ ]]; then
+    for target_dir in "${SELECTED_DIRS[@]}"; do
+        echo ">>> Transferring: $(basename "$target_dir")"
+        rsync -avzP "${REMOTE_USER}@${REMOTE_IP}:\"$target_dir\"" "$LOCAL_DEST_DIR/"
+    done
+    echo "✅ 完了しました。"
 else
-    echo "転送をキャンセルしました。"
+    echo "キャンセルしました。"
 fi
