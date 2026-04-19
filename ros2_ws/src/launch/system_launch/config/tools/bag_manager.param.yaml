@@ -1,6 +1,6 @@
 /**:
   ros__parameters:
-    output_dir: "/workspaces/record"
+    output_dir: "/record"
     storage_id: mcap
     all_topics: false
     topics:
