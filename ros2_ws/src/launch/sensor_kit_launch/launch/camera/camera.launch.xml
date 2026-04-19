@@ -7,7 +7,7 @@
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="120.0" />
 
-    <node pkg="rclcpp_components" exec="component_container" name="$(var camera_container_name)" output="screen"/>
+    <node pkg="rclcpp_components" exec="component_container_mt" name="$(var camera_container_name)" output="screen"/>
 
     <group if="$(var use_camera)">
         <include file="$(find-pkg-share sensor_kit_launch)/launch/camera/$(var camera_model).launch.xml">

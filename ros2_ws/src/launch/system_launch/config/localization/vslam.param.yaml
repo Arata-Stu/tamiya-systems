@@ -182,7 +182,7 @@
     # ============================================
     image_buffer_size: 100
     imu_buffer_size: 50
-    image_qos: "DEFAULT"
+    image_qos: "SENSOR_DATA"
     imu_qos: "SENSOR_DATA"
     
     # ============================================
