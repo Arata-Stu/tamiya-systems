@@ -1,9 +1,8 @@
 <?xml version="1.0"?>
+
 <robot name="elp_stereo_camera" xmlns:xacro="http://ros.org/wiki/xacro">
   <xacro:property name="M_PI" value="3.1415926535897931" />
-  
-  <xacro:property name="INTEROCULAR" value="0.0515214" />
-  
+  <xacro:property name="INTEROCULAR" value="0.060" />
   <xacro:property name="BOARD_THICKNESS" value="0.002" />
   <xacro:property name="LENS_LENGTH" value="0.014" />
 
