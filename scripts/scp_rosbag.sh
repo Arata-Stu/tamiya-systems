@@ -103,7 +103,8 @@ read -p "rsyncを開始しますか？ (Y/n): " CONFIRM
 if [[ "${CONFIRM:-y}" =~ ^[Yy]$ ]]; then
     for target_dir in "${SELECTED_DIRS[@]}"; do
         echo ">>> Transferring: $(basename "$target_dir")"
-        rsync -avzP "${REMOTE_USER}@${REMOTE_IP}:\"$target_dir\"" "$LOCAL_DEST_DIR/"
+        # 修正ポイント: バックスラッシュによるエスケープを削除
+        rsync -avzP "${REMOTE_USER}@${REMOTE_IP}:${target_dir}" "$LOCAL_DEST_DIR/"
     done
     echo "✅ 完了しました。"
 else
