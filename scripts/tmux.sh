@@ -75,7 +75,7 @@ create_tamiya_layout() {
   tmux new-window -t "$SESSION_NAME" -n "$WINDOW_DATA"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_DATA".0
 
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".0 "cd /workspaces/record && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".0 "cd /record && clear" C-m
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".1 "cd /scripts/ && clear" C-m
 
   tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
