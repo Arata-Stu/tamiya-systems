@@ -7,6 +7,7 @@
     # ELP launch との整合を取るため、ベースフレームを固定
     camera_name: "camera"
     base_frame_id: "camera_link"
+    tf_prefix: ""
     publish_tf: true
     tf_publish_rate: 0.0
     
