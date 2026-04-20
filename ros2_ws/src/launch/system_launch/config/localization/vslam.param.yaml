@@ -174,7 +174,8 @@
     map_frame: "map"
     odom_frame: "odom"
     base_frame: "base_link"
-    camera_optical_frames: ['camera_infra1_optical_frame', 'camera_infra2_optical_frame']
+    # Use URDF optical frames as anchors; camera-specific aliases are bridged in camera launch.
+    camera_optical_frames: ['camera_link_left_optical_frame', 'camera_link_right_optical_frame']
     imu_frame: "camera_gyro_optical_frame"
     
     # ============================================
