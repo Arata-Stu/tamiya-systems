@@ -5,18 +5,21 @@
     all_topics: false
     topics:
       - /scan
+      - /scan_raw
       - /camera/left/image_raw
       - /camera/left/camera_info
       - /camera/right/image_raw
       - /camera/right/camera_info
-      # - /camera/left/image_rect_mono
-      # - /camera/right/image_rect_mono
+      - /realsense2_camera/color/camera_info
+      - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
       - /autonomous/cmd_drive
+      - /emergency/cmd_drive
+      - /emergency/signal
       - /joy
       - /tf
       - /tf_static
       - /robot_description
-      # - /visual_slam/tracking/slam_path
-      # - /visual_slam/tracking/odometry
-      # - /visual_slam/status
+      - /visual_slam/tracking/slam_path
+      - /visual_slam/tracking/odometry
+      - /visual_slam/status
