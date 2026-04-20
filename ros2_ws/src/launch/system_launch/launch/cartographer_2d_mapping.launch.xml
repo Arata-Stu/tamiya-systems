@@ -1,7 +1,7 @@
 <launch>
   <arg name="use_sim_time" default="true"/>
   <arg name="scan_topic" default="/scan"/>
-  <arg name="odom_topic" default="/odom"/>
+  <arg name="odom_topic" default="/visual_slam/tracking/odometry"/>
   <arg name="configuration_directory" default="$(find-pkg-share system_launch)/config/mapping"/>
   <arg name="configuration_basename" default="cartographer_2d.lua"/>
   <arg name="occupancy_grid_resolution" default="0.05"/>
