@@ -4,31 +4,20 @@
     serial_no: ''
     usb_port_id: ''
 
-    # ELP launch との整合を取るため、フレームIDを明示的に固定
+    # ELP launch との整合を取るため、ベースフレームを固定
+    camera_name: "camera"
     base_frame_id: "camera_link"
-    infra1_frame_id: "camera_infra1_frame"
-    infra2_frame_id: "camera_infra2_frame"
-    infra1_optical_frame_id: "camera_infra1_optical_frame"
-    infra2_optical_frame_id: "camera_infra2_optical_frame"
-    gyro_frame_id: "camera_gyro_frame"
-    gyro_optical_frame_id: "camera_gyro_optical_frame"
-    accel_frame_id: "camera_accel_frame"
-    accel_optical_frame_id: "camera_accel_optical_frame"
     publish_tf: true
     tf_publish_rate: 0.0
     
     # センサーの有効/無効
-    enable_accel: true
-    enable_gyro: true
     enable_color: true
     enable_depth: false
     enable_rgbd: false
     enable_infra1: true
     enable_infra2: true
-    
+
     # IMU設定
-    accel_fps: 63 # 63 or 250
-    gyro_fps: 200 # 200 or 400
     unite_imu_method: 2
     
     # QoS設定
@@ -43,18 +32,18 @@
     # 深度モジュール設定
     depth_module:
       # 6/15/30/60/90
-      depth_profile: '640x480x30'
+      depth_profile: '424x240x90'
       depth_format: 'Z16'
 
       # 6/15/30/60/90
-      infra_profile: '640x480x30'
+      infra_profile: '424x240x90'
       infra1_format: 'Y8'
       infra2_format: 'Y8'
       emitter_enabled: 0
       emitter_on_off: false
     
     # ポイントクラウド無効化
-    pointcloud:
+    pointcloud__neon_:
       enable: false
     
     # フィルター無効化（不要な処理を省く）
@@ -76,9 +65,6 @@
     realsense2_camera:
       color:
         image_raw:
-          enable_pub_plugins: ['image_transport/raw']
-      depth:
-        image_rect_raw:
           enable_pub_plugins: ['image_transport/raw']
       infra1:
         image_rect_raw:
