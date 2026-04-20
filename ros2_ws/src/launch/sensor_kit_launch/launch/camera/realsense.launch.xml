@@ -16,7 +16,7 @@
         name="effective_image_fps"
         value="$(eval '30 if (int(\'$(var image_width)\') == 320 and int(\'$(var image_height)\') == 240 and int(float(\'$(var image_fps)\')) == 120) else int(float(\'$(var image_fps)\'))')"/>
     <!-- RealSense infrared stream profile is specified as WIDTHxHEIGHTxFPS -->
-    <let name="safe_image_fps" value="$(eval 'max(1, min(90, int(\'$(var effective_image_fps)\'))))')"/>
+    <let name="safe_image_fps" value="$(eval 'max(1, min(90, int(\'$(var effective_image_fps)\')))')"/>
     <let
         name="infra_profile"
         value="$(eval '\'{}x{}x{}\'.format(int(\'$(var effective_image_width)\'), int(\'$(var effective_image_height)\'), int(\'$(var safe_image_fps)\'))')"/>
