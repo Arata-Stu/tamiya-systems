@@ -16,16 +16,22 @@
     <arg name="lidar_pitch" default="0.0"/>
     <arg name="lidar_yaw" default="0.0"/>
 
-    <arg name="camera_x" default="0.224"/>
-    <arg name="camera_y" default="0.0"/>
-    <arg name="camera_z" default="0.0585"/>
+    <!-- Camera mount (screw) offset from rear axle center (base_link), unit: [m] -->
+    <arg name="camera_x" default="0.2075"/>
+    <arg name="camera_y" default="0.019"/>
+    <arg name="camera_z" default="0.065"/>
     <arg name="camera_roll" default="0.0"/>
     <arg name="camera_pitch" default="0.0"/>
     <arg name="camera_yaw" default="0.0"/>
+    <arg name="camera_interocular" default="0.05"/>
+    <!-- Offset from camera mount (screw) to stereo lens center (camera_link), unit: [m] -->
+    <arg name="camera_mount_to_lens_x" default="0.0"/>
+    <arg name="camera_mount_to_lens_y" default="-0.0075"/>
+    <arg name="camera_mount_to_lens_z" default="0.0"/>
 
     <let
       name="robot_description"
-      value="$(command 'xacro $(var robot_description_xacro) base_frame:=$(var base_frame) lidar_frame:=$(var lidar_frame) camera_frame:=$(var camera_frame) lidar_x:=$(var lidar_x) lidar_y:=$(var lidar_y) lidar_z:=$(var lidar_z) lidar_roll:=$(var lidar_roll) lidar_pitch:=$(var lidar_pitch) lidar_yaw:=$(var lidar_yaw) camera_x:=$(var camera_x) camera_y:=$(var camera_y) camera_z:=$(var camera_z) camera_roll:=$(var camera_roll) camera_pitch:=$(var camera_pitch) camera_yaw:=$(var camera_yaw)')"/>
+      value="$(command 'xacro $(var robot_description_xacro) base_frame:=$(var base_frame) lidar_frame:=$(var lidar_frame) camera_frame:=$(var camera_frame) lidar_x:=$(var lidar_x) lidar_y:=$(var lidar_y) lidar_z:=$(var lidar_z) lidar_roll:=$(var lidar_roll) lidar_pitch:=$(var lidar_pitch) lidar_yaw:=$(var lidar_yaw) camera_x:=$(var camera_x) camera_y:=$(var camera_y) camera_z:=$(var camera_z) camera_roll:=$(var camera_roll) camera_pitch:=$(var camera_pitch) camera_yaw:=$(var camera_yaw) camera_interocular:=$(var camera_interocular) camera_mount_to_lens_x:=$(var camera_mount_to_lens_x) camera_mount_to_lens_y:=$(var camera_mount_to_lens_y) camera_mount_to_lens_z:=$(var camera_mount_to_lens_z)')"/>
 
     <node pkg="jetracer_driver"
           exec="jetracer_node.py"

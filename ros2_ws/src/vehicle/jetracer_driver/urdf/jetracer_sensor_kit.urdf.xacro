@@ -20,8 +20,13 @@
   <xacro:arg name="camera_roll" default="0.0" />
   <xacro:arg name="camera_pitch" default="0.0" />
   <xacro:arg name="camera_yaw" default="0.0" />
+  <xacro:arg name="camera_interocular" default="0.05" />
+  <xacro:arg name="camera_mount_to_lens_x" default="0.0" />
+  <xacro:arg name="camera_mount_to_lens_y" default="-0.0075" />
+  <xacro:arg name="camera_mount_to_lens_z" default="0.0" />
 
   <link name="$(arg base_frame)" />
+  <link name="$(arg camera_frame)_mount" />
 
   <link name="$(arg lidar_frame)">
     <visual>
@@ -34,7 +39,7 @@
     </visual>
   </link>
 
-  <xacro:elp_stereo_camera name="$(arg camera_frame)" />
+  <xacro:elp_stereo_camera name="$(arg camera_frame)" interocular="$(arg camera_interocular)" />
 
   <joint name="$(arg base_frame)_to_$(arg lidar_frame)" type="fixed">
     <parent link="$(arg base_frame)" />
@@ -44,11 +49,19 @@
       rpy="$(arg lidar_roll) $(arg lidar_pitch) $(arg lidar_yaw)" />
   </joint>
 
-  <joint name="$(arg base_frame)_to_$(arg camera_frame)" type="fixed">
+  <joint name="$(arg base_frame)_to_$(arg camera_frame)_mount" type="fixed">
     <parent link="$(arg base_frame)" />
-    <child link="$(arg camera_frame)" />
+    <child link="$(arg camera_frame)_mount" />
     <origin
       xyz="$(arg camera_x) $(arg camera_y) $(arg camera_z)"
       rpy="$(arg camera_roll) $(arg camera_pitch) $(arg camera_yaw)" />
+  </joint>
+
+  <joint name="$(arg camera_frame)_mount_to_$(arg camera_frame)" type="fixed">
+    <parent link="$(arg camera_frame)_mount" />
+    <child link="$(arg camera_frame)" />
+    <origin
+      xyz="$(arg camera_mount_to_lens_x) $(arg camera_mount_to_lens_y) $(arg camera_mount_to_lens_z)"
+      rpy="0 0 0" />
   </joint>
 </robot>

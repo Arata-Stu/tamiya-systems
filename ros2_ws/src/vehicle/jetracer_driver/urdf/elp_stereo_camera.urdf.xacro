@@ -1,13 +1,11 @@
 <?xml version="1.0"?>
 <robot name="elp_stereo_camera" xmlns:xacro="http://ros.org/wiki/xacro">
   <xacro:property name="M_PI" value="3.1415926535897931" />
-  
-  <xacro:property name="INTEROCULAR" value="0.0515214" />
-  
+
   <xacro:property name="BOARD_THICKNESS" value="0.002" />
   <xacro:property name="LENS_LENGTH" value="0.014" />
 
-  <xacro:macro name="elp_stereo_camera" params="name">
+  <xacro:macro name="elp_stereo_camera" params="name interocular:=0.0515214">
     <link name="${name}">
       <visual>
         <geometry>
@@ -51,7 +49,7 @@
     <joint name="${name}_to_${name}_left_frame" type="fixed">
       <parent link="${name}" />
       <child link="${name}_left_frame" />
-      <origin xyz="${BOARD_THICKNESS/2 + LENS_LENGTH} ${INTEROCULAR/2} 0" />
+      <origin xyz="${BOARD_THICKNESS/2 + LENS_LENGTH} ${interocular/2} 0" />
     </joint>
 
     <joint name="${name}_left_frame_to_${name}_left_optical_frame" type="fixed">
@@ -63,7 +61,7 @@
     <joint name="${name}_to_${name}_right_frame" type="fixed">
       <parent link="${name}" />
       <child link="${name}_right_frame" />
-      <origin xyz="${BOARD_THICKNESS/2 + LENS_LENGTH} ${-INTEROCULAR/2} 0" />
+      <origin xyz="${BOARD_THICKNESS/2 + LENS_LENGTH} ${-interocular/2} 0" />
     </joint>
 
     <joint name="${name}_right_frame_to_${name}_right_optical_frame" type="fixed">
