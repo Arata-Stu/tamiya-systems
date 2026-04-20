@@ -1,0 +1,41 @@
+<launch>
+    <arg name="camera_container_name" default="camera_container" />
+    <arg name="realsense_param" default="$(find-pkg-share sensor_kit_launch)/config/camera/realsense.param.yaml" />
+    <arg name="image_width" default="320" />
+    <arg name="image_height" default="240" />
+    <arg name="image_fps" default="120.0" />
+    <!-- RealSense infrared stream profile is specified as WIDTHxHEIGHTxFPS -->
+    <let name="safe_image_fps" value="$(eval 'max(1, min(90, int(float(\'$(var image_fps)\'))))')"/>
+    <let
+        name="infra_profile"
+        value="$(eval '\'{}x{}x{}\'.format(int(\'$(var image_width)\'), int(\'$(var image_height)\'), int(\'$(var safe_image_fps)\'))')"/>
+
+
+    <load_composable_node target="$(var camera_container_name)">
+        <composable_node pkg="realsense2_camera" plugin="realsense2_camera::RealSenseNodeFactory" name="realsense2_camera" namespace="">
+            <param from="$(var realsense_param)" />
+            <param name="depth_module.infra_profile" value="$(var infra_profile)" />
+
+            <!-- Normalize RealSense output topics to the same contract as ELP -->
+            <remap from="infra1/image_rect_raw" to="/camera/left/image_raw" />
+            <remap from="infra1/camera_info" to="/camera/left/camera_info" />
+            <remap from="infra2/image_rect_raw" to="/camera/right/image_raw" />
+            <remap from="infra2/camera_info" to="/camera/right/camera_info" />
+
+            <!-- Compatibility remaps for alternative RealSense namespace/topic layouts -->
+            <remap from="camera/infra1/image_rect_raw" to="/camera/left/image_raw" />
+            <remap from="camera/infra1/camera_info" to="/camera/left/camera_info" />
+            <remap from="camera/infra2/image_rect_raw" to="/camera/right/image_raw" />
+            <remap from="camera/infra2/camera_info" to="/camera/right/camera_info" />
+            <remap from="realsense2_camera/infra1/image_rect_raw" to="/camera/left/image_raw" />
+            <remap from="realsense2_camera/infra1/camera_info" to="/camera/left/camera_info" />
+            <remap from="realsense2_camera/infra2/image_rect_raw" to="/camera/right/image_raw" />
+            <remap from="realsense2_camera/infra2/camera_info" to="/camera/right/camera_info" />
+
+            <remap from="imu" to="/camera/imu" />
+            <remap from="camera/imu" to="/camera/imu" />
+            <remap from="realsense2_camera/imu" to="/camera/imu" />
+            <remap from="/realsense2_camera/imu" to="/camera/imu" />
+        </composable_node>
+    </load_composable_node>
+</launch>

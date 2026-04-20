@@ -61,6 +61,8 @@
             <remap from="/visual_slam/camera_info_0" to="/camera/left/camera_info_rect"/>
             <remap from="/visual_slam/image_1" to="/camera/right/image_rect_mono"/>
             <remap from="/visual_slam/camera_info_1" to="/camera/right/camera_info_rect"/>
+
+            <remap from="/visual_slam/imu" to="/camera/imu" />
         </composable_node>
     </load_composable_node>
 
