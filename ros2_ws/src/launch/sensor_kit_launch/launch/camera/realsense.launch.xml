@@ -4,11 +4,22 @@
     <arg name="image_width" default="320" />
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="120.0" />
+    <!-- system.launch generic defaults (320x240x120) are ELP-oriented.
+         Fallback to a broadly supported RealSense profile only when defaults are untouched. -->
+    <let
+        name="effective_image_width"
+        value="$(eval '640 if (int(\'$(var image_width)\') == 320 and int(\'$(var image_height)\') == 240 and int(float(\'$(var image_fps)\')) == 120) else int(\'$(var image_width)\')')"/>
+    <let
+        name="effective_image_height"
+        value="$(eval '480 if (int(\'$(var image_width)\') == 320 and int(\'$(var image_height)\') == 240 and int(float(\'$(var image_fps)\')) == 120) else int(\'$(var image_height)\')')"/>
+    <let
+        name="effective_image_fps"
+        value="$(eval '30 if (int(\'$(var image_width)\') == 320 and int(\'$(var image_height)\') == 240 and int(float(\'$(var image_fps)\')) == 120) else int(float(\'$(var image_fps)\'))')"/>
     <!-- RealSense infrared stream profile is specified as WIDTHxHEIGHTxFPS -->
-    <let name="safe_image_fps" value="$(eval 'max(1, min(90, int(float(\'$(var image_fps)\'))))')"/>
+    <let name="safe_image_fps" value="$(eval 'max(1, min(90, int(\'$(var effective_image_fps)\'))))')"/>
     <let
         name="infra_profile"
-        value="$(eval '\'{}x{}x{}\'.format(int(\'$(var image_width)\'), int(\'$(var image_height)\'), int(\'$(var safe_image_fps)\'))')"/>
+        value="$(eval '\'{}x{}x{}\'.format(int(\'$(var effective_image_width)\'), int(\'$(var effective_image_height)\'), int(\'$(var safe_image_fps)\'))')"/>
 
 
     <load_composable_node target="$(var camera_container_name)">
@@ -34,8 +45,6 @@
 
             <remap from="imu" to="/camera/imu" />
             <remap from="camera/imu" to="/camera/imu" />
-            <remap from="realsense2_camera/imu" to="/camera/imu" />
-            <remap from="/realsense2_camera/imu" to="/camera/imu" />
         </composable_node>
     </load_composable_node>
 </launch>
