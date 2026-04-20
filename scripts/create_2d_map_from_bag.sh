@@ -5,12 +5,12 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  create_2d_map_from_bag.sh [--scan-topic TOPIC] [--rate RATE] [--odom-topic TOPIC] [--use-vslam-odom] BAG_PATH MAP_STEM
+  create_2d_map_from_bag.sh [--scan-topic TOPIC] [--rate RATE] [--odom-topic TOPIC] [--use-vslam-odom] BAG_PATH MAP_NAME
 
 Arguments:
   BAG_PATH   rosbag2 directory path (metadata.yaml must exist)
-  MAP_STEM   output path without extension
-             e.g. /workspaces/maps/test_track
+  MAP_NAME   output map name (will be saved in /workspaces/map/<bag_name>/<MAP_NAME>)
+             e.g. corridor
 
 Options:
   --scan-topic TOPIC  scan topic for cartographer (default: /scan)
@@ -20,9 +20,9 @@ Options:
   -h, --help          show this help
 
 Outputs:
-  MAP_STEM.pbstream
-  MAP_STEM.yaml
-  MAP_STEM.pgm
+  /workspaces/map/<bag_name>/<MAP_NAME>.pbstream
+  /workspaces/map/<bag_name>/<MAP_NAME>.yaml
+  /workspaces/map/<bag_name>/<MAP_NAME>.pgm
 EOF
 }
 
@@ -74,7 +74,15 @@ if [ "${#POSITIONAL[@]}" -ne 2 ]; then
 fi
 
 BAG_PATH="${POSITIONAL[0]}"
-MAP_STEM="${POSITIONAL[1]}"
+MAP_NAME="${POSITIONAL[1]}"
+
+# 末尾のスラッシュを削除してからベース名（フォルダ名）を取得
+BAG_PATH_CLEAN="${BAG_PATH%/}"
+BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
+
+# 出力先ディレクトリとファイルパスの生成
+OUT_DIR="/workspaces/map/${BAG_DIR_NAME}"
+MAP_STEM="${OUT_DIR}/${MAP_NAME}"
 PBSTREAM_PATH="${MAP_STEM}.pbstream"
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
 
@@ -84,19 +92,8 @@ if [ ! -d "$BAG_PATH" ] || [ ! -f "$BAG_PATH/metadata.yaml" ]; then
     exit 1
 fi
 
-if [ ! -f "/opt/ros/humble/setup.bash" ]; then
-    echo "ROS 2 Humble environment not found: /opt/ros/humble/setup.bash" >&2
-    exit 1
-fi
-source /opt/ros/humble/setup.bash
-
-if [ -f "/workspaces/install/setup.bash" ]; then
-    source /workspaces/install/setup.bash
-elif [ -n "${ISAAC_ROS_WS:-}" ] && [ -f "${ISAAC_ROS_WS}/install/setup.bash" ]; then
-    source "${ISAAC_ROS_WS}/install/setup.bash"
-fi
-
-mkdir -p "$(dirname "$MAP_STEM")"
+# 保存先ディレクトリを作成
+mkdir -p "${OUT_DIR}"
 
 stop_cartographer() {
     if [ -n "${CARTOGRAPHER_PID:-}" ] && kill -0 "${CARTOGRAPHER_PID}" 2>/dev/null; then
@@ -163,7 +160,10 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
     -pbstream_filename "${PBSTREAM_PATH}" \
     -map_filestem "${MAP_STEM}" \
     -resolution 0.05; then
-    echo "Map generated: ${MAP_STEM}.yaml / ${MAP_STEM}.pgm / ${PBSTREAM_PATH}"
+    echo "Map generated:"
+    echo "  - ${MAP_STEM}.yaml"
+    echo "  - ${MAP_STEM}.pgm"
+    echo "  - ${PBSTREAM_PATH}"
 else
     echo "pbstream generated: ${PBSTREAM_PATH}" >&2
     echo "Failed to convert pbstream to occupancy map. Check cartographer_ros installation." >&2
