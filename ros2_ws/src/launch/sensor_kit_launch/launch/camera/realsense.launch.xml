@@ -43,6 +43,25 @@
             <remap from="realsense2_camera/infra2/image_rect_raw" to="/camera/right/image_raw" />
             <remap from="realsense2_camera/infra2/camera_info" to="/camera/right/camera_info" />
 
+            <remap from="imu" to="/camera/imu" />
+            <remap from="camera/imu" to="/camera/imu" />
+            <remap from="realsense2_camera/imu" to="/camera/imu" />
+            <remap from="/realsense2_camera/imu" to="/camera/imu" />
+
         </composable_node>
     </load_composable_node>
+
+    <!-- vslam default expects camera_infra{1,2}_optical_frame.
+         Realsense TF naming may differ, so provide aliases from URDF optical frames. -->
+    <node
+        pkg="tf2_ros"
+        exec="static_transform_publisher"
+        name="left_optical_frame_alias"
+        args="0 0 0 0 0 0 camera_link_left_optical_frame camera_infra1_optical_frame" />
+
+    <node
+        pkg="tf2_ros"
+        exec="static_transform_publisher"
+        name="right_optical_frame_alias"
+        args="0 0 0 0 0 0 camera_link_right_optical_frame camera_infra2_optical_frame" />
 </launch>
