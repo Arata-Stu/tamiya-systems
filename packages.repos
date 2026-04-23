@@ -2,10 +2,10 @@ repositories:
   # Sensor Driver
 
   ## urg_node2
-  ros2_ws/src/sensing/urg_node2:
-    type: git
-    url: https://github.com/Hokuyo-aut/urg_node2.git
-    version: main
+  # ros2_ws/src/sensing/urg_node2:
+    #type: git
+    #url: https://github.com/Hokuyo-aut/urg_node2.git
+    #version: main
 
   ## YDLiDAR
   ros2_ws/src/sensing/ydlidar_ros2_driver:
@@ -14,10 +14,10 @@ repositories:
     version: main
 
   ## ELP Camera
-  ros2_ws/src/sensing/elp-camera-ros2-driver:
-    type: git
-    url: https://github.com/Arata-Stu/elp-camera-ros2-driver.git
-    version: main
+  #ros2_ws/src/sensing/elp-camera-ros2-driver:
+    #type: git
+    #url: https://github.com/Arata-Stu/elp-camera-ros2-driver.git
+    #version: main
 
 
   # ISAAC ROS
@@ -28,7 +28,7 @@ repositories:
     url: https://github.com/carbuncle01/isaac_ros_common.git
     version: release-3.2
 
-
+  ## isaac_ros_map_localization
   ros2_ws/src/isaac_ros/isaac_ros_map_localization:
     type: git
     url: https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_map_localization.git
