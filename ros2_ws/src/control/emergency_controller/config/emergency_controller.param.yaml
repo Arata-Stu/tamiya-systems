@@ -23,7 +23,7 @@
     steer_bias_gain: 1.20
 
     # LiDAR値の上限クリップ [m]。
-    max_considered_range_m: 8.0
+    max_considered_range_m: 12.0
 
     # scan更新が止まったとみなす時間 [s]。
     scan_timeout_sec: 0.25

@@ -7,7 +7,6 @@
     window_size: 5
 
     # --- Slew Rate Limiter (filter_type="slew_rate") ---
-    # --- Slew Rate Limiter (filter_type="slew_rate") ---
     # 速度の最大変化率 [m/s^2] (または unit/s)
     max_speed_slew_rate: 2.0
 

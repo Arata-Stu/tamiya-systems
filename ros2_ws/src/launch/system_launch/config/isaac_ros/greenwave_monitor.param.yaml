@@ -34,21 +34,30 @@ greenwave_monitor:
       /scan:
         expected_frequency: 10.0
         tolerance: 10.0
+      /scan_raw:
+        expected_frequency: 10.0
+        tolerance: 10.0
       # /camera/left/image_raw:
-      #   expected_frequency: 120.0
+      #   expected_frequency: 90.0
       #   # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
       #   tolerance: 10.0  
       # /camera/right/image_raw:
-      #   expected_frequency: 120.0
+      #   expected_frequency: 90.0
       #   # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
       #   tolerance: 10.0
       # /camera/right/image_rect_mono:
-      #   expected_frequency: 120.0
+      #   expected_frequency: 90.0
       #   # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
       #   tolerance: 10.0
       # /camera/left/image_rect_mono:
-      #   expected_frequency: 120.0
+      #   expected_frequency: 90.0
       #   # 120Hz ±10% (108Hz ~ 132Hz) を許容範囲とする場合
+      #   tolerance: 10.0
+      # /realsense2_camera/color/camera_info:
+      #   expected_frequency: 30.0
+      #   tolerance: 10.0
+      # /realsense2_camera/color/image_raw:
+      #   expected_frequency: 30.0
       #   tolerance: 10.0
       /jetracer/cmd_driver:
         expected_frequency: 100.0
@@ -66,20 +75,20 @@ greenwave_monitor:
         expected_frequency: 10.0
         tolerance: 10.0
       /visual_slam/status:
-        expected_frequency: 120.0
+        expected_frequency: 90.0
         tolerance: 10.0
       /visual_slam/tracking/vo_pose:
-        expected_frequency: 120.0
+        expected_frequency: 90.0
         tolerance: 10.0
       /visual_slam/tracking/vo_pose_covariance:
-        expected_frequency: 120.0
+        expected_frequency: 90.0
         tolerance: 10.0
       /visual_slam/tracking/odometry:
-        expected_frequency: 120.0
+        expected_frequency: 90.0
         tolerance: 10.0
       /visual_slam/tracking/vo_path:
-        expected_frequency: 120.0
+        expected_frequency: 90.0
         tolerance: 10.0
       /visual_slam/tracking/slam_path:
-        expected_frequency: 120.0
+        expected_frequency: 90.0
         tolerance: 10.0
