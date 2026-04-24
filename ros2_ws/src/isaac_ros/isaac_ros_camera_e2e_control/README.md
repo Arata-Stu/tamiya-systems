@@ -20,6 +20,16 @@ ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e.launch.xml \
   network_image_height:=240
 ```
 
+Precision-specific presets:
+
+```bash
+# FP32 tensor transport (default behavior)
+ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e_fp32.launch.xml
+
+# FP16 tensor output between Triton and decoder
+ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e_fp16.launch.xml
+```
+
 ## Tensor naming defaults
 
 - Encoder output tensor name: `input_tensor`
@@ -29,4 +39,3 @@ ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e.launch.xml \
 - Triton output binding name: `control_output`
 
 If you change model or encoder settings, keep these names consistent.
-

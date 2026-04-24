@@ -1,0 +1,17 @@
+name: "pilotnet"
+platform: "tensorrt_plan"
+max_batch_size: 1
+input [
+  {
+    name: "image_input"
+    data_type: TYPE_FP16
+    dims: [ 3, 240, 320 ]
+  }
+]
+output [
+  {
+    name: "control_output"
+    data_type: TYPE_FP16
+    dims: [ 2 ]
+  }
+]

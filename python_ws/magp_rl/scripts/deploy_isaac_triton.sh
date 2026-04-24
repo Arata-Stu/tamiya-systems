@@ -354,8 +354,11 @@ build_trt_engine() {
   local trtexec
   trtexec="$(find_trtexec)"
 
-  local prec_flag="--${PRECISION}"
   [[ "${PRECISION}" == "fp16" || "${PRECISION}" == "fp32" ]] || die "Unsupported precision: ${PRECISION}"
+  local precision_args=()
+  if [[ "${PRECISION}" == "fp16" ]]; then
+    precision_args+=(--fp16)
+  fi
 
   local min_shape opt_shape max_shape
   if [[ "${INPUT_LAYOUT}" == "scan" ]]; then
@@ -375,7 +378,7 @@ build_trt_engine() {
     --minShapes="${min_shape}" \
     --optShapes="${opt_shape}" \
     --maxShapes="${max_shape}" \
-    "${prec_flag}" \
+    "${precision_args[@]}" \
     --verbose
 
   write_triton_config "${model_root}"

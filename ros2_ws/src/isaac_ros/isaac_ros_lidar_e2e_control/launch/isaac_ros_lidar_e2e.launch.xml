@@ -17,6 +17,10 @@
     <!-- Model binding names inside Triton model (ONNX/plan tensor names) -->
     <arg name="triton_input_binding_name" default="scan_input" />
     <arg name="triton_output_binding_name" default="control_output" />
+    <arg name="triton_input_tensor_format" default="nitros_tensor_list_nchw_rgb_f32" />
+    <arg name="triton_output_tensor_format" default="nitros_tensor_list_nhwc_rgb_f32" />
+    <arg name="decoder_input_tensor_format" default="nitros_tensor_list_nhwc_rgb_f32" />
+    <arg name="decoder_tensor_data_type" default="fp32" />
     
     <let name="input_tensor_topic" value="$(var scan_tensor_topic)" />
     <let name="triton_output_topic" value="/triton_lidarnet/output_tensor" />
@@ -49,8 +53,8 @@
             <param name="output_tensor_names" value="['$(var triton_output_tensor_names)']" />
             <param name="input_binding_names" value="['$(var triton_input_binding_name)']" />
             <param name="output_binding_names" value="['$(var triton_output_binding_name)']" />
-            <param name="input_tensor_formats" value="['nitros_tensor_list_nchw_rgb_f32']" />
-            <param name="output_tensor_formats" value="['nitros_tensor_list_nhwc_rgb_f32']" />
+            <param name="input_tensor_formats" value="['$(var triton_input_tensor_format)']" />
+            <param name="output_tensor_formats" value="['$(var triton_output_tensor_format)']" />
 
             <remap from="tensor_sub" to="$(var triton_output_topic)" />
             <remap from="tensor_pub" to="$(var input_tensor_topic)" />
@@ -64,6 +68,8 @@
             name="lidarnet_decoder_node">
 
             <param from="$(var lidarnet_decoder_node_param)" />
+            <param name="input_tensor_format" value="$(var decoder_input_tensor_format)" />
+            <param name="tensor_data_type" value="$(var decoder_tensor_data_type)" />
 
             <remap from="inference_output" to="$(var triton_output_topic)" />
             <remap from="autonomous/cmd_drive" to="$(var decoder_output_target)" />
