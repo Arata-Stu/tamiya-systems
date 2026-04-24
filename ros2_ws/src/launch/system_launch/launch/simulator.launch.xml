@@ -2,9 +2,13 @@
     <arg name="record" default="false" description="run rosbag2 record node"/>
     <arg name="has_opp" default="false" description="whether the simulation environment has an opponent"/>
     <arg name="rviz" default="false" description="whether to launch rviz"/>
+    <arg name="localization" default="false" description="run map localization nodes in simulator"/>
 
     <arg name="map_path" default="$(find-pkg-share system_launch)/config/simulator/levine" description="path to the map file"/>
     <arg name="map_ext" default=".png" description="extension of the map image file"/>
+    <arg name="map_yaml_path" default="$(find-pkg-share system_launch)/config/simulator/levine.yaml" description="map yaml path for occupancy grid localizer"/>
+    <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
+    <arg name="lidar_container_name" default="lidar_container" />
 
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
@@ -62,5 +66,20 @@
         <arg name="has_opp" value="$(var has_opp)"/>
         <arg name="rviz" value="$(var rviz)"/>
     </include>
+
+    <!-- Simulator localization pipeline -->
+    <group if="$(var localization)">
+        <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"/>
+
+        <include file="$(find-pkg-share system_launch)/launch/localization.launch.xml">
+            <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
+            <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
+            <arg name="map_yaml_path" value="$(var map_yaml_path)"/>
+            <arg name="localization_param" value="$(var localization_param)"/>
+            <arg name="scan_topic" value="/scan"/>
+            <arg name="flatscan_topic" value="/flatscan"/>
+            <arg name="localization_result_topic" value="/localization_result"/>
+        </include>
+    </group>
 
 </launch>
