@@ -44,8 +44,7 @@ LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions &options)
 
   nitros_sub_ = std::make_shared<MySubscriber>(
       this, "inference_output",
-      nvidia::isaac_ros::nitros::nitros_tensor_list_nchw_rgb_f32_t::
-          supported_type_name,
+      "nitros_tensor_list_nhwc_rgb_f32",
       std::bind(&LidarNetDecoderNode::InputCallback, this,
                 std::placeholders::_1));
 

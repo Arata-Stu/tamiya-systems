@@ -130,10 +130,11 @@ void ScanEncoderNode::InputCallback(
                history_size_, scan_len, buffer_size);
 
   // 7. Publish
+  // NOTE:
+  // The GPU buffer is handed off to NitrosTensorList via builder ownership.
+  // Do not cudaFree(buffer) here; freeing immediately invalidates the pointer
+  // before downstream Triton copies input data.
   nitros_pub_->publish(tensor_list);
-
-  // 8. GPUメモリ解放（リーク防止）
-  cudaFree(buffer);
 }
 
 } // namespace isaac_ros_lidar_e2e_control
