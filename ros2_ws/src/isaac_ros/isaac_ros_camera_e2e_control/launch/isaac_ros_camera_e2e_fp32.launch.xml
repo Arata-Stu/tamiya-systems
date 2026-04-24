@@ -1,9 +1,4 @@
 <?xml version="1.0"?>
 <launch>
-    <include file="$(find-pkg-share isaac_ros_camera_e2e_control)/launch/isaac_ros_camera_e2e.launch.xml">
-        <arg name="triton_input_tensor_format" value="nitros_tensor_list_nchw_rgb_f32" />
-        <arg name="triton_output_tensor_format" value="nitros_tensor_list_nhwc_rgb_f32" />
-        <arg name="decoder_input_tensor_format" value="nitros_tensor_list_nhwc_rgb_f32" />
-        <arg name="decoder_tensor_data_type" value="fp32" />
-    </include>
+    <include file="$(find-pkg-share isaac_ros_camera_e2e_control)/launch/isaac_ros_camera_e2e.launch.xml"/>
 </launch>

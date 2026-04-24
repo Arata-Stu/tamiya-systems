@@ -211,8 +211,9 @@ bash ./scripts/deploy_isaac_triton.sh \
 ```
 
 注: Hokuyoへ切替える場合は `--lidar-profile hokuyo` に変更します。
-`--precision fp16|fp32` は TensorRT build だけでなく、生成される `config.pbtxt` の
-`input/output data_type`（`TYPE_FP16/TYPE_FP32`）にも反映されます。
+`--precision fp16|fp32` は TensorRT build の計算精度に反映されます。
+I/O 互換性のため、生成される `config.pbtxt` の `input/output data_type` は
+常に `TYPE_FP32` です。
 
 ## 9. トラブルシュート（最短）
 

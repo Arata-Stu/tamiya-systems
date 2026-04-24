@@ -18,8 +18,6 @@
 #include "isaac_ros_lidar_e2e_control/lidarnet_decoder_node.hpp"
 
 #include <algorithm>
-#include <cstdint>
-#include <cstring>
 #include <cuda_runtime.h>
 #include <memory>
 #include <string>
@@ -29,60 +27,11 @@
 
 namespace isaac_ros_lidar_e2e_control {
 
-namespace {
-
-float HalfToFloat(const uint16_t half_bits) {
-  const uint32_t sign = (static_cast<uint32_t>(half_bits & 0x8000u)) << 16;
-  const uint16_t exp = half_bits & 0x7C00u;
-  const uint16_t mant = half_bits & 0x03FFu;
-
-  uint32_t out_exp = 0;
-  uint32_t out_mant = 0;
-
-  if (exp == 0) {
-    if (mant != 0) {
-      uint16_t norm_mant = mant;
-      int shift = 0;
-      while ((norm_mant & 0x0400u) == 0) {
-        norm_mant <<= 1;
-        ++shift;
-      }
-      norm_mant &= 0x03FFu;
-      out_exp = static_cast<uint32_t>(127 - 15 - shift) << 23;
-      out_mant = static_cast<uint32_t>(norm_mant) << 13;
-    }
-  } else if (exp == 0x7C00u) {
-    out_exp = 0x7F800000u;
-    out_mant = static_cast<uint32_t>(mant) << 13;
-  } else {
-    const uint32_t exp32 = static_cast<uint32_t>(exp >> 10) + (127 - 15);
-    out_exp = exp32 << 23;
-    out_mant = static_cast<uint32_t>(mant) << 13;
-  }
-
-  const uint32_t bits = sign | out_exp | out_mant;
-  float out = 0.0f;
-  std::memcpy(&out, &bits, sizeof(float));
-  return out;
-}
-
-}  // namespace
-
 LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions &options)
     : Node("lidarnet_decoder_node", options) {
   // --- パラメータ宣言 ---
   output_tensor_name_ =
       declare_parameter<std::string>("output_tensor_name", "control_output");
-  input_tensor_format_ = declare_parameter<std::string>(
-      "input_tensor_format", "nitros_tensor_list_nhwc_rgb_f32");
-  tensor_data_type_ =
-      declare_parameter<std::string>("tensor_data_type", "fp32");
-  if (tensor_data_type_ != "fp32" && tensor_data_type_ != "fp16") {
-    RCLCPP_WARN(this->get_logger(),
-                "Unknown tensor_data_type='%s'. Fallback to fp32.",
-                tensor_data_type_.c_str());
-    tensor_data_type_ = "fp32";
-  }
   use_clip_ = declare_parameter<bool>("use_clip", true);
   max_steer_ = declare_parameter<double>("max_steer", 1.0);
   max_speed_ = declare_parameter<double>("max_speed", 1.0);
@@ -95,7 +44,8 @@ LidarNetDecoderNode::LidarNetDecoderNode(const rclcpp::NodeOptions &options)
 
   nitros_sub_ = std::make_shared<MySubscriber>(
       this, "inference_output",
-      input_tensor_format_,
+      nvidia::isaac_ros::nitros::nitros_tensor_list_nchw_rgb_f32_t::
+          supported_type_name,
       std::bind(&LidarNetDecoderNode::InputCallback, this,
                 std::placeholders::_1));
 
@@ -118,34 +68,19 @@ void LidarNetDecoderNode::InputCallback(
     return;
   }
 
-  float steer = 0.0f;
-  float speed = 0.0f;
+  float host_data[2];
+  cudaError_t cuda_status = cudaMemcpy(
+      host_data, tensor.GetBuffer(), 2 * sizeof(float), cudaMemcpyDeviceToHost);
 
-  if (tensor_data_type_ == "fp16") {
-    uint16_t host_data_fp16[2] = {0u, 0u};
-    const cudaError_t cuda_status =
-        cudaMemcpy(host_data_fp16, tensor.GetBuffer(), 2 * sizeof(uint16_t),
-                   cudaMemcpyDeviceToHost);
-    if (cuda_status != cudaSuccess) {
-      RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy(fp16) failed: %s",
-                   cudaGetErrorString(cuda_status));
-      return;
-    }
-    steer = HalfToFloat(host_data_fp16[0]);
-    speed = HalfToFloat(host_data_fp16[1]);
-  } else {
-    float host_data_fp32[2] = {0.0f, 0.0f};
-    const cudaError_t cuda_status =
-        cudaMemcpy(host_data_fp32, tensor.GetBuffer(), 2 * sizeof(float),
-                   cudaMemcpyDeviceToHost);
-    if (cuda_status != cudaSuccess) {
-      RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy(fp32) failed: %s",
-                   cudaGetErrorString(cuda_status));
-      return;
-    }
-    steer = host_data_fp32[0];
-    speed = host_data_fp32[1];
+  if (cuda_status != cudaSuccess) {
+    RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy failed: %s",
+                 cudaGetErrorString(cuda_status));
+    return;
   }
+
+  // --- [steer, speed] の順で取得 ---
+  float steer = host_data[0];
+  float speed = host_data[1];
 
   // --- クリップ処理 ---
   if (use_clip_) {

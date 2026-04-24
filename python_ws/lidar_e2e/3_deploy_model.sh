@@ -31,7 +31,7 @@ Description:
 
 Options:
   --onnx PATH                 Use existing ONNX and skip export_onnx.py
-  --precision {fp16|fp32}     TensorRT precision and config selection (default: fp16)
+  --precision {fp16|fp32}     TensorRT compute precision (I/O stays FP32, default: fp16)
   --scan-points N             LiDAR points for TRT shape/profile (default: 320)
   --max-batch-size N          Max batch size for TensorRT profile (default: 1)
   -h, --help                  Show this help message
@@ -105,7 +105,7 @@ select_checkpoint_interactive() {
 }
 
 print_parameters() {
-  local config_file="${CONFIG_BASENAME}_${PRECISION}.pbtxt"
+  local config_file="${CONFIG_BASENAME}_fp32.pbtxt"
   echo "==================================================="
   echo "LiDAR Model Deployment Configuration"
   echo "==================================================="
@@ -123,7 +123,7 @@ print_parameters() {
 setup_model() {
   [[ -f "${INPUT_ONNX_PATH}" ]] || die "ONNX file not found: ${INPUT_ONNX_PATH}"
 
-  local config_file="${CONFIG_BASENAME}_${PRECISION}.pbtxt"
+  local config_file="${CONFIG_BASENAME}_fp32.pbtxt"
   local config_source_path
   config_source_path="$(resolve_config_source "${config_file}")"
 

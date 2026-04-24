@@ -23,10 +23,10 @@ ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e.launch.xml \
 Precision-specific presets:
 
 ```bash
-# FP32 tensor transport (default behavior)
+# FP32 transport (default behavior)
 ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e_fp32.launch.xml
 
-# FP16 tensor output between Triton and decoder
+# FP16 TensorRT engine deployment preset (transport I/O remains FP32)
 ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e_fp16.launch.xml
 ```
 

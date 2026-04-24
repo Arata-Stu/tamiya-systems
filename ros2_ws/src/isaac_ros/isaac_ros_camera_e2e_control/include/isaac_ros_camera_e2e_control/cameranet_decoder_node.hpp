@@ -44,8 +44,6 @@ private:
 
   // パラメータ
   std::string output_tensor_name_;
-  std::string input_tensor_format_;
-  std::string tensor_data_type_;
   bool use_clip_;
   double max_steer_;
   double max_speed_;
