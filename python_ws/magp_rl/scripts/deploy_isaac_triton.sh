@@ -311,7 +311,12 @@ write_triton_config() {
   local model_root="$1"
   local input_dims
   local output_dims
+  local tensor_dtype="TYPE_FP32"
   output_dims="${ACTION_DIM}"
+
+  if [[ "${PRECISION}" == "fp16" ]]; then
+    tensor_dtype="TYPE_FP16"
+  fi
 
   if [[ "${INPUT_LAYOUT}" == "scan" ]]; then
     local points="${SCAN_POINTS:-${OBS_DIM}}"
@@ -328,14 +333,14 @@ default_model_filename: "model.plan"
 input [
   {
     name: "${INPUT_NAME}"
-    data_type: TYPE_FP32
+    data_type: ${tensor_dtype}
     dims: [ ${input_dims} ]
   }
 ]
 output [
   {
     name: "${OUTPUT_NAME}"
-    data_type: TYPE_FP32
+    data_type: ${tensor_dtype}
     dims: [ ${output_dims} ]
   }
 ]
