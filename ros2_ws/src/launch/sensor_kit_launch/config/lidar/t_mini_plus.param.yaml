@@ -2,8 +2,8 @@ ydlidar_ros2_driver_node:
   ros__parameters:
     port: /dev/ttyUSB0
     frame_id: laser
-    reversion: false
-    inverted: false
+    reversion: true
+    inverted: true
     rotate_angle: 1.5707963
     
     # ソフトウェア的にカットするスキャン角(Field of View) [radian]

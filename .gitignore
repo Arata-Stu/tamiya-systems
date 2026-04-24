@@ -11,6 +11,9 @@ outputs/
 dataset/
 datasets/
 lib/
+map/
+maps/
+isaac_ros_assets/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
