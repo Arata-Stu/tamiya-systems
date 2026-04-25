@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    localization_trigger_topic: "/localization/trigger"
+    localization_trigger_service: "/trigger_grid_search_localization"
+    localization_result_topic: "/localization_result"
+    localization_feedback_timeout_sec: 0.0
+
+    # TF bridge settings
+    publish_localization_tf: true
+    # "map_to_odom" or "map_to_base_link"
+    localization_tf_mode: "map_to_odom"
+    localization_tf_map_frame: "map"
+    localization_tf_odom_frame: "odom"
+    localization_tf_base_frame: "base_link"
+    localization_tf_publish_rate_hz: 20.0

@@ -31,7 +31,7 @@
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
     <arg name="localization_result_topic" default="/localization_result" />
     <arg name="use_localization_manager" default="true" />
-    <arg name="localization_manager_param" default="$(find-pkg-share localization_manager)/config/localization_manager.param.yaml" />
+    <arg name="localization_manager_param" default="$(find-pkg-share system_launch)/config/localization/localization_manager.param.yaml" />
     <arg name="localization_feedback_timeout_sec" default="0.0" />
     <arg name="publish_localization_tf" default="true" />
     <arg name="localization_tf_mode" default="map_to_odom" />
