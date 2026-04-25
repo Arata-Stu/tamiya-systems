@@ -9,6 +9,9 @@
     <arg name="map_yaml_path" default="$(find-pkg-share system_launch)/config/simulator/levine.yaml" description="map yaml path for occupancy grid localizer"/>
     <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
     <arg name="lidar_container_name" default="lidar_container" />
+    <arg name="localization_result_topic" default="/localization_result" />
+    <arg name="apply_localization_to_initialpose" default="true"
+         description="if true, route localization output to /initialpose for simulator pose reset" />
 
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
@@ -35,6 +38,10 @@
     <arg name="tf_ego_base_link_frame" default="ego_racecar/base_link" />
     <arg name="tf_ego_laser_frame" default="ego_racecar/laser" />
     <arg name="tf_ego_laser_x" default="0.275" />
+    <let name="localization_result_topic_effective" value="/initialpose"
+         if="$(var apply_localization_to_initialpose)" />
+    <let name="localization_result_topic_effective" value="$(var localization_result_topic)"
+         unless="$(var apply_localization_to_initialpose)" />
 
     <!-- Teleop Manager Node -->
     <include file="$(find-pkg-share teleop_manager)/launch/teleop_manager.launch.xml">
@@ -101,7 +108,7 @@
             <arg name="localization_param" value="$(var localization_param)"/>
             <arg name="scan_topic" value="/scan"/>
             <arg name="flatscan_topic" value="/flatscan"/>
-            <arg name="localization_result_topic" value="/localization_result"/>
+            <arg name="localization_result_topic" value="$(var localization_result_topic_effective)"/>
         </include>
     </group>
 
