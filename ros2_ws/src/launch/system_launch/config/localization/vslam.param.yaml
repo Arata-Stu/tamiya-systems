@@ -190,7 +190,7 @@
     # Output Parameters
     # ============================================
     override_publishing_stamp: false
-    publish_map_to_odom_tf: true
+    publish_map_to_odom_tf: false
     publish_odom_to_base_tf: true
     invert_map_to_odom_tf: false
     invert_odom_to_base_tf: false
