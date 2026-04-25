@@ -2,12 +2,10 @@
 #define TELEOP_MANAGER_NODE_HPP_
 
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
-#include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/string.hpp"
-#include "std_srvs/srv/empty.hpp"
 #include "teleop_manager_core.hpp"
 
 class TeleopManagerNode : public rclcpp::Node {
@@ -21,11 +19,8 @@ private:
   void emergency_ack_callback(
       const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg);
   void emergency_signal_callback(const std_msgs::msg::Bool::SharedPtr msg);
-  void localization_result_callback(
-      const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
   void timer_callback();
   void publish_events();
-  void call_localization_trigger();
   bool IsEmergencySignalActive() const;
   bool HasFreshEmergencyCommand() const;
 
@@ -38,8 +33,6 @@ private:
   rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
       emergency_ack_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr emergency_signal_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
-      localization_result_sub_;
   rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
       drive_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr trigger_pub_;
@@ -49,7 +42,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr steer_offset_dec_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr speed_offset_inc_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr speed_offset_dec_pub_;
-  rclcpp::Client<std_srvs::srv::Empty>::SharedPtr localization_trigger_client_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr localization_trigger_pub_;
 
   rclcpp::TimerBase::SharedPtr timer_;
 
@@ -64,11 +57,7 @@ private:
   bool enable_emergency_override_ = true;
   double emergency_signal_timeout_sec_ = 0.3;
   double emergency_cmd_timeout_sec_ = 0.3;
-  std::string localization_feedback_topic_ = "/localization_result";
-  double localization_feedback_timeout_sec_ = 0.0;
-  bool waiting_localization_result_ = false;
-  bool localization_result_timed_out_ = false;
-  rclcpp::Time last_localization_trigger_time_;
+  std::string localization_trigger_topic_ = "/localization/trigger";
 };
 
 #endif

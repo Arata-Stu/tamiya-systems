@@ -7,9 +7,7 @@
   <arg name="vehicle_control_topic" default="/jetracer/cmd_drive"/>
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
   <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
-  <arg name="localization_trigger_service" default="/trigger_grid_search_localization"/>
-  <arg name="localization_feedback_topic" default="/localization_result"/>
-  <arg name="localization_feedback_timeout_sec" default="0.0"/>
+  <arg name="localization_trigger_topic" default="/localization/trigger"/>
 
   
   <!-- joynode -->
@@ -27,8 +25,7 @@
         output="screen">
         
     <param from="$(var teleop_param)"/>
-    <param name="localization_feedback_topic" value="$(var localization_feedback_topic)"/>
-    <param name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>
+    <param name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
     <!-- joy -->
     <remap from="/joy" to="/joy"/>
     <!-- AI制御コマンド -->
@@ -43,8 +40,6 @@
     <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
     <!-- rosbagメモ -->
     <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/>
-    <!-- localizationトリガサービス -->
-    <remap from="trigger_grid_search_localization" to="$(var localization_trigger_service)"/>
   </node>
 
 </launch>

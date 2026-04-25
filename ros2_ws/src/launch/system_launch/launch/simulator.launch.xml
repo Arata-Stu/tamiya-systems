@@ -13,7 +13,7 @@
     <arg name="apply_localization_to_initialpose" default="true"
          description="if true, route localization output to /initialpose for simulator pose reset" />
     <arg name="localization_feedback_timeout_sec" default="0.0"
-         description="teleop localization feedback wait timeout. 0 disables timeout." />
+         description="localization feedback wait timeout. 0 disables timeout." />
 
     <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
     <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
@@ -25,7 +25,16 @@
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
+    <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+    <arg name="use_localization_manager" default="true" />
+    <arg name="localization_manager_param" default="$(find-pkg-share localization_manager)/config/localization_manager.param.yaml" />
+    <arg name="publish_localization_tf" default="false" />
+    <arg name="localization_tf_mode" default="map_to_odom" />
+    <arg name="localization_tf_map_frame" default="map" />
+    <arg name="localization_tf_odom_frame" default="odom" />
+    <arg name="localization_tf_base_frame" default="base_link" />
+    <arg name="localization_tf_publish_rate_hz" default="20.0" />
     
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
@@ -54,9 +63,7 @@
         <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
         <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
         <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
-        <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
-        <arg name="localization_feedback_topic" value="$(var localization_result_topic_effective)"/>
-        <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>
+        <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
     </include>
 
     <!-- Emergency Controller -->
@@ -107,7 +114,17 @@
 
         <include file="$(find-pkg-share system_launch)/launch/localization.launch.xml">
             <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
+            <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
+            <arg name="use_localization_manager" value="$(var use_localization_manager)"/>
+            <arg name="localization_manager_param" value="$(var localization_manager_param)"/>
+            <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>
+            <arg name="publish_localization_tf" value="$(var publish_localization_tf)"/>
+            <arg name="localization_tf_mode" value="$(var localization_tf_mode)"/>
+            <arg name="localization_tf_map_frame" value="$(var localization_tf_map_frame)"/>
+            <arg name="localization_tf_odom_frame" value="$(var localization_tf_odom_frame)"/>
+            <arg name="localization_tf_base_frame" value="$(var localization_tf_base_frame)"/>
+            <arg name="localization_tf_publish_rate_hz" value="$(var localization_tf_publish_rate_hz)"/>
             <arg name="map_yaml_path" value="$(var map_yaml_path)"/>
             <arg name="localization_param" value="$(var localization_param)"/>
             <arg name="scan_topic" value="/scan"/>

@@ -5,7 +5,17 @@
   <arg name="scan_topic" default="/scan" />
   <arg name="flatscan_topic" default="/flatscan" />
   <arg name="localization_result_topic" default="/localization_result" />
+  <arg name="localization_trigger_topic" default="/localization/trigger" />
   <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+  <arg name="use_localization_manager" default="true" />
+  <arg name="localization_manager_param" default="$(find-pkg-share localization_manager)/config/localization_manager.param.yaml" />
+  <arg name="localization_feedback_timeout_sec" default="0.0" />
+  <arg name="publish_localization_tf" default="true" />
+  <arg name="localization_tf_mode" default="map_to_odom" />
+  <arg name="localization_tf_map_frame" default="map" />
+  <arg name="localization_tf_odom_frame" default="odom" />
+  <arg name="localization_tf_base_frame" default="base_link" />
+  <arg name="localization_tf_publish_rate_hz" default="20.0" />
 
   <load_composable_node target="$(var lidar_container_name)">
     <composable_node pkg="isaac_ros_pointcloud_utils"
@@ -29,4 +39,20 @@
       <remap from="trigger_grid_search_localization" to="$(var localization_trigger_service)" />
     </composable_node>
   </load_composable_node>
+
+  <group if="$(var use_localization_manager)">
+    <include file="$(find-pkg-share localization_manager)/launch/localization_manager.launch.xml">
+      <arg name="localization_manager_param" value="$(var localization_manager_param)" />
+      <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)" />
+      <arg name="localization_trigger_service" value="$(var localization_trigger_service)" />
+      <arg name="localization_result_topic" value="$(var localization_result_topic)" />
+      <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)" />
+      <arg name="publish_localization_tf" value="$(var publish_localization_tf)" />
+      <arg name="localization_tf_mode" value="$(var localization_tf_mode)" />
+      <arg name="localization_tf_map_frame" value="$(var localization_tf_map_frame)" />
+      <arg name="localization_tf_odom_frame" value="$(var localization_tf_odom_frame)" />
+      <arg name="localization_tf_base_frame" value="$(var localization_tf_base_frame)" />
+      <arg name="localization_tf_publish_rate_hz" value="$(var localization_tf_publish_rate_hz)" />
+    </include>
+  </group>
 </launch>
