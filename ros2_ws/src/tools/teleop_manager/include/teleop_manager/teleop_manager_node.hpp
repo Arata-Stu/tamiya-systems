@@ -65,8 +65,9 @@ private:
   double emergency_signal_timeout_sec_ = 0.3;
   double emergency_cmd_timeout_sec_ = 0.3;
   std::string localization_feedback_topic_ = "/localization_result";
-  double localization_feedback_timeout_sec_ = 3.0;
+  double localization_feedback_timeout_sec_ = 0.0;
   bool waiting_localization_result_ = false;
+  bool localization_result_timed_out_ = false;
   rclcpp::Time last_localization_trigger_time_;
 };
 

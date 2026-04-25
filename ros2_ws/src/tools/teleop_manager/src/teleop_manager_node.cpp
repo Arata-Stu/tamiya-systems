@@ -39,7 +39,7 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   localization_feedback_topic_ = this->declare_parameter<std::string>(
       "localization_feedback_topic", kDefaultLocalizationFeedbackTopic);
   localization_feedback_timeout_sec_ = std::max(
-      0.0, this->declare_parameter("localization_feedback_timeout_sec", 3.0));
+      0.0, this->declare_parameter("localization_feedback_timeout_sec", 0.0));
 
   core_ = std::make_unique<TeleopManagerCore>(config);
 
@@ -170,19 +170,35 @@ void TeleopManagerNode::emergency_signal_callback(
 
 void TeleopManagerNode::localization_result_callback(
     const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
-  if (!waiting_localization_result_) {
+  const double elapsed_sec =
+      (this->now() - last_localization_trigger_time_).seconds();
+  if (waiting_localization_result_) {
+    waiting_localization_result_ = false;
+    localization_result_timed_out_ = false;
+    RCLCPP_INFO(this->get_logger(),
+                "Localization success (%.3f s): frame=%s pos=(%.3f, %.3f) "
+                "qz=%.3f qw=%.3f",
+                elapsed_sec, msg->header.frame_id.c_str(),
+                msg->pose.pose.position.x, msg->pose.pose.position.y,
+                msg->pose.pose.orientation.z, msg->pose.pose.orientation.w);
     return;
   }
 
-  waiting_localization_result_ = false;
-  const double elapsed_sec =
-      (this->now() - last_localization_trigger_time_).seconds();
-  RCLCPP_INFO(
-      this->get_logger(),
-      "Localization success (%.3f s): frame=%s pos=(%.3f, %.3f) qz=%.3f qw=%.3f",
-      elapsed_sec, msg->header.frame_id.c_str(), msg->pose.pose.position.x,
-      msg->pose.pose.position.y, msg->pose.pose.orientation.z,
-      msg->pose.pose.orientation.w);
+  if (localization_result_timed_out_) {
+    localization_result_timed_out_ = false;
+    RCLCPP_WARN(this->get_logger(),
+                "Localization result arrived after timeout (%.3f s): frame=%s "
+                "pos=(%.3f, %.3f)",
+                elapsed_sec, msg->header.frame_id.c_str(),
+                msg->pose.pose.position.x, msg->pose.pose.position.y);
+    return;
+  }
+
+  RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "Localization feedback received on %s: frame=%s pos=(%.3f, %.3f)",
+      localization_feedback_topic_.c_str(), msg->header.frame_id.c_str(),
+      msg->pose.pose.position.x, msg->pose.pose.position.y);
 }
 
 bool TeleopManagerNode::IsEmergencySignalActive() const {
@@ -249,6 +265,7 @@ void TeleopManagerNode::timer_callback() {
       (this->now() - last_localization_trigger_time_).seconds() >
           localization_feedback_timeout_sec_) {
     waiting_localization_result_ = false;
+    localization_result_timed_out_ = true;
     RCLCPP_WARN(this->get_logger(),
                 "Localization result timeout (%.2f s): no message on %s",
                 localization_feedback_timeout_sec_,
@@ -321,6 +338,7 @@ void TeleopManagerNode::call_localization_trigger() {
 
   auto request = std::make_shared<std_srvs::srv::Empty::Request>();
   waiting_localization_result_ = true;
+  localization_result_timed_out_ = false;
   last_localization_trigger_time_ = this->now();
   (void)localization_trigger_client_->async_send_request(request);
   RCLCPP_INFO(this->get_logger(), "Requested localization trigger: %s",
