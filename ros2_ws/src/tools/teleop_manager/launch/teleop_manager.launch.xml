@@ -8,6 +8,8 @@
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
   <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
   <arg name="localization_trigger_service" default="/trigger_grid_search_localization"/>
+  <arg name="localization_feedback_topic" default="/localization_result"/>
+  <arg name="localization_feedback_timeout_sec" default="3.0"/>
 
   
   <!-- joynode -->
@@ -25,6 +27,8 @@
         output="screen">
         
     <param from="$(var teleop_param)"/>
+    <param name="localization_feedback_topic" value="$(var localization_feedback_topic)"/>
+    <param name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>
     <!-- joy -->
     <remap from="/joy" to="/joy"/>
     <!-- AI制御コマンド -->

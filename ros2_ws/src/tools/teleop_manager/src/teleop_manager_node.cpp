@@ -7,6 +7,7 @@ using std::placeholders::_1;
 namespace {
 constexpr const char *kLocalizationTriggerService =
     "trigger_grid_search_localization";
+constexpr const char *kDefaultLocalizationFeedbackTopic = "/localization_result";
 }
 
 TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
@@ -35,6 +36,10 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
       std::max(0.0, this->declare_parameter("emergency_signal_timeout_sec", 0.3));
   emergency_cmd_timeout_sec_ =
       std::max(0.0, this->declare_parameter("emergency_cmd_timeout_sec", 0.3));
+  localization_feedback_topic_ = this->declare_parameter<std::string>(
+      "localization_feedback_topic", kDefaultLocalizationFeedbackTopic);
+  localization_feedback_timeout_sec_ = std::max(
+      0.0, this->declare_parameter("localization_feedback_timeout_sec", 3.0));
 
   core_ = std::make_unique<TeleopManagerCore>(config);
 
@@ -52,6 +57,10 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   emergency_signal_sub_ = this->create_subscription<std_msgs::msg::Bool>(
       "emergency/signal", 10,
       std::bind(&TeleopManagerNode::emergency_signal_callback, this, _1));
+  localization_result_sub_ =
+      this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+          localization_feedback_topic_, rclcpp::QoS(10),
+          std::bind(&TeleopManagerNode::localization_result_callback, this, _1));
 
   // Publishers
   drive_pub_ =
@@ -82,12 +91,17 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   last_joy_msg_time_ = this->now();
   last_emergency_signal_time_ = this->now();
   last_emergency_msg_time_ = this->now();
+  last_localization_trigger_time_ = this->now();
 
   RCLCPP_INFO(this->get_logger(),
               "Emergency override in teleop_manager: %s "
               "(signal timeout=%.2f s, cmd timeout=%.2f s)",
               enable_emergency_override_ ? "enabled" : "disabled",
               emergency_signal_timeout_sec_, emergency_cmd_timeout_sec_);
+  RCLCPP_INFO(this->get_logger(),
+              "Localization feedback topic: %s (timeout=%.2f s)",
+              localization_feedback_topic_.c_str(),
+              localization_feedback_timeout_sec_);
 
   // 動的パラメータ変更のコールバックを登録
   param_callback_handle_ = this->add_on_set_parameters_callback(
@@ -154,6 +168,23 @@ void TeleopManagerNode::emergency_signal_callback(
   last_emergency_signal_time_ = this->now();
 }
 
+void TeleopManagerNode::localization_result_callback(
+    const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
+  if (!waiting_localization_result_) {
+    return;
+  }
+
+  waiting_localization_result_ = false;
+  const double elapsed_sec =
+      (this->now() - last_localization_trigger_time_).seconds();
+  RCLCPP_INFO(
+      this->get_logger(),
+      "Localization success (%.3f s): frame=%s pos=(%.3f, %.3f) qz=%.3f qw=%.3f",
+      elapsed_sec, msg->header.frame_id.c_str(), msg->pose.pose.position.x,
+      msg->pose.pose.position.y, msg->pose.pose.orientation.z,
+      msg->pose.pose.orientation.w);
+}
+
 bool TeleopManagerNode::IsEmergencySignalActive() const {
   if (!enable_emergency_override_ || !emergency_signal_active_) {
     return false;
@@ -211,6 +242,17 @@ void TeleopManagerNode::timer_callback() {
           "Emergency signal active, but emergency command is stale. "
           "Publishing forced stop.");
     }
+  }
+
+  if (waiting_localization_result_ &&
+      localization_feedback_timeout_sec_ > 0.0 &&
+      (this->now() - last_localization_trigger_time_).seconds() >
+          localization_feedback_timeout_sec_) {
+    waiting_localization_result_ = false;
+    RCLCPP_WARN(this->get_logger(),
+                "Localization result timeout (%.2f s): no message on %s",
+                localization_feedback_timeout_sec_,
+                localization_feedback_topic_.c_str());
   }
 
   drive_pub_->publish(drive_msg);
@@ -278,6 +320,8 @@ void TeleopManagerNode::call_localization_trigger() {
   }
 
   auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+  waiting_localization_result_ = true;
+  last_localization_trigger_time_ = this->now();
   (void)localization_trigger_client_->async_send_request(request);
   RCLCPP_INFO(this->get_logger(), "Requested localization trigger: %s",
               kLocalizationTriggerService);

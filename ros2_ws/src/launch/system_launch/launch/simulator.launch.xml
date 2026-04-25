@@ -53,6 +53,7 @@
         <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
         <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
         <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
+        <arg name="localization_feedback_topic" value="$(var localization_result_topic_effective)"/>
     </include>
 
     <!-- Emergency Controller -->
