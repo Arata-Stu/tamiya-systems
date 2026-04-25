@@ -188,14 +188,16 @@ void LocalizationManagerNode::update_localization_tf(
 
     geometry_msgs::msg::TransformStamped odom_to_base_tf_msg;
     try {
+      // lookupTransform(target, source) returns source -> target.
+      // We explicitly request odom -> base_link here.
       odom_to_base_tf_msg = tf_buffer_->lookupTransform(
-          localization_tf_odom_frame_, localization_tf_base_frame_,
+          localization_tf_base_frame_, localization_tf_odom_frame_,
           tf2::TimePointZero);
     } catch (const tf2::TransformException &ex) {
       RCLCPP_WARN_THROTTLE(
           this->get_logger(), *this->get_clock(), 1000,
-          "Localization TF skipped: lookup %s -> %s failed: %s",
-          localization_tf_odom_frame_.c_str(), localization_tf_base_frame_.c_str(),
+          "Localization TF skipped: lookup %s <- %s (odom->base) failed: %s",
+          localization_tf_base_frame_.c_str(), localization_tf_odom_frame_.c_str(),
           ex.what());
       return;
     }
