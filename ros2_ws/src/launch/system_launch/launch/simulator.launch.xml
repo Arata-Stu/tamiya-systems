@@ -33,8 +33,6 @@
     <arg name="gym_opp_odom_topic" default="/opp_racecar/odom" />
     <arg name="tf_base_link_frame" default="base_link" />
     <arg name="tf_ego_base_link_frame" default="ego_racecar/base_link" />
-    <arg name="tf_ego_laser_frame" default="ego_racecar/laser" />
-    <arg name="tf_ego_laser_x" default="0.275" />
 
     <!-- Teleop Manager Node -->
     <include file="$(find-pkg-share teleop_manager)/launch/teleop_manager.launch.xml">
@@ -87,12 +85,10 @@
     <group if="$(var localization)">
         <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"/>
 
-        <!-- OccupancyGridLocalizer internally looks up base_link -> scan_frame.
-             Add simulator-specific alias frames only when localization is enabled. -->
-        <node pkg="tf2_ros" exec="static_transform_publisher" name="sim_tf_base_to_ego_base"
-              args="0 0 0 0 0 0 $(var tf_base_link_frame) $(var tf_ego_base_link_frame)" />
-        <node pkg="tf2_ros" exec="static_transform_publisher" name="sim_tf_ego_base_to_laser"
-              args="$(var tf_ego_laser_x) 0 0 0 0 0 $(var tf_ego_base_link_frame) $(var tf_ego_laser_frame)" />
+        <!-- OccupancyGridLocalizer internally looks up transforms against base_link.
+             In simulator, main frame is ego_racecar/base_link, so publish an alias. -->
+        <node pkg="tf2_ros" exec="static_transform_publisher" name="sim_tf_ego_base_to_base_link"
+              args="0 0 0 0 0 0 $(var tf_ego_base_link_frame) $(var tf_base_link_frame)" />
 
         <include file="$(find-pkg-share system_launch)/launch/localization.launch.xml">
             <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
