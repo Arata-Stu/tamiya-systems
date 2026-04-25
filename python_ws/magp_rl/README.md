@@ -123,6 +123,21 @@ python3 train.py agent=sac train.num_envs=128 vehicle=traxxas
 python3 train.py agent=sac train.num_envs=128 env.track.name=BrandsHatch vehicle=traxxas
 ```
 
+### 5.4 事前学習重みを自動コピーして転移学習（元ckpt保護）
+
+```bash
+python3 train.py \
+  agent=sac \
+  train.checkpoint.resume=true \
+  train.checkpoint.auto_fork_on_resume=true \
+  train.checkpoint.dir=./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+  env.track.name=TARGET_MAP
+```
+
+- `resume=true` で既存重みを読み込み
+- `auto_fork_on_resume=true` で指定 `ckpt_dir` を自動複製
+- 学習は複製先で継続するため、元runは上書きされません
+
 ## 6. 評価（Eval）
 
 ### 6.1 基本評価（単独）

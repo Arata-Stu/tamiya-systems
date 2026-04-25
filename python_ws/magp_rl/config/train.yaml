@@ -21,6 +21,7 @@ train:
     save_every_updates: 10
     keep: 3
     resume: false
+    auto_fork_on_resume: false # true: resume時にckpt dirを自動複製して元runの上書きを防ぐ
 
 env:
   parallel:

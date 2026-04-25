@@ -1,6 +1,9 @@
 from pathlib import Path
+from datetime import datetime
 import logging
 import math
+import re
+import shutil
 
 import hydra
 import jax
@@ -48,6 +51,51 @@ def maybe_make_writer(cfg: DictConfig, base_dir: Path):
         log_dir = base_dir / log_dir
     log_dir.mkdir(parents=True, exist_ok=True)
     return SummaryWriter(log_dir=str(log_dir))
+
+
+def _sanitize_path_token(text: str) -> str:
+    token = re.sub(r"[^A-Za-z0-9._-]+", "_", str(text)).strip("._-")
+    return token if token else "unknown"
+
+
+def _unique_child_dir(parent: Path, base_name: str) -> Path:
+    candidate = parent / base_name
+    if not candidate.exists():
+        return candidate
+
+    idx = 1
+    while True:
+        suffixed = parent / f"{base_name}_{idx:02d}"
+        if not suffixed.exists():
+            return suffixed
+        idx += 1
+
+
+def maybe_autofork_checkpoint_dir(cfg: DictConfig, ckpt_dir: Path) -> Path:
+    ckpt_cfg = cfg.train.checkpoint
+    if not bool(ckpt_cfg.resume):
+        return ckpt_dir
+    if not bool(ckpt_cfg.get("auto_fork_on_resume", False)):
+        return ckpt_dir
+
+    latest = checkpoints.latest_checkpoint(str(ckpt_dir))
+    if latest is None:
+        print(
+            "Checkpoint auto-fork enabled, but source has no checkpoint yet. "
+            f"Continue in-place: {ckpt_dir}"
+        )
+        return ckpt_dir
+
+    map_name = _sanitize_path_token(cfg.env.track.get("name", "map"))
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    fork_name = f"{ckpt_dir.name}__fork_{map_name}_{stamp}"
+    fork_dir = _unique_child_dir(ckpt_dir.parent, fork_name)
+    shutil.copytree(ckpt_dir, fork_dir)
+    print(
+        "Checkpoint auto-fork enabled. "
+        f"Copied source checkpoint dir:\n  from: {ckpt_dir}\n  to  : {fork_dir}"
+    )
+    return fork_dir
 
 
 def maybe_restore_checkpoint(cfg: DictConfig, ckpt_dir: Path, target):
@@ -900,6 +948,7 @@ def main(cfg: DictConfig):
     ckpt_dir = Path(cfg.train.checkpoint.dir)
     if not ckpt_dir.is_absolute():
         ckpt_dir = project_root / ckpt_dir
+    ckpt_dir = maybe_autofork_checkpoint_dir(cfg, ckpt_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.agent.name == "ppo":
