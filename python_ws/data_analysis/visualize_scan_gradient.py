@@ -30,6 +30,15 @@ def parse_args() -> argparse.Namespace:
         help="Fixed axis range in meters. If omitted, uses scan.range_max.",
     )
     parser.add_argument("--output", default=None, help="Optional output image path (e.g. scan.png)")
+    parser.add_argument(
+        "--video_output",
+        default=None,
+        help="Optional output video path (.mp4 or .gif). If set, runs timeseries visualization mode.",
+    )
+    parser.add_argument("--video_fps", type=float, default=10.0, help="Output video FPS")
+    parser.add_argument("--video_start", type=int, default=0, help="Start frame index for video mode")
+    parser.add_argument("--video_end", type=int, default=None, help="End frame index for video mode (inclusive)")
+    parser.add_argument("--video_step", type=int, default=1, help="Frame stride for video mode")
     parser.add_argument("--no_show", action="store_true", help="Do not open interactive window")
     return parser.parse_args()
 
@@ -82,13 +91,9 @@ def _open_reader(bag_path: Path) -> AnyReader:
     return AnyReader([bag_path], **reader_kwargs)
 
 
-def load_target_scan(bag_path: Path, topic: str, frame_index: int):
+def _iter_scan_messages(bag_path: Path, topic: str):
     if not bag_path.exists():
         raise FileNotFoundError(f"Bag path does not exist: {bag_path}")
-
-    target_msg = None
-    target_ts = None
-    seen = 0
 
     try:
         with _open_reader(bag_path) as reader:
@@ -98,17 +103,8 @@ def load_target_scan(bag_path: Path, topic: str, frame_index: int):
             if not connections:
                 raise RuntimeError(f"LaserScan topic not found: topic={topic} path={bag_path}")
 
-            for conn, timestamp, raw in reader.messages(connections=connections):
-                msg = reader.deserialize(raw, conn.msgtype)
-                if frame_index >= 0:
-                    if seen == frame_index:
-                        target_msg = msg
-                        target_ts = timestamp
-                        break
-                else:
-                    target_msg = msg
-                    target_ts = timestamp
-                seen += 1
+            for frame_id, (conn, timestamp, raw) in enumerate(reader.messages(connections=connections)):
+                yield frame_id, timestamp, reader.deserialize(raw, conn.msgtype)
     except Exception as exc:
         msg = str(exc)
         if "default_typestore" in msg and "no type definitions" in msg.lower():
@@ -118,15 +114,73 @@ def load_target_scan(bag_path: Path, topic: str, frame_index: int):
             ) from exc
         raise
 
+
+def load_target_scan(bag_path: Path, topic: str, frame_index: int):
+    target_msg = None
+    target_ts = None
+    selected_frame = None
+    total_frames = 0
+
+    for seen, timestamp, msg in _iter_scan_messages(bag_path, topic):
+        total_frames = seen + 1
+        if frame_index >= 0:
+            if seen == frame_index:
+                target_msg = msg
+                target_ts = timestamp
+                selected_frame = seen
+                break
+        else:
+            target_msg = msg
+            target_ts = timestamp
+            selected_frame = seen
+
     if target_msg is None:
         if frame_index >= 0:
             raise RuntimeError(
-                f"Requested frame index {frame_index} is out of range. total_frames={seen}"
+                f"Requested frame index {frame_index} is out of range. total_frames={total_frames}"
             )
         raise RuntimeError("No LaserScan messages found in bag.")
 
-    selected_frame = frame_index if frame_index >= 0 else max(0, seen - 1)
     return target_msg, target_ts, selected_frame
+
+
+def collect_video_frames(
+    bag_path: Path,
+    topic: str,
+    start_frame: int,
+    end_frame: int | None,
+    frame_step: int,
+):
+    if start_frame < 0:
+        raise ValueError("--video_start must be >= 0.")
+    if end_frame is not None and end_frame < start_frame:
+        raise ValueError("--video_end must be >= --video_start.")
+    if frame_step <= 0:
+        raise ValueError("--video_step must be >= 1.")
+
+    frames = []
+    skipped_invalid = 0
+
+    for frame_id, timestamp, msg in _iter_scan_messages(bag_path, topic):
+        if frame_id < start_frame:
+            continue
+        if end_frame is not None and frame_id > end_frame:
+            break
+        if (frame_id - start_frame) % frame_step != 0:
+            continue
+
+        try:
+            x, y, indices, total_beams = scan_to_xy(msg)
+        except RuntimeError:
+            skipped_invalid += 1
+            continue
+
+        frames.append((frame_id, timestamp, x, y, indices, total_beams))
+
+    if not frames:
+        raise RuntimeError("No valid frames found for video generation with current frame selection.")
+
+    return frames, skipped_invalid
 
 
 def scan_to_xy(msg):
@@ -207,9 +261,133 @@ def visualize_and_save(
         plt.show()
 
 
+def visualize_video_and_save(
+    frames,
+    bag_path: Path,
+    topic: str,
+    cmap: str,
+    marker_size: float,
+    max_range: float | None,
+    video_output_path: str,
+    video_fps: float,
+    no_show: bool,
+):
+    try:
+        import matplotlib.pyplot as plt
+        from matplotlib import animation
+    except ImportError as exc:
+        raise RuntimeError(
+            "matplotlib is required for visualization. Install with: pip install matplotlib"
+        ) from exc
+
+    out = Path(video_output_path).expanduser().resolve()
+    suffix = out.suffix.lower()
+    if suffix not in (".mp4", ".gif"):
+        raise ValueError("--video_output must end with .mp4 or .gif")
+    if video_fps <= 0:
+        raise ValueError("--video_fps must be > 0.")
+
+    if max_range is not None:
+        axis_lim = float(max_range)
+    else:
+        axis_lim = 1.0
+        for _, _, x, y, _, _ in frames:
+            axis_lim = max(axis_lim, float(np.max(np.abs(x))), float(np.max(np.abs(y))))
+
+    max_total_beams = max(frame[5] for frame in frames)
+    max_beam_index = max(1, max_total_beams - 1)
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    scatter = ax.scatter(
+        [],
+        [],
+        c=[],
+        cmap=cmap,
+        s=marker_size,
+        linewidths=0,
+        vmin=0,
+        vmax=max_beam_index,
+    )
+
+    ax.scatter([0.0], [0.0], c="red", s=24, label="LiDAR")
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(alpha=0.3)
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    ax.set_xlim(-axis_lim, axis_lim)
+    ax.set_ylim(-axis_lim, axis_lim)
+    title = ax.set_title("")
+    cbar = fig.colorbar(scatter, ax=ax)
+    cbar.set_label("Beam index")
+    ax.legend(loc="upper right")
+
+    def update(plot_index: int):
+        frame_id, timestamp_ns, x, y, indices, total_beams = frames[plot_index]
+        points = np.column_stack((x, y))
+        scatter.set_offsets(points)
+        scatter.set_array(indices.astype(np.float32))
+        scatter.set_clim(0, max(1, total_beams - 1))
+        title.set_text(
+            f"{bag_path.name} | {topic} | frame={frame_id} | valid={len(indices)}/{total_beams} | ts={timestamp_ns}"
+        )
+        return scatter, title
+
+    ani = animation.FuncAnimation(
+        fig=fig,
+        func=update,
+        frames=len(frames),
+        interval=1000.0 / float(video_fps),
+        blit=False,
+        repeat=False,
+    )
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if suffix == ".mp4":
+            ani.save(out, writer="ffmpeg", fps=video_fps, dpi=150)
+        else:
+            ani.save(out, writer="pillow", fps=video_fps, dpi=150)
+    except Exception as exc:
+        if suffix == ".mp4":
+            raise RuntimeError(
+                "Failed to save MP4. Please install ffmpeg, or output GIF by using --video_output xxx.gif."
+            ) from exc
+        raise RuntimeError("Failed to save GIF. Please ensure pillow is installed.") from exc
+
+    print(f"[INFO] Saved video: {out}")
+    if not no_show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+
 def main() -> None:
     args = parse_args()
     bag_path = normalize_bag_path(args.bag)
+    if args.video_output:
+        frames, skipped_invalid = collect_video_frames(
+            bag_path=bag_path,
+            topic=args.topic,
+            start_frame=args.video_start,
+            end_frame=args.video_end,
+            frame_step=args.video_step,
+        )
+        if skipped_invalid:
+            print(f"[WARN] Skipped {skipped_invalid} invalid scan frame(s).")
+
+        visualize_video_and_save(
+            frames=frames,
+            bag_path=bag_path,
+            topic=args.topic,
+            cmap=args.cmap,
+            marker_size=args.marker_size,
+            max_range=args.max_range,
+            video_output_path=args.video_output,
+            video_fps=args.video_fps,
+            no_show=args.no_show,
+        )
+        return
+
     msg, timestamp_ns, selected_frame = load_target_scan(bag_path, args.topic, args.frame)
     x, y, indices, total_beams = scan_to_xy(msg)
 
