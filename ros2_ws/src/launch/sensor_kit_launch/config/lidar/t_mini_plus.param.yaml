@@ -5,6 +5,7 @@ ydlidar_ros2_driver_node:
     reversion: true
     inverted: true
     rotate_angle: 1.5707963
+    publish_point_cloud: false
     
     # ソフトウェア的にカットするスキャン角(Field of View) [radian]
     # angle_min: -2.343

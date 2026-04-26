@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    # 最小構成: 角度クロップのみ
+    filter1:
+      name: angle_crop_filter
+      type: laser_filters/LaserScanAngularBoundsFilter
+      params:
+        lower_angle: -2.343   # -135°（rad）
+        upper_angle:  2.343   #  135°（rad）
