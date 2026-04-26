@@ -3,6 +3,7 @@
     <arg name="has_opp" default="false" description="whether the simulation environment has an opponent"/>
     <arg name="rviz" default="false" description="whether to launch rviz"/>
     <arg name="localization" default="false" description="run map localization nodes in simulator"/>
+    <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
 
     <arg name="map_path" default="$(find-pkg-share system_launch)/config/simulator/levine" description="path to the map file"/>
     <arg name="map_ext" default=".png" description="extension of the map image file"/>
@@ -22,7 +23,7 @@
     <arg name="emergency_scan_topic" default="/scan" />
     <arg name="emergency_control_cmd" default="/emergency/cmd_drive" description="emergency override ackermann command"/>
     <arg name="emergency_signal_topic" default="/emergency/signal" description="emergency override activation signal"/>
-    <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
+    
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
     
