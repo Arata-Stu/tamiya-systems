@@ -7,10 +7,10 @@
     <arg name="model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
     <arg name="model_name" default="pilotnet" />
 
-    <arg name="input_image_topic" default="/camera/left/image_raw" />
-    <arg name="input_camera_info_topic" default="/camera/left/camera_info" />
-    <arg name="original_image_width" default="320" />
-    <arg name="original_image_height" default="240" />
+    <arg name="input_image_topic" default="/realsense2_camera/color/image_raw" />
+    <arg name="input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
+    <arg name="original_image_width" default="640" />
+    <arg name="original_image_height" default="480" />
     <arg name="network_image_width" default="320" />
     <arg name="network_image_height" default="240" />
 
