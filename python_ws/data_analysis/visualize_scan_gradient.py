@@ -2,6 +2,7 @@
 """rosbagのLaserScan(/scan)をインデックス色グラデーションで可視化する。"""
 
 import argparse
+import inspect
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +41,47 @@ def normalize_bag_path(path_str: str) -> Path:
     return bag_path
 
 
+def _build_default_ros2_typestore():
+    """Create a sensible default typestore for ROS2 bags without embedded definitions."""
+    try:
+        from rosbags.typesys import Stores, get_typestore
+    except Exception:
+        return None
+
+    preferred_store_names = (
+        "ROS2_JAZZY",
+        "ROS2_IRON",
+        "ROS2_HUMBLE",
+        "ROS2_GALACTIC",
+        "ROS2_FOXY",
+    )
+    for store_name in preferred_store_names:
+        if hasattr(Stores, store_name):
+            return get_typestore(getattr(Stores, store_name))
+
+    for store in Stores:
+        if store.name.startswith("ROS2_"):
+            return get_typestore(store)
+
+    return None
+
+
+def _open_reader(bag_path: Path) -> AnyReader:
+    """Open AnyReader with default typestore when supported/available."""
+    reader_kwargs = {}
+    default_typestore = _build_default_ros2_typestore()
+
+    try:
+        supports_default_typestore = "default_typestore" in inspect.signature(AnyReader).parameters
+    except (TypeError, ValueError):
+        supports_default_typestore = False
+
+    if supports_default_typestore and default_typestore is not None:
+        reader_kwargs["default_typestore"] = default_typestore
+
+    return AnyReader([bag_path], **reader_kwargs)
+
+
 def load_target_scan(bag_path: Path, topic: str, frame_index: int):
     if not bag_path.exists():
         raise FileNotFoundError(f"Bag path does not exist: {bag_path}")
@@ -48,24 +90,33 @@ def load_target_scan(bag_path: Path, topic: str, frame_index: int):
     target_ts = None
     seen = 0
 
-    with AnyReader([bag_path]) as reader:
-        connections = [
-            c for c in reader.connections if c.topic == topic and c.msgtype == "sensor_msgs/msg/LaserScan"
-        ]
-        if not connections:
-            raise RuntimeError(f"LaserScan topic not found: topic={topic} path={bag_path}")
+    try:
+        with _open_reader(bag_path) as reader:
+            connections = [
+                c for c in reader.connections if c.topic == topic and c.msgtype == "sensor_msgs/msg/LaserScan"
+            ]
+            if not connections:
+                raise RuntimeError(f"LaserScan topic not found: topic={topic} path={bag_path}")
 
-        for conn, timestamp, raw in reader.messages(connections=connections):
-            msg = reader.deserialize(raw, conn.msgtype)
-            if frame_index >= 0:
-                if seen == frame_index:
+            for conn, timestamp, raw in reader.messages(connections=connections):
+                msg = reader.deserialize(raw, conn.msgtype)
+                if frame_index >= 0:
+                    if seen == frame_index:
+                        target_msg = msg
+                        target_ts = timestamp
+                        break
+                else:
                     target_msg = msg
                     target_ts = timestamp
-                    break
-            else:
-                target_msg = msg
-                target_ts = timestamp
-            seen += 1
+                seen += 1
+    except Exception as exc:
+        msg = str(exc)
+        if "default_typestore" in msg and "no type definitions" in msg.lower():
+            raise RuntimeError(
+                "Bag contains no type definitions and could not load a default ROS2 typestore. "
+                "Please update rosbags and ensure rosbags.typesys Stores/get_typestore are available."
+            ) from exc
+        raise
 
     if target_msg is None:
         if frame_index >= 0:
