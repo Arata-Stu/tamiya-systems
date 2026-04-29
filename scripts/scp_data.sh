@@ -7,9 +7,34 @@ echo "=== インタラクティブ rsync 受信スクリプト ==="
 # ==========================================
 DEFAULT_REMOTE_USER="tamiya"
 IP_CANDIDATES=("10.42.0.1" "192.168.55.1" "192.168.11.190")
-DEFAULT_REMOTE_BASE_DIR="/home/tamiya/workspace/tamiya-systems/record/"
-DEFAULT_LOCAL_DEST_DIR="/home/arata-22/workspace/tamiya-systems/record/"
+
+# 種別ごとのパス設定
+ROSBAG_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/record/"
+ROSBAG_LOCAL_DIR="/home/arata-22/workspace/tamiya-systems/record/"
+
+MAP_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/map/"
+MAP_LOCAL_DIR="/home/arata-22/workspace/tamiya-systems/map/"
 # ==========================================
+
+# 0. 転送対象選択
+echo ""
+echo "何を取得しますか？"
+echo "  1) rosbag"
+echo "  2) map"
+read -p "選択 (1 or 2): " TARGET_CHOICE
+
+case "$TARGET_CHOICE" in
+    2)
+        DEFAULT_REMOTE_BASE_DIR="$MAP_REMOTE_DIR"
+        DEFAULT_LOCAL_DEST_DIR="$MAP_LOCAL_DIR"
+        TARGET_NAME="map"
+        ;;
+    *)
+        DEFAULT_REMOTE_BASE_DIR="$ROSBAG_REMOTE_DIR"
+        DEFAULT_LOCAL_DEST_DIR="$ROSBAG_LOCAL_DIR"
+        TARGET_NAME="rosbag"
+        ;;
+esac
 
 # 1. 接続情報の入力
 read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
@@ -35,19 +60,23 @@ REMOTE_BASE_DIR=${REMOTE_BASE_DIR:-$DEFAULT_REMOTE_BASE_DIR}
 # 2. 取得モードの選択
 echo ""
 echo "ディレクトリの指定方法を選んでください:"
-echo "  1) リモートから一覧を取得して選択 (時間がかかる場合があります)"
+echo "  1) リモートから一覧を取得して選択"
 echo "  2) ディレクトリ名を直接入力する"
 read -p "選択 (1 or 2): " MODE_CHOICE
 
 SELECTED_DIRS=()
 
 if [ "$MODE_CHOICE" = "1" ]; then
-    # --- モード1: 自動取得 ---
     echo "リモートサーバー (${REMOTE_IP}) からディレクトリ一覧を取得中..."
+
     dirs=()
     while IFS= read -r -d '' d; do
         dirs+=("$d")
-    done < <(ssh -n -o ConnectTimeout=5 "${REMOTE_USER}@${REMOTE_IP}" "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" 2>/dev/null)
+    done < <(
+        ssh -n -o ConnectTimeout=5 "${REMOTE_USER}@${REMOTE_IP}" \
+        "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" \
+        2>/dev/null
+    )
 
     if [ ${#dirs[@]} -eq 0 ]; then
         echo "エラー: ディレクトリが見つからないか、接続に失敗しました。"
@@ -55,27 +84,30 @@ if [ "$MODE_CHOICE" = "1" ]; then
     fi
 
     echo ""
-    echo "取得対象を選択 (例: 1 3):"
+    echo "取得対象を選択 (例: 1 3)"
     for i in "${!dirs[@]}"; do
         printf "  %2d) %s\n" "$((i+1))" "$(basename "${dirs[$i]}")"
     done
+
     read -p "番号を入力: " DIR_CHOICES
+
     for choice in $DIR_CHOICES; do
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dirs[@]}" ]; then
+        if [[ "$choice" =~ ^[0-9]+$ ]] && \
+           [ "$choice" -ge 1 ] && \
+           [ "$choice" -le "${#dirs[@]}" ]; then
             SELECTED_DIRS+=("${dirs[$((choice-1))]}")
         fi
     done
+
 else
-    # --- モード2: 手動入力 ---
     echo ""
     echo "ベースディレクトリ: $REMOTE_BASE_DIR"
     read -p "転送したいディレクトリ名を入力してください (スペース区切り可): " MANUAL_INPUT
+
     for name in $MANUAL_INPUT; do
-        # 入力された名前がパス形式でない場合は、ベースディレクトリを付与
         if [[ "$name" = /* ]]; then
             SELECTED_DIRS+=("$name")
         else
-            # 末尾のスラッシュを考慮して結合
             SELECTED_DIRS+=("${REMOTE_BASE_DIR%/}/$name")
         fi
     done
@@ -90,20 +122,24 @@ fi
 echo ""
 read -p "ローカル保存先 (Enterで '${DEFAULT_LOCAL_DEST_DIR}'): " LOCAL_DEST_DIR
 LOCAL_DEST_DIR=${LOCAL_DEST_DIR:-$DEFAULT_LOCAL_DEST_DIR}
+
 mkdir -p "$LOCAL_DEST_DIR"
 
 echo ""
 echo "================ 転送内容 ================"
+echo "対象    : $TARGET_NAME"
 echo "リモート: ${REMOTE_USER}@${REMOTE_IP}"
-for d in "${SELECTED_DIRS[@]}"; do echo "  - $d"; done
+for d in "${SELECTED_DIRS[@]}"; do
+    echo "  - $d"
+done
 echo "保存先  : $LOCAL_DEST_DIR"
 echo "=========================================="
 
 read -p "rsyncを開始しますか？ (Y/n): " CONFIRM
+
 if [[ "${CONFIRM:-y}" =~ ^[Yy]$ ]]; then
     for target_dir in "${SELECTED_DIRS[@]}"; do
         echo ">>> Transferring: $(basename "$target_dir")"
-        # 修正ポイント: バックスラッシュによるエスケープを削除
         rsync -avzP "${REMOTE_USER}@${REMOTE_IP}:${target_dir}" "$LOCAL_DEST_DIR/"
     done
     echo "✅ 完了しました。"
