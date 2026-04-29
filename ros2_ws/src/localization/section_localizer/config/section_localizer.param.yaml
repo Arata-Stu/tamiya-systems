@@ -1,0 +1,24 @@
+/**:
+  ros__parameters:
+    map_yaml_path: ""
+    section_definition_path: ""
+    gate_definition_path: ""
+
+    map_frame: "map"
+    base_frame: "base_link"
+
+    current_section_topic: "/localization/current_section"
+    update_rate_hz: 10.0
+
+    # Hybrid mode:
+    # 1) fallback from section polygons
+    # 2) gate crossing to trigger intentional transitions
+    use_gate_hybrid: true
+    enable_reverse_gate_transition: true
+    fallback_confirm_count: 3
+    gate_crossing_eps: 0.001
+    max_motion_for_gate_detection_m: 2.0
+
+    debug_mode: true
+    marker_topic: "/localization/section_markers"
+    current_marker_topic: "/localization/current_section_marker"

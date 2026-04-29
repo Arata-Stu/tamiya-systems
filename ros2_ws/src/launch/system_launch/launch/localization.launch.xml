@@ -16,6 +16,17 @@
   <arg name="localization_tf_odom_frame" default="odom" />
   <arg name="localization_tf_base_frame" default="base_link" />
   <arg name="localization_tf_publish_rate_hz" default="20.0" />
+  <arg name="use_section_localizer" default="false" />
+  <arg name="section_localizer_param" default="$(find-pkg-share system_launch)/config/localization/section_localizer.param.yaml" />
+  <arg name="section_definition_path" default="" />
+  <arg name="gate_definition_path" default="" />
+  <arg name="section_localizer_map_frame" default="map" />
+  <arg name="section_localizer_base_frame" default="base_link" />
+  <arg name="section_localizer_topic" default="/localization/current_section" />
+  <arg name="section_localizer_update_rate_hz" default="10.0" />
+  <arg name="section_localizer_debug_mode" default="true" />
+  <arg name="section_localizer_marker_topic" default="/localization/section_markers" />
+  <arg name="section_localizer_current_marker_topic" default="/localization/current_section_marker" />
 
   <load_composable_node target="$(var lidar_container_name)">
     <composable_node pkg="isaac_ros_pointcloud_utils"
@@ -53,6 +64,22 @@
       <arg name="localization_tf_odom_frame" value="$(var localization_tf_odom_frame)" />
       <arg name="localization_tf_base_frame" value="$(var localization_tf_base_frame)" />
       <arg name="localization_tf_publish_rate_hz" value="$(var localization_tf_publish_rate_hz)" />
+    </include>
+  </group>
+
+  <group if="$(var use_section_localizer)">
+    <include file="$(find-pkg-share section_localizer)/launch/section_localizer.launch.xml">
+      <arg name="section_localizer_param" value="$(var section_localizer_param)" />
+      <arg name="map_yaml_path" value="$(var map_yaml_path)" />
+      <arg name="section_definition_path" value="$(var section_definition_path)" />
+      <arg name="gate_definition_path" value="$(var gate_definition_path)" />
+      <arg name="map_frame" value="$(var section_localizer_map_frame)" />
+      <arg name="base_frame" value="$(var section_localizer_base_frame)" />
+      <arg name="current_section_topic" value="$(var section_localizer_topic)" />
+      <arg name="update_rate_hz" value="$(var section_localizer_update_rate_hz)" />
+      <arg name="debug_mode" value="$(var section_localizer_debug_mode)" />
+      <arg name="marker_topic" value="$(var section_localizer_marker_topic)" />
+      <arg name="current_marker_topic" value="$(var section_localizer_current_marker_topic)" />
     </include>
   </group>
 </launch>

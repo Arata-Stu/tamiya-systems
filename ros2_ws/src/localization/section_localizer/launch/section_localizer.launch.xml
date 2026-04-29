@@ -1,0 +1,32 @@
+<launch>
+
+  <arg name="section_localizer_param" default="$(find-pkg-share section_localizer)/config/section_localizer.param.yaml"/>
+  <arg name="map_yaml_path" default=""/>
+  <arg name="section_definition_path" default=""/>
+  <arg name="gate_definition_path" default=""/>
+  <arg name="map_frame" default="map"/>
+  <arg name="base_frame" default="base_link"/>
+  <arg name="current_section_topic" default="/localization/current_section"/>
+  <arg name="update_rate_hz" default="10.0"/>
+  <arg name="debug_mode" default="true"/>
+  <arg name="marker_topic" default="/localization/section_markers"/>
+  <arg name="current_marker_topic" default="/localization/current_section_marker"/>
+
+  <node pkg="section_localizer"
+        exec="section_localizer_node"
+        name="section_localizer_node"
+        output="screen">
+    <param from="$(var section_localizer_param)"/>
+    <param name="map_yaml_path" value="$(var map_yaml_path)"/>
+    <param name="section_definition_path" value="$(var section_definition_path)"/>
+    <param name="gate_definition_path" value="$(var gate_definition_path)"/>
+    <param name="map_frame" value="$(var map_frame)"/>
+    <param name="base_frame" value="$(var base_frame)"/>
+    <param name="current_section_topic" value="$(var current_section_topic)"/>
+    <param name="update_rate_hz" value="$(var update_rate_hz)"/>
+    <param name="debug_mode" value="$(var debug_mode)"/>
+    <param name="marker_topic" value="$(var marker_topic)"/>
+    <param name="current_marker_topic" value="$(var current_marker_topic)"/>
+  </node>
+
+</launch>
