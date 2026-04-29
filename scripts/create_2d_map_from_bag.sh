@@ -81,7 +81,7 @@ BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 
 # 出力先ディレクトリとファイルパスの生成
-OUT_DIR="/workspaces/map/${BAG_DIR_NAME}"
+OUT_DIR="/map/${BAG_DIR_NAME}"
 MAP_STEM="${OUT_DIR}/${MAP_NAME}"
 PBSTREAM_PATH="${MAP_STEM}.pbstream"
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
