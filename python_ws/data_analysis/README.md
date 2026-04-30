@@ -90,6 +90,7 @@ cd /Users/at/project/competition/tamiya-systems/python_ws
 python data_analysis/evaluate_global_localization_sweep.py \
   --scan-topic /scan \
   --scan-stride 50 \
+  --max-play-next-calls-per-trigger 0 \
   --localization-trigger-service /trigger_grid_search_localization \
   --localization-topic /localization_result \
   --reference-topic /visual_slam/tracking/vo_pose \
@@ -123,6 +124,7 @@ python data_analysis/evaluate_global_localization_sweep.py \
 
 補足:
 - `use_sim_time` はデフォルトで有効です。無効化したい場合だけ `--no-use-sim-time` を指定してください。
+- bag 内に `/joy` や画像などの高頻度トピックが多い場合、`play_next` 1回で `/scan` が1件進むとは限りません。`--scan-stride 50` でも数千回の `play_next` が必要になることがあるため、`--max-play-next-calls-per-trigger 0` を推奨します。
 - `reference-topic` は擬似GTとして使う自己位置（vSLAM等）に合わせて変更してください。
 - `reference-type` は `pose_stamped` / `pose_cov` / `odom` から選べます。
 - 典型的な組み合わせ:
