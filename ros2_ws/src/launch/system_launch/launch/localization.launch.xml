@@ -41,7 +41,7 @@
     <composable_node pkg="isaac_ros_occupancy_grid_localizer"
                      plugin="nvidia::isaac_ros::occupancy_grid_localizer::OccupancyGridLocalizerNode"
                      name="occupancy_grid_localizer">
-      <!-- <param from="$(var map_yaml_path)" /> -->
+      <param from="$(var map_yaml_path)" />
       <param from="$(var localization_param)" />
       <param name="loc_result_frame" value="map" />
       <param name="map_yaml_path" value="$(var map_yaml_path)" />

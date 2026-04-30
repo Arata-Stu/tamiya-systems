@@ -232,12 +232,16 @@ class LocalizationSweepEvaluator(Node):
 
     def step_until_scan_stride(self) -> bool:
         start_scan_count = self.scan_count
-        max_calls = max(1, self.args.max_play_next_calls_per_trigger)
+        max_calls = self.args.max_play_next_calls_per_trigger
         calls = 0
         while self.scan_count - start_scan_count < self.args.scan_stride:
-            if calls >= max_calls:
+            if max_calls > 0 and calls >= max_calls:
                 self.get_logger().warn(
-                    "Exceeded max play_next calls before reaching scan stride."
+                    "Exceeded max play_next calls before reaching scan stride. "
+                    f"scan_delta={self.scan_count - start_scan_count}, "
+                    f"scan_stride={self.args.scan_stride}, "
+                    f"play_next_calls={calls}. "
+                    "Increase --max-play-next-calls-per-trigger or set it to 0 for no limit."
                 )
                 return False
             calls += 1
@@ -419,7 +423,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scan-topic", default="/scan")
     parser.add_argument("--scan-stride", type=int, default=50)
     parser.add_argument("--max-triggers", type=int, default=0)
-    parser.add_argument("--max-play-next-calls-per-trigger", type=int, default=2000)
+    parser.add_argument(
+        "--max-play-next-calls-per-trigger",
+        type=int,
+        default=0,
+        help=(
+            "Maximum rosbag2 play_next calls used to reach one trigger point. "
+            "Set to 0 to disable the limit. Default: 0."
+        ),
+    )
     parser.add_argument("--spin-wait-after-play-next-sec", type=float, default=0.05)
 
     parser.add_argument("--localization-trigger-service", default="/trigger_grid_search_localization")
