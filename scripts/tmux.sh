@@ -102,13 +102,12 @@ create_python_layout() {
 
 create_map_layout() {
   tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
-  
-  # ペインを上下に分割
+
+  # 2x2 の均等グリッドを作る
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_MAIN".0
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
-  # 下段を左右に分割
-  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_MAIN".1
-  # 右側を上下に分割して4ペイン構成にする
-  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".2
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".1
+  tmux select-layout -t "$SESSION_NAME":"$WINDOW_MAIN" tiled
 
   # --- 1ペイン目 (上) ---
   # /workspaces に移動し、setup.bash を実行
@@ -116,17 +115,17 @@ create_map_layout() {
   # コマンドを準備（末尾に C-m を付けない）
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
 
-  # --- 2ペイン目 (下) ---
+  # --- 2ペイン目 (左下) ---
   # /python_ws/data_analysis/ に移動し、setup.bash を実行
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
   # コマンドを準備（末尾に C-m を付けない）
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
 
   # --- 3ペイン目 (右上) ---
   # component container 起動用
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
   # コマンドを準備（末尾に C-m を付けない）
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
 
   # --- 4ペイン目 (右下) ---
   # localization launch 起動用
