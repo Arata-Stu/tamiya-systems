@@ -132,7 +132,7 @@ SectionLocalizerNode::SectionLocalizerNode() : Node("section_localizer_node") {
       this->declare_parameter<bool>("use_gate_hybrid", use_gate_hybrid_);
   enable_reverse_gate_transition_ = this->declare_parameter<bool>(
       "enable_reverse_gate_transition", enable_reverse_gate_transition_);
-  fallback_confirm_count_ = std::max(
+  fallback_confirm_count_ = std::max<int>(
       1, this->declare_parameter<int>("fallback_confirm_count",
                                       fallback_confirm_count_));
   gate_crossing_eps_ = std::max(
