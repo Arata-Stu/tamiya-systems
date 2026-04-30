@@ -5,9 +5,11 @@ set -euo pipefail
 # --- 設定項目 ---
 MODE_TAMIYA="tamiya"
 MODE_PYTHON="python"
+MODE_MAP="map"
 
 DEFAULT_SESSION_TAMIYA="tamiya"
 DEFAULT_SESSION_PYTHON="python"
+DEFAULT_SESSION_MAP="map"
 
 WINDOW_MAIN="main"
 WINDOW_DATA="data"
@@ -22,8 +24,8 @@ PYTHON_PANE2_DIR="/record/"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode tamiya|python]
-  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python]
+  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map]
+  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map]
 
 If mode is omitted, you can choose interactively.
 EOF
@@ -41,7 +43,8 @@ choose_mode_interactive() {
     echo "Select mode:" >&2
     echo "  1) $MODE_TAMIYA (current setup)" >&2
     echo "  2) $MODE_PYTHON (study setup)" >&2
-    read -r -p "Enter 1 or 2: " answer
+    echo "  3) $MODE_MAP (map creation setup)" >&2
+    read -r -p "Enter 1, 2, or 3: " answer
 
     case "$answer" in
       1|"$MODE_TAMIYA")
@@ -50,6 +53,10 @@ choose_mode_interactive() {
         ;;
       2|"$MODE_PYTHON")
         echo "$MODE_PYTHON"
+        return
+        ;;
+      3|"$MODE_MAP")
+        echo "$MODE_MAP"
         return
         ;;
       *)
@@ -86,10 +93,32 @@ create_python_layout() {
   tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
 
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd $PYTHON_PANE1_DIR && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd $PYTHON_PANE2_DIR && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd $PYTHON_PANE1_DIR && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd $PYTHON_PANE2_DIR && $SETUP_SCRIPT && clear" C-m
 
   tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
+  tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
+}
+
+create_map_layout() {
+  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
+  
+  # ペインを上下に分割
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
+
+  # --- 1ペイン目 (上) ---
+  # /workspaces に移動し、setup.bash を実行
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  # コマンドを準備（末尾に C-m を付けない）
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
+
+  # --- 2ペイン目 (下) ---
+  # /python_ws/data_analysis/ に移動し、setup.bash を実行
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
+  # コマンドを準備（末尾に C-m を付けない）
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+
+  # 最初は1ペイン目にフォーカスを合わせておく
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
@@ -118,7 +147,7 @@ while [[ $# -gt 0 ]]; do
       SESSION_NAME="$2"
       shift 2
       ;;
-    "$MODE_TAMIYA"|"$MODE_PYTHON")
+    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP")
       if [[ -z "$MODE" ]]; then
         MODE="$1"
       elif [[ -z "$SESSION_NAME" ]]; then
@@ -148,11 +177,11 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-  "$MODE_TAMIYA"|"$MODE_PYTHON")
+  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP")
     ;;
   *)
     echo "Invalid mode: $MODE" >&2
-    echo "Use --mode tamiya or --mode python" >&2
+    echo "Use --mode tamiya, --mode python, or --mode map" >&2
     exit 1
     ;;
 esac
@@ -160,8 +189,10 @@ esac
 if [[ -z "$SESSION_NAME" ]]; then
   if [[ "$MODE" == "$MODE_TAMIYA" ]]; then
     SESSION_NAME="$DEFAULT_SESSION_TAMIYA"
-  else
+  elif [[ "$MODE" == "$MODE_PYTHON" ]]; then
     SESSION_NAME="$DEFAULT_SESSION_PYTHON"
+  else
+    SESSION_NAME="$DEFAULT_SESSION_MAP"
   fi
 fi
 
@@ -173,8 +204,10 @@ fi
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   if [[ "$MODE" == "$MODE_TAMIYA" ]]; then
     create_tamiya_layout
-  else
+  elif [[ "$MODE" == "$MODE_PYTHON" ]]; then
     create_python_layout
+  elif [[ "$MODE" == "$MODE_MAP" ]]; then
+    create_map_layout
   fi
 fi
 
