@@ -429,7 +429,20 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--player-prefix", default="/rosbag2_player")
     parser.add_argument("--service-timeout-sec", type=float, default=5.0)
-    parser.add_argument("--use-sim-time", action="store_true")
+    sim_time_group = parser.add_mutually_exclusive_group()
+    sim_time_group.add_argument(
+        "--use-sim-time",
+        dest="use_sim_time",
+        action="store_true",
+        default=True,
+        help="Use simulation time (default: enabled).",
+    )
+    sim_time_group.add_argument(
+        "--no-use-sim-time",
+        dest="use_sim_time",
+        action="store_false",
+        help="Disable simulation time.",
+    )
     parser.add_argument("--output-csv", default="./localization_sweep_eval.csv")
     parser.add_argument(
         "--map-yaml",

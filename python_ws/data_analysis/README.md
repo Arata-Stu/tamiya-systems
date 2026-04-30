@@ -88,7 +88,6 @@ ros2 bag play /path/to/bag_dir --clock --pause
 ```bash
 cd /Users/at/project/competition/tamiya-systems/python_ws
 python data_analysis/evaluate_global_localization_sweep.py \
-  --use-sim-time \
   --scan-topic /scan \
   --scan-stride 50 \
   --localization-trigger-service /trigger_grid_search_localization \
@@ -104,6 +103,14 @@ python data_analysis/evaluate_global_localization_sweep.py \
   --output-csv /tmp/localization_sweep_eval.csv
 ```
 
+最短実行（主要デフォルトを利用）:
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python data_analysis/evaluate_global_localization_sweep.py \
+  --map-yaml /path/to/levine.yaml
+```
+
 主な出力列:
 - `position_error_m`, `yaw_error_rad`: 誤差
 - `localization_latency_sec`: trigger から結果到着までの時間
@@ -115,6 +122,7 @@ python data_analysis/evaluate_global_localization_sweep.py \
 - `<output-csvのstem>_success_rate.png`: 成功率ヒートマップ（緑=良い、赤=悪い）
 
 補足:
+- `use_sim_time` はデフォルトで有効です。無効化したい場合だけ `--no-use-sim-time` を指定してください。
 - `reference-topic` は擬似GTとして使う自己位置（vSLAM等）に合わせて変更してください。
 - `reference-type` は `pose_stamped` / `pose_cov` / `odom` から選べます。
 - 典型的な組み合わせ:
