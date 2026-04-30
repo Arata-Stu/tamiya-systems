@@ -659,6 +659,7 @@ def render_map_quality_images(
     is_good = []
     is_bad = []
     is_fail = []
+    is_ok_no_reference = []
 
     with csv_path.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -685,10 +686,12 @@ def render_map_quality_images(
             good = ok and (pos_error <= good_pos_error_threshold_m)
             bad = ok and (pos_error > good_pos_error_threshold_m)
             fail = status in ("localization_timeout", "trigger_failed")
+            ok_no_reference = status == "ok_no_reference"
 
             is_good.append(good)
             is_bad.append(bad)
             is_fail.append(fail)
+            is_ok_no_reference.append(ok_no_reference)
 
     if not anchor_u:
         raise RuntimeError("No plottable points found in evaluation CSV.")
@@ -698,8 +701,9 @@ def render_map_quality_images(
     good_arr = np.asarray(is_good, dtype=bool)
     bad_arr = np.asarray(is_bad, dtype=bool)
     fail_arr = np.asarray(is_fail, dtype=bool)
+    ok_no_ref_arr = np.asarray(is_ok_no_reference, dtype=bool)
 
-    # 1) Good/Bad/Fail points overlay
+    # 1) Good/Bad/Fail/No-reference points overlay
     fig, ax = plt.subplots(figsize=(10, 10))
     ax.imshow(map_img, origin="upper")
     if np.any(good_arr):
@@ -734,38 +738,65 @@ def render_map_quality_images(
             alpha=0.9,
             label="timeout/trigger_failed",
         )
+    if np.any(ok_no_ref_arr):
+        ax.scatter(
+            u_arr[ok_no_ref_arr],
+            v_arr[ok_no_ref_arr],
+            c="#ff9800",
+            s=36,
+            alpha=0.9,
+            label="localized (no reference)",
+            edgecolors="white",
+            linewidths=0.4,
+        )
     ax.set_title("Global localization quality points")
     ax.set_xlim(0, map_meta.image_width - 1)
     ax.set_ylim(map_meta.image_height - 1, 0)
     ax.set_xlabel("u [pixel]")
     ax.set_ylabel("v [pixel]")
-    ax.legend(loc="upper right")
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(loc="upper right")
     fig.tight_layout()
     fig.savefig(points_output_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
 
-    # 2) Success-rate heatmap (good / total)
+    # 2) Success-rate heatmap (good / total), or successful-localization density when
+    # no reference pose is available.
     bin_px = max(1, int(round(grid_size_m / map_meta.resolution)))
     bins_x = int(math.ceil(map_meta.image_width / bin_px))
     bins_y = int(math.ceil(map_meta.image_height / bin_px))
 
     total = np.zeros((bins_y, bins_x), dtype=np.int32)
     good = np.zeros((bins_y, bins_x), dtype=np.int32)
+    localized = np.zeros((bins_y, bins_x), dtype=np.int32)
 
-    for u, v, g in zip(u_arr, v_arr, good_arr):
+    for u, v, g, b, ok_no_ref in zip(u_arr, v_arr, good_arr, bad_arr, ok_no_ref_arr):
         if not np.isfinite(u) or not np.isfinite(v):
             continue
         if u < 0.0 or v < 0.0 or u >= map_meta.image_width or v >= map_meta.image_height:
             continue
         ix = min(bins_x - 1, max(0, int(u // bin_px)))
         iy = min(bins_y - 1, max(0, int(v // bin_px)))
-        total[iy, ix] += 1
+        if g or b:
+            total[iy, ix] += 1
         if g:
             good[iy, ix] += 1
+        if g or b or ok_no_ref:
+            localized[iy, ix] += 1
+
+    has_reference_quality = bool(np.any(good_arr) or np.any(bad_arr))
 
     rate = np.full((bins_y, bins_x), np.nan, dtype=np.float32)
-    valid = total >= max(1, min_samples_per_cell)
-    rate[valid] = good[valid].astype(np.float32) / total[valid].astype(np.float32)
+    if has_reference_quality:
+        valid = total >= max(1, min_samples_per_cell)
+        rate[valid] = good[valid].astype(np.float32) / total[valid].astype(np.float32)
+    else:
+        valid = localized >= max(1, min_samples_per_cell)
+        if np.any(valid):
+            max_count = int(localized[valid].max())
+            denom = float(max(1, max_count))
+            rate[valid] = localized[valid].astype(np.float32) / denom
 
     heatmap = np.full(
         (map_meta.image_height, map_meta.image_width), np.nan, dtype=np.float32
@@ -793,10 +824,16 @@ def render_map_quality_images(
         alpha=0.68,
     )
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    cbar.set_label("good match rate (0=bad, 1=good)")
-    ax.set_title(
-        f"Global localization success-rate heatmap (grid={grid_size_m:.2f} m, min_n={max(1, min_samples_per_cell)})"
-    )
+    if has_reference_quality:
+        cbar.set_label("good match rate (0=bad, 1=good)")
+        ax.set_title(
+            f"Global localization success-rate heatmap (grid={grid_size_m:.2f} m, min_n={max(1, min_samples_per_cell)})"
+        )
+    else:
+        cbar.set_label("relative localized sample density")
+        ax.set_title(
+            f"Global localization localized-density heatmap (no reference, grid={grid_size_m:.2f} m, min_n={max(1, min_samples_per_cell)})"
+        )
     ax.set_xlim(0, map_meta.image_width - 1)
     ax.set_ylim(map_meta.image_height - 1, 0)
     ax.set_xlabel("u [pixel]")

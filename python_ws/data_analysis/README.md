@@ -119,13 +119,18 @@ python data_analysis/evaluate_global_localization_sweep.py \
 - `reference_x`, `reference_y`: trigger時の参照自己位置（失敗行でも可能な限り保存）
 
 `--map-yaml` を指定した場合は、CSVに加えて次の画像も保存されます。
-- `<output-csvのstem>_points.png`: 良否ポイント可視化（青=good、赤=bad、黒x=timeout/trigger失敗）
-- `<output-csvのstem>_success_rate.png`: 成功率ヒートマップ（緑=良い、赤=悪い）
+- `<output-csvのstem>_points.png`: ポイント可視化
+  `reference` ありでは青=good、赤=bad、黒x=timeout/trigger失敗。
+  `reference` なしでは橙=localized (no reference) を重ねます。
+- `<output-csvのstem>_success_rate.png`: ヒートマップ
+  `reference` ありでは成功率ヒートマップ（緑=良い、赤=悪い）。
+  `reference` なしでは localization が返った地点の相対密度ヒートマップ。
 
 補足:
 - `use_sim_time` はデフォルトで有効です。無効化したい場合だけ `--no-use-sim-time` を指定してください。
 - bag 内に `/joy` や画像などの高頻度トピックが多い場合、`play_next` 1回で `/scan` が1件進むとは限りません。`--scan-stride 50` でも数千回の `play_next` が必要になることがあるため、`--max-play-next-calls-per-trigger 0` を推奨します。
 - `reference-topic` は擬似GTとして使う自己位置（vSLAM等）に合わせて変更してください。
+- `reference-topic` が取れない場合でも評価は継続されます。その場合の `status` は `ok_no_reference` になり、誤差列は空欄のまま、位置プロットと密度ヒートマップだけ生成されます。
 - `reference-type` は `pose_stamped` / `pose_cov` / `odom` から選べます。
 - 典型的な組み合わせ:
   - `--reference-type pose_stamped --reference-topic /visual_slam/tracking/vo_pose`
