@@ -25,6 +25,7 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rosbag2_interfaces.srv import Pause, PlayNext
 from sensor_msgs.msg import LaserScan
 from std_srvs.srv import Empty
@@ -85,7 +86,9 @@ class MapMeta:
 class LocalizationSweepEvaluator(Node):
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__("global_localization_sweep_evaluator")
-        self.declare_parameter("use_sim_time", args.use_sim_time)
+        self.set_parameters(
+            [Parameter("use_sim_time", Parameter.Type.BOOL, args.use_sim_time)]
+        )
 
         self.args = args
         self.scan_count = 0
@@ -212,7 +215,10 @@ class LocalizationSweepEvaluator(Node):
         ]
         for client, name in clients:
             if not client.wait_for_service(timeout_sec=self.args.service_timeout_sec):
-                self.get_logger().error(f"Service unavailable: {name}")
+                self.get_logger().error(
+                    "Service unavailable: "
+                    f"{name} (expected service: {client.srv_name})"
+                )
                 return False
         return True
 
