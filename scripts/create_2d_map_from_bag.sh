@@ -9,8 +9,7 @@ Usage:
 
 Arguments:
   BAG_PATH   rosbag2 directory path (metadata.yaml must exist)
-  MAP_NAME   output map name (will be saved in /workspaces/map/<bag_name>/<MAP_NAME>)
-             e.g. corridor
+  MAP_NAME   output map name (saved in /map/<bag_name>/<MAP_NAME>.*)
 
 Options:
   --scan-topic TOPIC  scan topic for cartographer (default: /scan)
@@ -20,16 +19,28 @@ Options:
   -h, --help          show this help
 
 Outputs:
-  /workspaces/map/<bag_name>/<MAP_NAME>.pbstream
-  /workspaces/map/<bag_name>/<MAP_NAME>.yaml
-  /workspaces/map/<bag_name>/<MAP_NAME>.pgm
+  /map/<bag_name>/<MAP_NAME>.pbstream
+  /map/<bag_name>/<MAP_NAME>.yaml
+  /map/<bag_name>/<MAP_NAME>.pgm
+
+After map creation:
+  optionally transfer /map/<bag_name>/ to remote host by rsync
 EOF
 }
 
+# ==========================================
+# Default settings
+# ==========================================
 SCAN_TOPIC="/scan"
 PLAY_RATE="1.0"
 ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
+
+DEFAULT_REMOTE_USER="tamiya"
+DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/map/"
+# ==========================================
+
 POSITIONAL=()
 
 while (($#)); do
@@ -76,23 +87,23 @@ fi
 BAG_PATH="${POSITIONAL[0]}"
 MAP_NAME="${POSITIONAL[1]}"
 
-# 末尾のスラッシュを削除してからベース名（フォルダ名）を取得
+# bag dir name
 BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 
-# 出力先ディレクトリとファイルパスの生成
+# output paths
 OUT_DIR="/map/${BAG_DIR_NAME}"
 MAP_STEM="${OUT_DIR}/${MAP_NAME}"
 PBSTREAM_PATH="${MAP_STEM}.pbstream"
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
 
+# validate bag
 if [ ! -d "$BAG_PATH" ] || [ ! -f "$BAG_PATH/metadata.yaml" ]; then
     echo "Invalid BAG_PATH: $BAG_PATH" >&2
     echo "metadata.yaml not found." >&2
     exit 1
 fi
 
-# 保存先ディレクトリを作成
 mkdir -p "${OUT_DIR}"
 
 stop_cartographer() {
@@ -106,6 +117,7 @@ wait_for_service() {
     local service_name="$1"
     local timeout_sec="$2"
     local count=0
+
     while [ "$count" -lt "$timeout_sec" ]; do
         if ros2 service list | grep -Fxq "$service_name"; then
             return 0
@@ -113,17 +125,23 @@ wait_for_service() {
         sleep 1
         count=$((count + 1))
     done
+
     return 1
 }
 
 trap stop_cartographer EXIT INT TERM
 
-echo "[1/4] Launch cartographer (log: ${MAP_LOG_PATH})"
+# ==========================================
+# 1. Launch cartographer
+# ==========================================
+echo "[1/5] Launch cartographer (log: ${MAP_LOG_PATH})"
+
 LAUNCH_ARGS=(
     "use_sim_time:=true"
     "scan_topic:=${SCAN_TOPIC}"
     "configuration_basename:=${CONFIG_BASENAME}"
 )
+
 if [ -n "${ODOM_TOPIC}" ]; then
     LAUNCH_ARGS+=("odom_topic:=${ODOM_TOPIC}")
 fi
@@ -131,40 +149,128 @@ fi
 ros2 launch system_launch cartographer_2d_mapping.launch.xml \
     "${LAUNCH_ARGS[@]}" \
     > "${MAP_LOG_PATH}" 2>&1 &
+
 CARTOGRAPHER_PID=$!
 
-echo "[2/4] Wait for /write_state service"
+# ==========================================
+# 2. Wait service
+# ==========================================
+echo "[2/5] Wait for /write_state service"
+
 if ! wait_for_service "/write_state" 60; then
     echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
     exit 1
 fi
 
-echo "[3/4] Play rosbag"
+# ==========================================
+# 3. Play bag
+# ==========================================
+echo "[3/5] Play rosbag"
+
 ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
 
-echo "[4/4] Save trajectory and map"
+# ==========================================
+# 4. Save map
+# ==========================================
+echo "[4/5] Save trajectory and map"
+
 if ! ros2 service call /finish_trajectory \
     cartographer_ros_msgs/srv/FinishTrajectory \
     "{trajectory_id: 0}" > /dev/null; then
-    echo "Warning: /finish_trajectory failed. Continue to save state." >&2
+    echo "Warning: /finish_trajectory failed. Continue." >&2
 fi
 
 WRITE_STATE_REQUEST=$(printf "{filename: '%s', include_unfinished_submaps: true}" "${PBSTREAM_PATH}")
+
 ros2 service call /write_state \
     cartographer_ros_msgs/srv/WriteState \
     "${WRITE_STATE_REQUEST}" > /dev/null
 
 stop_cartographer
 
+# convert map
 if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
     -pbstream_filename "${PBSTREAM_PATH}" \
     -map_filestem "${MAP_STEM}" \
     -resolution 0.05; then
-    echo "Map generated:"
+
+    echo ""
+    echo "✅ Map generated:"
     echo "  - ${MAP_STEM}.yaml"
     echo "  - ${MAP_STEM}.pgm"
     echo "  - ${PBSTREAM_PATH}"
+
 else
     echo "pbstream generated: ${PBSTREAM_PATH}" >&2
-    echo "Failed to convert pbstream to occupancy map. Check cartographer_ros installation." >&2
+    echo "Failed to convert pbstream to occupancy map." >&2
+    exit 1
 fi
+
+# ==========================================
+# 5. Transfer by rsync
+# ==========================================
+echo ""
+read -p "2D mapを作成しました。送信しますか？ (Y/n, Enterで送信): " SEND_CONFIRM
+SEND_CONFIRM=${SEND_CONFIRM:-y}
+
+if [[ ! "$SEND_CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "送信をスキップしました。"
+    exit 0
+fi
+
+echo ""
+read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
+REMOTE_USER=${REMOTE_USER:-$DEFAULT_REMOTE_USER}
+
+echo ""
+echo "相手のIPアドレスを選択、または直接入力してください:"
+i=1
+for ip in "${DEFAULT_REMOTE_IPS[@]}"; do
+    if [ $i -eq 1 ]; then
+        echo "  $i) $ip (Enterのデフォルト)"
+    else
+        echo "  $i) $ip"
+    fi
+    ((i++))
+done
+echo ""
+
+read -p "番号、またはIPを直接入力 (Enterで '${DEFAULT_REMOTE_IPS[0]}'): " IP_CHOICE
+
+if [ -z "$IP_CHOICE" ]; then
+    REMOTE_IP="${DEFAULT_REMOTE_IPS[0]}"
+elif [[ "$IP_CHOICE" =~ ^[0-9]+$ ]] && \
+     [ "$IP_CHOICE" -ge 1 ] && \
+     [ "$IP_CHOICE" -le "${#DEFAULT_REMOTE_IPS[@]}" ]; then
+    REMOTE_IP="${DEFAULT_REMOTE_IPS[$((IP_CHOICE-1))]}"
+else
+    REMOTE_IP="$IP_CHOICE"
+fi
+
+echo ""
+read -p "送信先ディレクトリ (Enterで '${DEFAULT_REMOTE_DIR}'): " REMOTE_DIR
+REMOTE_DIR=${REMOTE_DIR:-$DEFAULT_REMOTE_DIR}
+
+echo ""
+echo "================ 転送内容確認 ================"
+echo "送信元 : ${OUT_DIR}/"
+echo "送信先 : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
+echo "=============================================="
+echo ""
+
+read -p "この内容でrsync転送しますか？ (Y/n, Enterで実行): " FINAL_CONFIRM
+FINAL_CONFIRM=${FINAL_CONFIRM:-y}
+
+if [[ ! "$FINAL_CONFIRM" =~ ^[Yy]$ ]]; then
+    echo "転送をキャンセルしました。"
+    exit 0
+fi
+
+echo "rsync転送を開始します..."
+
+rsync -avP \
+    "${OUT_DIR}/" \
+    "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}${BAG_DIR_NAME}/"
+
+echo ""
+echo "✅ rsync転送が完了しました！"
