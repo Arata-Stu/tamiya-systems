@@ -105,8 +105,10 @@ create_map_layout() {
   
   # ペインを上下に分割
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
-  # 下段を左右に分割して3ペイン構成にする
+  # 下段を左右に分割
   tmux split-window -h -t "$SESSION_NAME":"$WINDOW_MAIN".1
+  # 右側を上下に分割して4ペイン構成にする
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".2
 
   # --- 1ペイン目 (上) ---
   # /workspaces に移動し、setup.bash を実行
@@ -120,11 +122,17 @@ create_map_layout() {
   # コマンドを準備（末尾に C-m を付けない）
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
 
-  # --- 3ペイン目 (右下) ---
-  # localization node 起動用
+  # --- 3ペイン目 (右上) ---
+  # component container 起動用
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
   # コマンドを準備（末尾に C-m を付けない）
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container >/tmp/lidar_container.log 2>&1 & sleep 1; ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
+
+  # --- 4ペイン目 (右下) ---
+  # localization launch 起動用
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".3 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  # コマンドを準備（末尾に C-m を付けない）
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".3 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
 
   # 最初は1ペイン目にフォーカスを合わせておく
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
