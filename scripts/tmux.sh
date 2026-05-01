@@ -24,6 +24,28 @@ CMD_MONITOR="bash /scripts/monitor.sh"
 PYTHON_PANE1_DIR="/python_ws"
 PYTHON_PANE2_DIR="/record/"
 
+# --- ヘルパー関数 ---
+# 1. ペインの初期化（コマンドを実行してEnter）
+init_pane() {
+  local target="$1"
+  local cmd="$2"
+  tmux send-keys -t "$target" "$cmd" C-m
+}
+
+# 2. ペインに準備コマンドを流し込む（表示崩れ対策済み）
+prepare_cmd() {
+  local target="$1"
+  local cmd="$2"
+  
+  # bashのショートカット(Ctrl+L)で画面をクリア＆プロンプトを綺麗に再描画
+  tmux send-keys -t "$target" C-l
+  sleep 0.2
+  
+  # コマンドを文字入力（Enterは押さない）
+  tmux send-keys -t "$target" "$cmd"
+}
+
+
 usage() {
   cat <<EOF
 Usage:
@@ -75,106 +97,94 @@ choose_mode_interactive() {
 }
 
 create_tamiya_layout() {
-  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
-
+  # ターミナル幅が狭いと判断されないよう、初期仮想サイズを大きく設定 (-x 250 -y 80)
+  tmux new-session -d -x 250 -y 80 -s "$SESSION_NAME" -n "$WINDOW_MAIN"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
 
-  for pane in 0 1; do
-    tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".$pane \
-      "export ROS_LOCALHOST_ONLY=0 && $SETUP_SCRIPT && clear" C-m
-  done
-
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "$CMD_BASE"
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "$CMD_MONITOR"
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".0 "export ROS_LOCALHOST_ONLY=0 && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".1 "export ROS_LOCALHOST_ONLY=0 && $SETUP_SCRIPT"
 
   tmux new-window -t "$SESSION_NAME" -n "$WINDOW_DATA"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_DATA".0
 
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".0 "cd /record && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".1 "cd /scripts/ && clear" C-m
+  init_pane "$SESSION_NAME":"$WINDOW_DATA".0 "cd /record"
+  init_pane "$SESSION_NAME":"$WINDOW_DATA".1 "cd /scripts/"
+
+  sleep 2.0 # sourceコマンドの完了を待機
+
+  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".0 "$CMD_BASE"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".1 "$CMD_MONITOR"
+  
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".0 C-l
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_DATA".1 C-l
 
   tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
 create_python_layout() {
-  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
+  tmux new-session -d -x 250 -y 80 -s "$SESSION_NAME" -n "$WINDOW_MAIN"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
 
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd $PYTHON_PANE1_DIR && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd $PYTHON_PANE2_DIR && $SETUP_SCRIPT && clear" C-m
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".0 "cd $PYTHON_PANE1_DIR && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".1 "cd $PYTHON_PANE2_DIR && $SETUP_SCRIPT"
+
+  sleep 2.0 # sourceコマンドの完了を待機
+  
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 C-l
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 C-l
 
   tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
 create_map_layout() {
-  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
-
-  # 2ペインに分割（map作成をシンプルに）
+  tmux new-session -d -x 250 -y 80 -s "$SESSION_NAME" -n "$WINDOW_MAIN"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
 
-  # --- 1ペイン目: create_2d_map コマンド ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  sleep 0.5
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
-
-  # --- 2ペイン目: /map に移動 ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /map && clear" C-m
-
   tmux new-window -t "$SESSION_NAME" -n "$WINDOW_LOCALIZATION_EVAL"
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2
 
-  # 2x2 の確実な分割手順 (0:左上, 1:右上, 2:左下, 3:右下)
-  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 # 上下に分割 (.0=上, .1=下)
-  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 # 上を左右に (.0=左上, .1=右上, .2=下)
-  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 # 下を左右に (.0=左上, .1=右上, .2=左下, .3=右下)
+  # 全てのペインで初期化（source等）を先に流す
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /map"
+  
+  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "cd /workspaces && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "cd /workspaces && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "cd /workspaces && $SETUP_SCRIPT"
 
-  # 各ペインの初期化 (sourceとclearを実行して待機)
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  # 全ペインの初期化が終わるのを一括で待機
+  sleep 2.0
 
-  # setup.bashの読み込みやclearが完了するのを待つ（文字化け・コマンド重複対策）
-  sleep 1.5
+  # main ウィンドウのコマンド準備
+  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 C-l
 
-  # --- ペイン0 (左上): rosbag play ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "ros2 bag play <bag_path> --clock --start-paused"
+  # localization_eval ウィンドウのコマンド準備
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "ros2 bag play <bag_path> --clock --start-paused"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
 
-  # --- ペイン1 (右上): localization launch ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
-
-  # --- ペイン2 (左下): evaluate script ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
-
-  # --- ペイン3 (右下): component container ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
-
-  # map作成導線を優先して、最初は main ウィンドウを開く
   tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
 create_simulator_layout() {
-  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
-  
-  # 上下2つにペインを分割
+  tmux new-session -d -x 250 -y 80 -s "$SESSION_NAME" -n "$WINDOW_MAIN"
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
 
-  # 初期化コマンドの実行
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  
-  # 読み込み待機
-  sleep 1.0
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /workspaces && $SETUP_SCRIPT"
 
-  # --- 1ペイン目 (上) ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
+  sleep 2.0
 
-  # --- 2ペイン目 (下) ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 'ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
+  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".0 "ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".1 'ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 
-  # 最初は1ペイン目にフォーカスを合わせておく
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
