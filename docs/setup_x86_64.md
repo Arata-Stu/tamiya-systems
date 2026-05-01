@@ -215,7 +215,7 @@ Jetson で収録した rosbag2 をノートPCに移動した後、Docker コン�
 source /opt/ros/humble/setup.bash
 source /workspaces/install/setup.bash
 
-# rosbag2ディレクトリ -> map生成（.yaml/.pgm/.pbstream）
+# rosbag2ディレクトリ -> map生成（.yaml/.pgm/.pbstream、可能なら .png も生成）
 bash /scripts/create_2d_map_from_bag.sh \
   /workspaces/bags/<bag_dir> \
   /workspaces/maps/<map_name>

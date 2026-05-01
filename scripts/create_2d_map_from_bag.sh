@@ -22,6 +22,7 @@ Outputs:
   /map/<bag_name>/<MAP_NAME>.pbstream
   /map/<bag_name>/<MAP_NAME>.yaml
   /map/<bag_name>/<MAP_NAME>.pgm
+  /map/<bag_name>/<MAP_NAME>.png (optional; generated if converter is available)
 
 After map creation:
   optionally transfer /map/<bag_name>/ to remote host by rsync
@@ -113,6 +114,43 @@ stop_cartographer() {
     fi
 }
 
+convert_pgm_to_png() {
+    local pgm_path="$1"
+    local png_path="$2"
+
+    if command -v magick >/dev/null 2>&1; then
+        magick "${pgm_path}" "${png_path}"
+        return $?
+    fi
+
+    if command -v convert >/dev/null 2>&1; then
+        convert "${pgm_path}" "${png_path}"
+        return $?
+    fi
+
+    if command -v ffmpeg >/dev/null 2>&1; then
+        ffmpeg -y -loglevel error -i "${pgm_path}" "${png_path}"
+        return $?
+    fi
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "${pgm_path}" "${png_path}" <<'PY'
+import sys
+
+try:
+    from PIL import Image
+except Exception as exc:
+    raise SystemExit(f"Pillow not available: {exc}")
+
+src, dst = sys.argv[1], sys.argv[2]
+Image.open(src).save(dst, format="PNG")
+PY
+        return $?
+    fi
+
+    return 1
+}
+
 wait_for_service() {
     local service_name="$1"
     local timeout_sec="$2"
@@ -194,10 +232,21 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
     -map_filestem "${MAP_STEM}" \
     -resolution 0.05; then
 
+    PNG_PATH="${MAP_STEM}.png"
+    PNG_CREATED=false
+    if convert_pgm_to_png "${MAP_STEM}.pgm" "${PNG_PATH}"; then
+        PNG_CREATED=true
+    else
+        echo "Warning: PNG conversion skipped. (Need one of: magick/convert/ffmpeg/python3+Pillow)" >&2
+    fi
+
     echo ""
     echo "✅ Map generated:"
     echo "  - ${MAP_STEM}.yaml"
     echo "  - ${MAP_STEM}.pgm"
+    if [ "${PNG_CREATED}" = true ]; then
+        echo "  - ${MAP_STEM}.png"
+    fi
     echo "  - ${PBSTREAM_PATH}"
 
 else
