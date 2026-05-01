@@ -151,6 +151,40 @@ PY
     return 1
 }
 
+update_yaml_image_path() {
+    local yaml_path="$1"
+    local image_path="$2"
+    local tmp_yaml_path
+
+    if [ ! -f "${yaml_path}" ]; then
+        return 1
+    fi
+
+    tmp_yaml_path="${yaml_path}.tmp.$$"
+
+    if ! awk -v image_path="${image_path}" '
+        BEGIN { updated = 0 }
+        /^[[:space:]]*image:[[:space:]]*/ && updated == 0 {
+            match($0, /^[[:space:]]*/)
+            indent = substr($0, 1, RLENGTH)
+            print indent "image: " image_path
+            updated = 1
+            next
+        }
+        { print }
+        END {
+            if (updated == 0) {
+                exit 2
+            }
+        }
+    ' "${yaml_path}" > "${tmp_yaml_path}"; then
+        rm -f "${tmp_yaml_path}" 2>/dev/null || true
+        return 1
+    fi
+
+    mv "${tmp_yaml_path}" "${yaml_path}"
+}
+
 wait_for_service() {
     local service_name="$1"
     local timeout_sec="$2"
@@ -232,10 +266,17 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
     -map_filestem "${MAP_STEM}" \
     -resolution 0.05; then
 
+    MAP_YAML_PATH="${MAP_STEM}.yaml"
     PNG_PATH="${MAP_STEM}.png"
     PNG_CREATED=false
+    YAML_IMAGE_UPDATED=false
     if convert_pgm_to_png "${MAP_STEM}.pgm" "${PNG_PATH}"; then
         PNG_CREATED=true
+        if update_yaml_image_path "${MAP_YAML_PATH}" "${PNG_PATH}"; then
+            YAML_IMAGE_UPDATED=true
+        else
+            echo "Warning: PNG was generated, but failed to update image path in ${MAP_YAML_PATH}." >&2
+        fi
     else
         echo "Warning: PNG conversion skipped. (Need one of: magick/convert/ffmpeg/python3+Pillow)" >&2
     fi
@@ -243,6 +284,9 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
     echo ""
     echo "✅ Map generated:"
     echo "  - ${MAP_STEM}.yaml"
+    if [ "${YAML_IMAGE_UPDATED}" = true ]; then
+        echo "    image: ${MAP_STEM}.png"
+    fi
     echo "  - ${MAP_STEM}.pgm"
     if [ "${PNG_CREATED}" = true ]; then
         echo "  - ${MAP_STEM}.png"

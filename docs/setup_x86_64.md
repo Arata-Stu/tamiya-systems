@@ -219,6 +219,8 @@ source /workspaces/install/setup.bash
 bash /scripts/create_2d_map_from_bag.sh \
   /workspaces/bags/<bag_dir> \
   /workspaces/maps/<map_name>
+
+# .png 生成に成功した場合、yaml の image: も .png を指すように更新されます
 ```
 
 `/scan` 以外を使う場合は `--scan-topic` で指定できます。
