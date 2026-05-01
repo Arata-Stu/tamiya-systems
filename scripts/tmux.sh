@@ -15,6 +15,7 @@ DEFAULT_SESSION_SIMULATOR="simulator"
 
 WINDOW_MAIN="main"
 WINDOW_DATA="data"
+WINDOW_LOCALIZATION_EVAL="localization_eval"
 
 SETUP_SCRIPT="source /workspaces/install/setup.bash"
 CMD_BASE="ros2 launch system_launch system.launch.xml use_section_localizer:=false localization:=false vslam:=true use_camera:=true use_lidar:=true use_ftg:=false use_emergency:=false record:=false"
@@ -123,10 +124,10 @@ create_map_layout() {
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
 
   # --- 2ペイン目 (左下) ---
-  # /python_ws/data_analysis/ に移動し、setup.bash を実行
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
-  # コマンドを準備（末尾に C-m を付けない）
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+  # データ用ディレクトリに移動
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "cd /record/ && clear" C-m
+  # map作成後のyaml/pgm/png確認や操作用
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".2 "ls -lah /map/"
 
   # --- 3ペイン目 (右上) ---
   # component container 起動用
@@ -141,6 +142,34 @@ create_map_layout() {
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".3 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
 
   # 最初は1ペイン目にフォーカスを合わせておく
+  tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
+
+  tmux new-window -t "$SESSION_NAME" -n "$WINDOW_LOCALIZATION_EVAL"
+
+  # 2x2 の均等グリッドを作る
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1
+  tmux select-layout -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL" tiled
+
+  # --- 1ペイン目 (上): rosbag play ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "ros2 bag play <bag_path> --clock --start-paused"
+
+  # --- 2ペイン目 (右上): localization launch ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
+
+  # --- 3ペイン目 (左下): evaluate script ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+
+  # --- 4ペイン目 (右下): component container ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
+
+  # map作成導線を優先して、最初は main ウィンドウを開く
+  tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
