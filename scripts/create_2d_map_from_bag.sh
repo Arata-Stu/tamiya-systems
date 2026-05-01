@@ -44,6 +44,72 @@ DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
 DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/map/"
 # ==========================================
 
+CARTOGRAPHER_PID=""
+CARTOGRAPHER_USES_SETSID=false
+BASE_CARTOGRAPHER_PIDS=()
+
+list_cartographer_pids() {
+    {
+        pgrep -f "cartographer_node" 2>/dev/null || true
+        pgrep -f "cartographer_occupancy_grid_node" 2>/dev/null || true
+    } | sort -u
+}
+
+capture_base_cartographer_pids() {
+    BASE_CARTOGRAPHER_PIDS=()
+    local pid
+    while IFS= read -r pid; do
+        [ -n "$pid" ] && BASE_CARTOGRAPHER_PIDS+=("$pid")
+    done < <(list_cartographer_pids)
+}
+
+is_base_cartographer_pid() {
+    local target="$1"
+    local pid
+    for pid in "${BASE_CARTOGRAPHER_PIDS[@]}"; do
+        if [ "$pid" = "$target" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+kill_pid_gracefully() {
+    local pid="$1"
+    local kill_group="${2:-false}"
+    local target="$pid"
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+
+    if [ "$kill_group" = true ]; then
+        target="-$pid"
+    fi
+
+    kill -INT "$target" 2>/dev/null || true
+    sleep 1
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$target" 2>/dev/null || true
+        sleep 1
+    fi
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$target" 2>/dev/null || true
+    fi
+}
+
+cleanup_new_cartographer_processes() {
+    local pid
+    while IFS= read -r pid; do
+        [ -z "$pid" ] && continue
+        if ! is_base_cartographer_pid "$pid"; then
+            kill_pid_gracefully "$pid" false
+        fi
+    done < <(list_cartographer_pids)
+}
+
 POSITIONAL=()
 
 while (($#)); do
@@ -114,10 +180,16 @@ fi
 mkdir -p "${OUT_DIR}"
 
 stop_cartographer() {
-    if [ -n "${CARTOGRAPHER_PID:-}" ] && kill -0 "${CARTOGRAPHER_PID}" 2>/dev/null; then
-        kill "${CARTOGRAPHER_PID}" 2>/dev/null || true
+    if [ -n "${CARTOGRAPHER_PID:-}" ]; then
+        kill_pid_gracefully "${CARTOGRAPHER_PID}" "${CARTOGRAPHER_USES_SETSID}"
         wait "${CARTOGRAPHER_PID}" 2>/dev/null || true
+        CARTOGRAPHER_PID=""
+        CARTOGRAPHER_USES_SETSID=false
     fi
+
+    # Safety net:
+    # Kill only cartographer processes that appeared after this script started.
+    cleanup_new_cartographer_processes
 }
 
 convert_pgm_to_png() {
@@ -213,6 +285,7 @@ trap stop_cartographer EXIT INT TERM
 # 1. Launch cartographer
 # ==========================================
 echo "[1/5] Launch cartographer (log: ${MAP_LOG_PATH})"
+capture_base_cartographer_pids
 
 LAUNCH_ARGS=(
     "use_sim_time:=true"
@@ -224,9 +297,17 @@ if [ -n "${ODOM_TOPIC}" ]; then
     LAUNCH_ARGS+=("odom_topic:=${ODOM_TOPIC}")
 fi
 
-ros2 launch system_launch cartographer_2d_mapping.launch.xml \
-    "${LAUNCH_ARGS[@]}" \
-    > "${MAP_LOG_PATH}" 2>&1 &
+if command -v setsid >/dev/null 2>&1; then
+    CARTOGRAPHER_USES_SETSID=true
+    setsid ros2 launch system_launch cartographer_2d_mapping.launch.xml \
+        "${LAUNCH_ARGS[@]}" \
+        > "${MAP_LOG_PATH}" 2>&1 &
+else
+    CARTOGRAPHER_USES_SETSID=false
+    ros2 launch system_launch cartographer_2d_mapping.launch.xml \
+        "${LAUNCH_ARGS[@]}" \
+        > "${MAP_LOG_PATH}" 2>&1 &
+fi
 
 CARTOGRAPHER_PID=$!
 
