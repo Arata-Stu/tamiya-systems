@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  create_2d_map_from_bag.sh [--scan-topic TOPIC] [--rate RATE] [--odom-topic TOPIC] [--use-vslam-odom] BAG_PATH MAP_NAME
+  create_2d_map_from_bag.sh [--scan-topic TOPIC] [--rate RATE] [--odom-topic TOPIC] [--use-vslam-odom] [--play-all-topics] BAG_PATH MAP_NAME
 
 Arguments:
   BAG_PATH   rosbag2 directory path (metadata.yaml must exist)
@@ -16,6 +16,7 @@ Options:
   --rate RATE         ros2 bag play rate (default: 1.0)
   --odom-topic TOPIC  use odometry topic and enable odometry in cartographer
   --use-vslam-odom    shorthand of --odom-topic /visual_slam/tracking/odometry
+  --play-all-topics   play all topics in bag (default: play only needed topics)
   -h, --help          show this help
 
 Outputs:
@@ -36,6 +37,7 @@ SCAN_TOPIC="/scan"
 PLAY_RATE="1.0"
 ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
+PLAY_ALL_TOPICS=false
 
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
@@ -62,6 +64,10 @@ while (($#)); do
         --use-vslam-odom)
             ODOM_TOPIC="/visual_slam/tracking/odometry"
             CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+            shift
+            ;;
+        --play-all-topics)
+            PLAY_ALL_TOPICS=true
             shift
             ;;
         -h|--help)
@@ -239,7 +245,19 @@ fi
 # ==========================================
 echo "[3/5] Play rosbag"
 
-ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
+if [ "${PLAY_ALL_TOPICS}" = true ]; then
+    echo "  - mode: all topics"
+    ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
+else
+    PLAY_TOPICS=("${SCAN_TOPIC}" "/tf_static")
+    if [ -n "${ODOM_TOPIC}" ]; then
+        PLAY_TOPICS+=("${ODOM_TOPIC}")
+    fi
+
+    echo "  - mode: filtered topics"
+    echo "  - topics: ${PLAY_TOPICS[*]}"
+    ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}" --topics "${PLAY_TOPICS[@]}"
+fi
 
 # ==========================================
 # 4. Save map
