@@ -22,4 +22,7 @@
       - /robot_description
       - /visual_slam/tracking/slam_path
       - /visual_slam/tracking/odometry
+      - /visual_slam/tracking/vo_pose
       - /visual_slam/status
+      - /visual_slam/vis/slam_odometry
+      - /visual_slam/vis/velocity
