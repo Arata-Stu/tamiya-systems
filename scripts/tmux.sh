@@ -6,10 +6,12 @@ set -euo pipefail
 MODE_TAMIYA="tamiya"
 MODE_PYTHON="python"
 MODE_MAP="map"
+MODE_SIMULATOR="simulator"
 
 DEFAULT_SESSION_TAMIYA="tamiya"
 DEFAULT_SESSION_PYTHON="python"
 DEFAULT_SESSION_MAP="map"
+DEFAULT_SESSION_SIMULATOR="simulator"
 
 WINDOW_MAIN="main"
 WINDOW_DATA="data"
@@ -24,8 +26,8 @@ PYTHON_PANE2_DIR="/record/"
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map]
-  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map]
+  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map|simulator]
+  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map|simulator]
 
 If mode is omitted, you can choose interactively.
 EOF
@@ -44,7 +46,8 @@ choose_mode_interactive() {
     echo "  1) $MODE_TAMIYA (current setup)" >&2
     echo "  2) $MODE_PYTHON (study setup)" >&2
     echo "  3) $MODE_MAP (map creation setup)" >&2
-    read -r -p "Enter 1, 2, or 3: " answer
+    echo "  4) $MODE_SIMULATOR (simulator setup)" >&2
+    read -r -p "Enter 1, 2, 3, or 4: " answer
 
     case "$answer" in
       1|"$MODE_TAMIYA")
@@ -57,6 +60,10 @@ choose_mode_interactive() {
         ;;
       3|"$MODE_MAP")
         echo "$MODE_MAP"
+        return
+        ;;
+      4|"$MODE_SIMULATOR")
+        echo "$MODE_SIMULATOR"
         return
         ;;
       *)
@@ -137,6 +144,26 @@ create_map_layout() {
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
 }
 
+create_simulator_layout() {
+  tmux new-session -d -s "$SESSION_NAME" -n "$WINDOW_MAIN"
+  
+  # 上下2つにペインを分割
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
+
+  # --- 1ペイン目 (上) ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  # コマンドを準備（末尾に C-m を付けない）
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
+
+  # --- 2ペイン目 (下) ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  # コマンドを準備（末尾に C-m を付けない）※ダブルクォーテーションを保持するために全体をシングルクォーテーションで囲む
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 'ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
+
+  # 最初は1ペイン目にフォーカスを合わせておく
+  tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
+}
+
 MODE=""
 SESSION_NAME=""
 
@@ -162,7 +189,7 @@ while [[ $# -gt 0 ]]; do
       SESSION_NAME="$2"
       shift 2
       ;;
-    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP")
+    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_SIMULATOR")
       if [[ -z "$MODE" ]]; then
         MODE="$1"
       elif [[ -z "$SESSION_NAME" ]]; then
@@ -192,11 +219,11 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP")
+  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_SIMULATOR")
     ;;
   *)
     echo "Invalid mode: $MODE" >&2
-    echo "Use --mode tamiya, --mode python, or --mode map" >&2
+    echo "Use --mode tamiya, --mode python, --mode map, or --mode simulator" >&2
     exit 1
     ;;
 esac
@@ -206,8 +233,10 @@ if [[ -z "$SESSION_NAME" ]]; then
     SESSION_NAME="$DEFAULT_SESSION_TAMIYA"
   elif [[ "$MODE" == "$MODE_PYTHON" ]]; then
     SESSION_NAME="$DEFAULT_SESSION_PYTHON"
-  else
+  elif [[ "$MODE" == "$MODE_MAP" ]]; then
     SESSION_NAME="$DEFAULT_SESSION_MAP"
+  else
+    SESSION_NAME="$DEFAULT_SESSION_SIMULATOR"
   fi
 fi
 
@@ -223,6 +252,8 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     create_python_layout
   elif [[ "$MODE" == "$MODE_MAP" ]]; then
     create_map_layout
+  elif [[ "$MODE" == "$MODE_SIMULATOR" ]]; then
+    create_simulator_layout
   fi
 fi
 
