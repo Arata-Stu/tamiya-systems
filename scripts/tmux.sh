@@ -116,36 +116,38 @@ create_map_layout() {
 
   # --- 1ペイン目: create_2d_map コマンド ---
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  sleep 0.5
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
 
   # --- 2ペイン目: /map に移動 ---
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /map && clear" C-m
 
-  # 最初は1ペイン目にフォーカス
-  tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
-
   tmux new-window -t "$SESSION_NAME" -n "$WINDOW_LOCALIZATION_EVAL"
 
-  # 2x2 の均等グリッドを作るための正しい分割手順
-  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 # .0(左) と .1(右) に分割
-  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 # 左側を上下に分割 (.0:左上, .1:左下, .2:右 になる)
-  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 # 右側を上下に分割 (.2:右上, .3:右下 になる)
-  tmux select-layout -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL" tiled
+  # 2x2 の確実な分割手順 (0:左上, 1:右上, 2:左下, 3:右下)
+  tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 # 上下に分割 (.0=上, .1=下)
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 # 上を左右に (.0=左上, .1=右上, .2=下)
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 # 下を左右に (.0=左上, .1=右上, .2=左下, .3=右下)
+
+  # 各ペインの初期化 (sourceとclearを実行して待機)
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+
+  # setup.bashの読み込みやclearが完了するのを待つ（文字化け・コマンド重複対策）
+  sleep 1.5
 
   # --- ペイン0 (左上): rosbag play ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "ros2 bag play <bag_path> --clock --start-paused"
 
-  # --- ペイン1 (左下): evaluate script ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+  # --- ペイン1 (右上): localization launch ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
 
-  # --- ペイン2 (右上): localization launch ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
+  # --- ペイン2 (左下): evaluate script ---
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
 
   # --- ペイン3 (右下): component container ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
 
   # map作成導線を優先して、最初は main ウィンドウを開く
@@ -159,14 +161,17 @@ create_simulator_layout() {
   # 上下2つにペインを分割
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_MAIN".0
 
-  # --- 1ペイン目 (上) ---
+  # 初期化コマンドの実行
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  # コマンドを準備（末尾に C-m を付けない）
+  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
+  
+  # 読み込み待機
+  sleep 1.0
+
+  # --- 1ペイン目 (上) ---
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".0 "ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
 
   # --- 2ペイン目 (下) ---
-  tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 "cd /workspaces && $SETUP_SCRIPT && clear" C-m
-  # コマンドを準備（末尾に C-m を付けない）※ダブルクォーテーションを保持するために全体をシングルクォーテーションで囲む
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 'ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 
   # 最初は1ペイン目にフォーカスを合わせておく
