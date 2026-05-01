@@ -268,11 +268,12 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
 
     MAP_YAML_PATH="${MAP_STEM}.yaml"
     PNG_PATH="${MAP_STEM}.png"
+    PNG_FILENAME="$(basename "${PNG_PATH}")"
     PNG_CREATED=false
     YAML_IMAGE_UPDATED=false
     if convert_pgm_to_png "${MAP_STEM}.pgm" "${PNG_PATH}"; then
         PNG_CREATED=true
-        if update_yaml_image_path "${MAP_YAML_PATH}" "${PNG_PATH}"; then
+        if update_yaml_image_path "${MAP_YAML_PATH}" "${PNG_FILENAME}"; then
             YAML_IMAGE_UPDATED=true
         else
             echo "Warning: PNG was generated, but failed to update image path in ${MAP_YAML_PATH}." >&2
@@ -285,7 +286,7 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
     echo "✅ Map generated:"
     echo "  - ${MAP_STEM}.yaml"
     if [ "${YAML_IMAGE_UPDATED}" = true ]; then
-        echo "    image: ${MAP_STEM}.png"
+        echo "    image: ${PNG_FILENAME}"
     fi
     echo "  - ${MAP_STEM}.pgm"
     if [ "${PNG_CREATED}" = true ]; then
