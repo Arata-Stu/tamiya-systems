@@ -571,41 +571,19 @@ def _parse_origin(origin_value) -> tuple[float, float, float]:
 
 
 def _load_map_image_rgb(image_path: Path):
-    try:
-        import cv2  # type: ignore
-        import numpy as np
+    import matplotlib.image as mpimg
+    import numpy as np
 
-        img = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-        if img is None:
-            raise RuntimeError(f"Failed to read map image: {image_path}")
-        if img.ndim == 2:
-            rgb = np.stack([img, img, img], axis=-1)
-        elif img.shape[2] == 4:
-            rgb = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
-        else:
-            rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        if rgb.dtype.kind in ("u", "i"):
-            rgb = rgb.astype("float32") / 255.0
-        else:
-            rgb = rgb.astype("float32")
-            vmax = float(rgb.max()) if rgb.size > 0 else 1.0
-            if vmax > 1.0:
-                rgb = rgb / 255.0
-        return rgb
-    except Exception:
-        import matplotlib.image as mpimg
-        import numpy as np
-
-        img = mpimg.imread(str(image_path))
-        if img.ndim == 2:
-            rgb = np.stack([img, img, img], axis=-1)
-        else:
-            rgb = img[..., :3]
-        rgb = rgb.astype("float32")
-        vmax = float(rgb.max()) if rgb.size > 0 else 1.0
-        if vmax > 1.0:
-            rgb = rgb / 255.0
-        return rgb
+    img = mpimg.imread(str(image_path))
+    if img.ndim == 2:
+        rgb = np.stack([img, img, img], axis=-1)
+    else:
+        rgb = img[..., :3]
+    rgb = rgb.astype("float32")
+    vmax = float(rgb.max()) if rgb.size > 0 else 1.0
+    if vmax > 1.0:
+        rgb = rgb / 255.0
+    return rgb
 
 
 def _load_map_meta(map_yaml_path: Path) -> MapMeta:
@@ -665,6 +643,8 @@ def render_map_quality_images(
     rate_output_path: Optional[Path],
     points_output_path: Optional[Path],
 ) -> tuple[Path, Path]:
+    import matplotlib
+    matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
     import numpy as np
 
