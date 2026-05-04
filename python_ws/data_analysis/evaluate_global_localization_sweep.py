@@ -230,16 +230,19 @@ class LocalizationSweepEvaluator(Node):
             return False
         return True
 
-    def step_until_scan_stride(self) -> bool:
+    def step_until_scan_delta(self, scan_delta: int) -> bool:
+        if scan_delta <= 0:
+            return True
+
         start_scan_count = self.scan_count
         max_calls = self.args.max_play_next_calls_per_trigger
         calls = 0
-        while self.scan_count - start_scan_count < self.args.scan_stride:
+        while self.scan_count - start_scan_count < scan_delta:
             if max_calls > 0 and calls >= max_calls:
                 self.get_logger().warn(
-                    "Exceeded max play_next calls before reaching scan stride. "
+                    "Exceeded max play_next calls before reaching requested scan delta. "
                     f"scan_delta={self.scan_count - start_scan_count}, "
-                    f"scan_stride={self.args.scan_stride}, "
+                    f"requested_scan_delta={scan_delta}, "
                     f"play_next_calls={calls}. "
                     "Increase --max-play-next-calls-per-trigger or set it to 0 for no limit."
                 )
@@ -264,6 +267,9 @@ class LocalizationSweepEvaluator(Node):
 
         return True
 
+    def step_until_scan_stride(self) -> bool:
+        return self.step_until_scan_delta(self.args.scan_stride)
+
     def run_sweep(self) -> None:
         output_path = Path(self.args.output_csv).expanduser().resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -284,7 +290,10 @@ class LocalizationSweepEvaluator(Node):
                     self.get_logger().info("Reached max_triggers.")
                     break
 
-                step_ok = self.step_until_scan_stride()
+                # Trigger works on "next flatscan". To evaluate every scan_stride scans,
+                # pre-advance (scan_stride - 1), then trigger, then advance one scan.
+                pre_trigger_scan_delta = max(0, self.args.scan_stride - 1)
+                step_ok = self.step_until_scan_delta(pre_trigger_scan_delta)
                 if not step_ok:
                     self.get_logger().info("Sweep finished (no more messages or step failed).")
                     break
@@ -311,6 +320,24 @@ class LocalizationSweepEvaluator(Node):
                         )
                     )
                     continue
+
+                # Supply the "next scan" after trigger so OccupancyGridLocalizer can run.
+                post_trigger_step_ok = self.step_until_scan_delta(1)
+                if not post_trigger_step_ok:
+                    self.get_logger().warn(f"[{idx}] No scan available after trigger.")
+                    writer.writerow(
+                        self._build_csv_row(
+                            idx=idx,
+                            status="no_scan_after_trigger",
+                            trigger_scan_stamp_ns=trigger_scan_stamp_ns,
+                            trigger_ref=trigger_ref,
+                        )
+                    )
+                    continue
+
+                # Re-bind trigger-aligned scan/reference after supplying next scan.
+                trigger_scan_stamp_ns = self.latest_scan_stamp_ns
+                trigger_ref = self.latest_reference
 
                 got_result = self._spin_until(
                     lambda: self.localization_seq > before_seq,
