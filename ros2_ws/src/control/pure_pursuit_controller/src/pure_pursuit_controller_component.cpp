@@ -26,6 +26,10 @@ bool IsFinitePoint(const geometry_msgs::msg::Point &point) {
   return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
 }
 
+double SpeedFromVector(double x, double y, double z) {
+  return std::sqrt(x * x + y * y + z * z);
+}
+
 } // namespace
 
 PurePursuitControllerComponent::PurePursuitControllerComponent(
@@ -42,10 +46,15 @@ PurePursuitControllerComponent::PurePursuitControllerComponent(
       std::bind(&PurePursuitControllerComponent::TrajectoryCallback, this,
                 std::placeholders::_1));
 
-  if (use_velocity_topic_) {
+  if (velocity_source_ == "float32") {
     velocity_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "current_velocity", rclcpp::QoS(10),
         std::bind(&PurePursuitControllerComponent::VelocityCallback, this,
+                  std::placeholders::_1));
+  } else if (velocity_source_ == "odometry") {
+    odometry_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        "odometry", rclcpp::QoS(10),
+        std::bind(&PurePursuitControllerComponent::OdometryCallback, this,
                   std::placeholders::_1));
   }
 
@@ -64,8 +73,9 @@ PurePursuitControllerComponent::PurePursuitControllerComponent(
   RCLCPP_INFO(
       this->get_logger(),
       "Pure Pursuit Controller initialized "
-      "(wheelbase=%.3f, lookahead=[%.3f, %.3f], speed=[%.3f, %.3f])",
-      wheelbase_, lookahead_min_, lookahead_max_, min_speed_, max_speed_);
+      "(wheelbase=%.3f, lookahead=[%.3f, %.3f], speed=[%.3f, %.3f], velocity_source=%s)",
+      wheelbase_, lookahead_min_, lookahead_max_, min_speed_, max_speed_,
+      velocity_source_.c_str());
 }
 
 void PurePursuitControllerComponent::LoadParameters() {
@@ -101,11 +111,20 @@ void PurePursuitControllerComponent::LoadParameters() {
       this->declare_parameter<double>("short_path_speed_scale", 0.6), 0.0, 1.0);
   stop_on_invalid_path_ =
       this->declare_parameter<bool>("stop_on_invalid_path", true);
-  use_velocity_topic_ =
-      this->declare_parameter<bool>("use_velocity_topic", false);
   debug_ = this->declare_parameter<bool>("debug", false);
   expected_frame_id_ =
       this->declare_parameter<std::string>("expected_frame_id", "base_link");
+  velocity_source_ =
+      this->declare_parameter<std::string>("velocity_source", "odometry");
+
+  if (velocity_source_ != "command" && velocity_source_ != "float32" &&
+      velocity_source_ != "odometry") {
+    RCLCPP_WARN(
+        this->get_logger(),
+        "Unsupported velocity_source '%s'. Falling back to command speed.",
+        velocity_source_.c_str());
+    velocity_source_ = "command";
+  }
 }
 
 void PurePursuitControllerComponent::TrajectoryCallback(
@@ -142,7 +161,7 @@ void PurePursuitControllerComponent::TrajectoryCallback(
   drive_pub_->publish(drive_msg);
 
   last_command_speed_ = speed;
-  if (!use_velocity_topic_) {
+  if (velocity_source_ == "command") {
     current_speed_ = speed;
   }
 
@@ -153,7 +172,14 @@ void PurePursuitControllerComponent::TrajectoryCallback(
 
 void PurePursuitControllerComponent::VelocityCallback(
     const std_msgs::msg::Float32::SharedPtr msg) {
-  current_speed_ = static_cast<double>(msg->data);
+  current_speed_ = ClampNonNegative(static_cast<double>(msg->data));
+}
+
+void PurePursuitControllerComponent::OdometryCallback(
+    const nav_msgs::msg::Odometry::SharedPtr msg) {
+  current_speed_ = ClampNonNegative(SpeedFromVector(
+      msg->twist.twist.linear.x, msg->twist.twist.linear.y,
+      msg->twist.twist.linear.z));
 }
 
 std::optional<PurePursuitControllerComponent::TargetPoint>

@@ -5,6 +5,7 @@
   <arg name="trajectory_topic" default="/autonomous/trajectory"/>
   <arg name="drive_topic" default="/autonomous/cmd_drive"/>
   <arg name="velocity_topic" default="/current_velocity"/>
+  <arg name="odometry_topic" default="/visual_slam/tracking/odometry"/>
 
   <load_composable_node target="$(var container_name)">
     <composable_node
@@ -15,6 +16,7 @@
       <remap from="trajectory" to="$(var trajectory_topic)"/>
       <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
       <remap from="current_velocity" to="$(var velocity_topic)"/>
+      <remap from="odometry" to="$(var odometry_topic)"/>
     </composable_node>
   </load_composable_node>
 </launch>

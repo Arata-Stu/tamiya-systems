@@ -7,6 +7,7 @@
 
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "geometry_msgs/msg/point.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/float32.hpp"
@@ -28,6 +29,7 @@ private:
   void LoadParameters();
   void TrajectoryCallback(const nav_msgs::msg::Path::SharedPtr msg);
   void VelocityCallback(const std_msgs::msg::Float32::SharedPtr msg);
+  void OdometryCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
   std::optional<TargetPoint> SelectTargetPoint(const nav_msgs::msg::Path &path,
                                                double lookahead_distance) const;
   double ComputeLookaheadDistance() const;
@@ -44,6 +46,7 @@ private:
 
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr trajectory_sub_;
   rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr velocity_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odometry_sub_;
   rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
       drive_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
@@ -68,9 +71,9 @@ private:
   double steering_speed_gain_ = 1.0;
   double short_path_speed_scale_ = 0.6;
   bool stop_on_invalid_path_ = true;
-  bool use_velocity_topic_ = false;
   bool debug_ = false;
   std::string expected_frame_id_ = "base_link";
+  std::string velocity_source_ = "odometry";
 
   double last_steering_angle_ = 0.0;
   double last_command_speed_ = 0.0;

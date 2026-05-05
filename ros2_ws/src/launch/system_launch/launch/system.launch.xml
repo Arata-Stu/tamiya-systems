@@ -28,6 +28,7 @@
     <arg name="pure_pursuit_param" default="$(find-pkg-share system_launch)/config/control/pure_pursuit_controller.param.yaml" />
     <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
     <arg name="pure_pursuit_velocity_topic" default="/current_velocity" />
+    <arg name="pure_pursuit_odometry_topic" default="/visual_slam/tracking/odometry" />
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
@@ -114,6 +115,7 @@
             <arg name="trajectory_topic" value="$(var pure_pursuit_trajectory_topic)"/>
             <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
             <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)"/>
+            <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)"/>
         </include>
     </group>
 

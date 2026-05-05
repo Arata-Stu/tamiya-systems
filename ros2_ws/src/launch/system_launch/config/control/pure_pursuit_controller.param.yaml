@@ -32,9 +32,11 @@
     # false: hold the last command.
     stop_on_invalid_path: true
 
-    # true: subscribe current_velocity and use it for adaptive lookahead.
-    # false: use the last commanded speed.
-    use_velocity_topic: false
+    # Speed source for adaptive lookahead:
+    # - odometry: nav_msgs/Odometry.twist.twist.linear norm
+    # - command: use the last commanded speed
+    # - float32: std_msgs/Float32 on current_velocity
+    velocity_source: odometry
 
     # Publish RViz markers:
     # - pure_pursuit/target_marker: selected lookahead target point

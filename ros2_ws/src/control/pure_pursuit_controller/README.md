@@ -23,6 +23,12 @@ steer = atan(wheelbase * curvature)
 
 Speed is reduced from `max_speed` based on curvature and steering angle.
 
+Adaptive lookahead uses `/visual_slam/tracking/odometry` by default through:
+
+```yaml
+velocity_source: odometry
+```
+
 Enable debug markers by setting `debug: true` in the parameter YAML:
 
 ```bash
