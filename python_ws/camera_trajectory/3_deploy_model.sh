@@ -26,7 +26,7 @@ CHANNELS="3"
 HEIGHT="240"
 WIDTH="320"
 NUM_POINTS="20"
-OUTPUT_SCALE="10.0"
+OUTPUT_SCALE="8.0"
 
 show_help() {
   cat <<EOF
@@ -40,14 +40,14 @@ Options:
   --onnx PATH                 Use existing ONNX and skip export_onnx.py
   --precision {fp16|fp32}     TensorRT compute precision (I/O stays FP32, default: fp16)
   --num-points N              Number of trajectory points (default: 20)
-  --output-scale X            Model output scale used at export (default: 10.0)
+  --output-scale X            Model output scale used at export (default: 8.0)
   --max-batch-size N          Max batch size for TensorRT profile (default: 1)
   --keep-versions             Keep existing Triton numeric version dirs and deploy to next version
   -h, --help                  Show this help message
 
 Examples:
   $0
-  $0 ./ckpts --precision fp32 --num-points 20 --output-scale 10.0
+  $0 ./ckpts --precision fp32 --num-points 20 --output-scale 8.0
   $0 --onnx ./ckpts/train/run/best_model.onnx --precision fp16
 EOF
 }
@@ -142,7 +142,7 @@ clear_model_versions() {
   local version_dir
   local version_name
 
-  [[ -d "${model_root}" ]] || return
+  [[ -d "${model_root}" ]] || return 0
 
   for version_dir in "${model_root}"/[0-9]*; do
     [[ -d "${version_dir}" ]] || continue

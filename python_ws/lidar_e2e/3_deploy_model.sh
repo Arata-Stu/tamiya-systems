@@ -128,7 +128,7 @@ clear_model_versions() {
   local version_dir
   local version_name
 
-  [[ -d "${model_root}" ]] || return
+  [[ -d "${model_root}" ]] || return 0
 
   for version_dir in "${model_root}"/[0-9]*; do
     [[ -d "${version_dir}" ]] || continue

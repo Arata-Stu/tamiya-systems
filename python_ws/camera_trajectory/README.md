@@ -34,7 +34,7 @@ python3 export_onnx.py \
   -c ./ckpts/train/YYYY-MM-DD/HH-MM-SS/best_model.pth \
   -o ./best_model.onnx \
   --num_points 20 \
-  --output_scale 10.0
+  --output_scale 8.0
 ```
 
 ## SCP Checkpoints
@@ -61,5 +61,5 @@ export は成功しても推論時に古い version や互換性のない plan �
 Triton の `config.pbtxt` は `config/config.pbtxt` を source としてコピーします。
 
 ```bash
-./3_deploy_model.sh --num-points 20 --output-scale 10.0 --precision fp16
+./3_deploy_model.sh --num-points 20 --output-scale 8.0 --precision fp16
 ```
