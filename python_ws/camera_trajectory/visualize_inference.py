@@ -332,8 +332,8 @@ def main():
     parser.add_argument("--calib-height", type=int, default=480)
     parser.add_argument("--camera-x", type=float, default=0.0)
     parser.add_argument("--camera-y", type=float, default=0.0)
-    parser.add_argument("--camera-height", type=float, default=0.18)
-    parser.add_argument("--camera-pitch-down-deg", type=float, default=15.0)
+    parser.add_argument("--camera-height", type=float, default=0.06)
+    parser.add_argument("--camera-pitch-down-deg", type=float, default=0.0)
     parser.add_argument("--camera-yaw-deg", type=float, default=0.0)
     args = parser.parse_args()
 

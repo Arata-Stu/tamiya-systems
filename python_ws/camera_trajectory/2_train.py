@@ -103,7 +103,13 @@ def main(cfg: DictConfig) -> None:
         output_scale=cfg.model.output_scale,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.training.learning_rate)
-    criterion = TrajectoryLoss(nn.SmoothL1Loss(), heading_weight=cfg.training.heading_loss_weight)
+    criterion = TrajectoryLoss(
+        nn.SmoothL1Loss(),
+        heading_weight=cfg.training.heading_loss_weight,
+        curvature_weight=cfg.training.curvature_loss_weight,
+        smoothness_weight=cfg.training.smoothness_loss_weight,
+        progress_weight=cfg.training.progress_loss_weight,
+    )
 
     start_epoch = 0
     best_metric = float("inf")
