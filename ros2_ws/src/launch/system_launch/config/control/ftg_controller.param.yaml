@@ -25,7 +25,7 @@
     # false: fixed_radius を常に使用。
     use_dynamic_radius: false
     # use_dynamic_radius=false のときに使う判定半径 [m]。
-    fixed_radius: 1.0
+    fixed_radius: 0.5
     # 動的判定半径の上限 [m]。
     max_gap_radius: 5.0
     # 車両トレッド幅 [m]。動的半径計算に使用。
