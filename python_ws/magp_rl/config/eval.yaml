@@ -34,7 +34,33 @@ env:
   scan_angle_min: -2.343 # T-mini Plus profile
   scan_angle_max: 2.343 # T-mini Plus profile
   scan_fov: null # if null, use (scan_angle_max - scan_angle_min)
+  control_interface: direct # direct | local_trajectory_pp
   action_dim: 2
+
+  trajectory:
+    # Used only when control_interface=local_trajectory_pp.
+    # In that mode the actor outputs 6 normalized Bezier control values and
+    # the env converts the sampled local trajectory to steer/speed by pure pursuit.
+    num_points: 20
+    x_anchors: [0.4, 1.0, 1.8]
+    x_offset_scale: 0.25
+    y_scale: 0.8
+    min_control_dx: 0.05
+    wheelbase: 0.3302
+    lookahead_base: 0.35
+    lookahead_gain: 0.35
+    lookahead_min: 0.35
+    lookahead_max: 1.2
+    min_forward_distance: 0.05
+    steering_limit: 0.4
+    min_speed: 0.0
+    max_speed: null # nullならenv.max_speed
+    curvature_speed_gain: 1.5
+    steering_speed_gain: 1.0
+    short_path_speed_scale: 0.6
+    reward:
+      smoothness_coef: 0.0
+      lateral_coef: 0.0
 
   reward:
     base_reward_scale: 1.0

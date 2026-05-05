@@ -138,6 +138,27 @@ python3 train.py \
 - `auto_fork_on_resume=true` で指定 `ckpt_dir` を自動複製
 - 学習は複製先で継続するため、元runは上書きされません
 
+### 5.5 局所 trajectory + Pure Pursuit 追従
+
+policy の出力を直接 `[steer, speed]` にせず、6次元の Bezier 制御点として扱い、env 内の Pure Pursuit で `[steer, speed]` に変換します。
+
+```bash
+python3 train.py \
+  agent=sac \
+  env.parallel.mode=independent \
+  train.num_envs=128 \
+  env.control_interface=local_trajectory_pp \
+  env.action_dim=6 \
+  env.reward.tal.enabled=false
+```
+
+- action: `[p1_x, p1_y, p2_x, p2_y, p3_x, p3_y]` の正規化値
+- trajectory: 原点 `base_link` から前方へ伸びる cubic Bezier
+- control: 生成 trajectory を Pure Pursuit で追従
+- 既存の `direct` mode は `env.control_interface=direct env.action_dim=2`
+
+`env.trajectory.reward.smoothness_coef` と `env.trajectory.reward.lateral_coef` を上げると、曲線の暴れを報酬側でも抑制できます。
+
 ## 6. 評価（Eval）
 
 ### 6.1 基本評価（単独）

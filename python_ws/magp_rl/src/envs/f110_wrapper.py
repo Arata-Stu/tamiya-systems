@@ -1,6 +1,7 @@
 import jax.numpy as jnp
 
 from src.utils.pure_pursuit import PurePursuitTeacher
+from src.utils.local_trajectory import LocalTrajectoryPurePursuit
 from src.utils.track import (
     compute_progress_delta,
     load_waypoints,
@@ -41,6 +42,8 @@ class F110EnvWrapper:
         self.max_speed = config.max_speed
         self.min_speed = config.min_speed
         self.max_lidar_range = config.max_lidar_range
+        self.control_interface = str(config.get("control_interface", "direct")).lower()
+        self.policy_action_dim = int(config.get("action_dim", 2))
 
         self.action_scale = jnp.array(
             [
@@ -60,6 +63,7 @@ class F110EnvWrapper:
         self.speed_coef = float(config.reward.speed_coef)
         self.collision_penalty = float(config.reward.collision_penalty)
         self.progress_clip = float(config.reward.progress_clip)
+        self._setup_local_trajectory_controller(config)
 
         tal_cfg = config.reward.get("tal", None)
         race_cfg = config.get("race", {})
@@ -114,6 +118,8 @@ class F110EnvWrapper:
 
         if tal_cfg is None:
             return
+        if self.control_interface != "direct":
+            return
         if not bool(tal_cfg.get("enabled", False)):
             return
 
@@ -135,6 +141,57 @@ class F110EnvWrapper:
             wheelbase=wheelbase,
             vgain=vgain,
         )
+
+    def _setup_local_trajectory_controller(self, config):
+        self.local_trajectory_controller = None
+        self.trajectory_smoothness_coef = 0.0
+        self.trajectory_lateral_coef = 0.0
+        if self.control_interface == "direct":
+            if self.policy_action_dim != 2:
+                raise ValueError(
+                    f"env.action_dim must be 2 when env.control_interface=direct, "
+                    f"got {self.policy_action_dim}"
+                )
+            return
+        if self.control_interface != "local_trajectory_pp":
+            raise ValueError(
+                f"Unsupported env.control_interface: {self.control_interface}. "
+                "Use direct | local_trajectory_pp."
+            )
+
+        traj_cfg = config.get("trajectory", {})
+        traj_max_speed = traj_cfg.get("max_speed", self.max_speed)
+        if traj_max_speed is None:
+            traj_max_speed = self.max_speed
+
+        self.local_trajectory_controller = LocalTrajectoryPurePursuit(
+            num_points=int(traj_cfg.get("num_points", 20)),
+            x_anchors=tuple(traj_cfg.get("x_anchors", [0.4, 1.0, 1.8])),
+            x_offset_scale=float(traj_cfg.get("x_offset_scale", 0.25)),
+            y_scale=float(traj_cfg.get("y_scale", 0.8)),
+            min_control_dx=float(traj_cfg.get("min_control_dx", 0.05)),
+            wheelbase=float(traj_cfg.get("wheelbase", 0.3302)),
+            lookahead_base=float(traj_cfg.get("lookahead_base", 0.35)),
+            lookahead_gain=float(traj_cfg.get("lookahead_gain", 0.35)),
+            lookahead_min=float(traj_cfg.get("lookahead_min", 0.35)),
+            lookahead_max=float(traj_cfg.get("lookahead_max", 1.2)),
+            min_forward_distance=float(traj_cfg.get("min_forward_distance", 0.05)),
+            steering_limit=float(traj_cfg.get("steering_limit", self.max_steer)),
+            min_speed=float(traj_cfg.get("min_speed", self.min_speed)),
+            max_speed=float(traj_max_speed),
+            curvature_speed_gain=float(traj_cfg.get("curvature_speed_gain", 1.5)),
+            steering_speed_gain=float(traj_cfg.get("steering_speed_gain", 1.0)),
+            short_path_speed_scale=float(traj_cfg.get("short_path_speed_scale", 0.6)),
+        )
+        if self.policy_action_dim != self.local_trajectory_controller.action_dim:
+            raise ValueError(
+                "env.action_dim must match the local trajectory action size "
+                f"({self.local_trajectory_controller.action_dim}) when "
+                f"env.control_interface=local_trajectory_pp, got {self.policy_action_dim}"
+            )
+        reward_cfg = traj_cfg.get("reward", {})
+        self.trajectory_smoothness_coef = float(reward_cfg.get("smoothness_coef", 0.0))
+        self.trajectory_lateral_coef = float(reward_cfg.get("lateral_coef", 0.0))
 
     def _setup_npc_controller(self, tal_cfg, npc_cfg):
         self.npc_teacher = None
@@ -198,6 +255,34 @@ class F110EnvWrapper:
     def _scale_action(self, action_normalized):
         return action_normalized * self.action_scale + self.action_bias
 
+    def _action_to_physical(self, action_normalized):
+        if self.control_interface == "direct":
+            return self._scale_action(action_normalized)
+        state = self.sim.sim_state["state"]
+        selected_speed = jnp.abs(self._select_controlled(state[:, 3]))
+        action_physical = self.local_trajectory_controller.act(action_normalized, selected_speed)
+        steer = jnp.clip(action_physical[:, 0], self.min_steer, self.max_steer)
+        speed = jnp.clip(action_physical[:, 1], self.min_speed, self.max_speed)
+        return jnp.stack([steer, speed], axis=1)
+
+    def _compute_trajectory_reward(self, action_normalized):
+        if self.local_trajectory_controller is None:
+            return jnp.zeros((action_normalized.shape[0],), dtype=jnp.float32)
+        reward = jnp.zeros((action_normalized.shape[0],), dtype=jnp.float32)
+        if self.trajectory_smoothness_coef > 0.0:
+            reward = (
+                reward
+                - self.trajectory_smoothness_coef
+                * self.local_trajectory_controller.smoothness_penalty(action_normalized)
+            )
+        if self.trajectory_lateral_coef > 0.0:
+            reward = (
+                reward
+                - self.trajectory_lateral_coef
+                * self.local_trajectory_controller.lateral_penalty(action_normalized)
+            )
+        return reward
+
     def _to_normalized_action(self, action_physical):
         action_normalized = (action_physical - self.action_bias) / self.action_scale
         return jnp.clip(action_normalized, -1.0, 1.0)
@@ -245,22 +330,22 @@ class F110EnvWrapper:
     def _compose_action_physical(self, action_normalized):
         action_normalized = jnp.asarray(action_normalized, dtype=jnp.float32)
         if self.control_mode == "selfplay":
-            expected_shape = (self.num_agents, 2)
+            expected_shape = (self.num_agents, self.policy_action_dim)
             if action_normalized.shape != expected_shape:
                 raise ValueError(
                     f"Invalid action shape for selfplay: expected {expected_shape}, "
                     f"got {action_normalized.shape}"
                 )
-            return self._scale_action(action_normalized)
+            return self._action_to_physical(action_normalized)
 
-        expected_shape = (1, 2)
+        expected_shape = (1, self.policy_action_dim)
         if action_normalized.shape != expected_shape:
             raise ValueError(
                 f"Invalid action shape for npc mode: expected {expected_shape}, "
                 f"got {action_normalized.shape}"
             )
         action_all = self._compute_npc_action_physical()
-        ego_action = self._scale_action(action_normalized)[0]
+        ego_action = self._action_to_physical(action_normalized)[0]
         action_all = action_all.at[self.ego_idx].set(ego_action)
         return action_all
 
@@ -316,6 +401,7 @@ class F110EnvWrapper:
 
     def step(self, action_normalized):
         tal_reward = self._compute_tal_reward(action_normalized)
+        trajectory_reward = self._compute_trajectory_reward(action_normalized)
         action_physical_all = self._compose_action_physical(action_normalized)
         next_obs_dict, reward_all, done, info = self.sim.step(action_physical_all)
         reward_all = jnp.asarray(reward_all, dtype=jnp.float32)
@@ -350,6 +436,7 @@ class F110EnvWrapper:
             + self.speed_coef * speed_term
             - self.collision_penalty * collision
             + tal_reward
+            + trajectory_reward
         )
         self.last_obs = next_obs
 
