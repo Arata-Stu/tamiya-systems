@@ -397,7 +397,7 @@ def main():
             raw_sample = dataset[idx]
             image_rgb = denormalize_last_frame(raw_sample["image"])
             model_sample = transform({"image": raw_sample["image"].clone(), "trajectory": raw_sample["trajectory"].clone()})
-            images = model_sample["image"].unsqueeze(0).to(device)
+            images = model_sample["image"].unsqueeze(0).to(device).contiguous()
             pred = model(images)[0].detach().cpu().numpy()
             gt = raw_sample["trajectory"].detach().cpu().numpy()
 

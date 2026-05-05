@@ -66,8 +66,8 @@ class PilotNetTrajectory(nn.Module):
             x = x[:, :3, :, :]
 
         x = self.pool(self._forward_conv(x))
-        x = x.view(x.size(0), -1)
+        x = x.reshape(x.size(0), -1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = torch.tanh(self.fc3(x)) * self.output_scale
-        return x.view(x.size(0), self.num_points, 2)
+        return x.reshape(x.size(0), self.num_points, 2)
