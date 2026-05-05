@@ -47,6 +47,24 @@ chmod +x scp_ckpts.sh
 `./ckpts/train/YYYY-MM-DD/HH-MM-SS` のような2階層目の checkpoint directory を複数選択して、
 デフォルトでは `/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/pilotnet_trajectory/` へ転送します。
 
+## Visualize Inference
+
+```bash
+python3 visualize_inference.py \
+  --checkpoint ./ckpts/train/YYYY-MM-DD/HH-MM-SS/best_model.pth \
+  --data-dir ./datasets/test \
+  --num-samples 12 \
+  --stride 20 \
+  --camera-height 0.18 \
+  --camera-pitch-down-deg 15.0
+```
+
+出力は `./outputs/trajectory_vis/trajectory_*.png` です。左にカメラ画像と画像上への近似投影、右に `base_link` 基準の
+top-down 軌跡を表示し、推論結果を緑、教師軌跡を黄で描画します。RealSense の `camera_info` から得た内部パラメータ
+（`fx=615.9686`, `fy=616.2639`, `cx=320.4421`, `cy=246.1154`）をデフォルトで使います。
+画像上の投影位置がずれる場合は、実機の取り付けに合わせて `--camera-height` と `--camera-pitch-down-deg` を調整してください。
+画像投影を無効化する場合は `--no-image-projection` を付けます。
+
 ## Deploy
 
 ```bash
