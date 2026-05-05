@@ -11,3 +11,9 @@
     throttle_offset: 0.0
     ## スロットルとステアリングのオフセット調整ステップ
     offset_step: 0.000
+    ## ニュートラル継続時に短い後進パルスを入れてESCの停止判定を助ける
+    neutral_stop_assist_enabled: True
+    neutral_stop_required_steps: 10
+    neutral_stop_reverse_start: -0.01
+    neutral_stop_reverse_end: -0.08
+    neutral_stop_reverse_step: -0.01

@@ -27,6 +27,11 @@ class JetRacerDriverNode(Node):
             "throttle_gain": 1.0,
             "steering_gain": 1.0,
             "max_command_age": 0.5,
+            "neutral_stop_assist_enabled": True,
+            "neutral_stop_required_steps": 10,
+            "neutral_stop_reverse_start": -0.01,
+            "neutral_stop_reverse_end": -0.08,
+            "neutral_stop_reverse_step": -0.01,
         }
         for name, default in default_params.items():
             self.declare_parameter(name, default)
@@ -44,6 +49,10 @@ class JetRacerDriverNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1
         )
+
+        self._neutral_speed_count = 0
+        self._neutral_stop_sequence = []
+        self._neutral_stop_done = False
 
         # 通信設定
         self.create_subscription(AckermannDriveStamped, '/control_cmd', self._cmd_cb, qos_cmd)
@@ -88,8 +97,69 @@ class JetRacerDriverNode(Node):
         if msg_age > self.get_parameter('max_command_age').value:
             return
 
-        self.core.set_drive(msg.drive.speed, msg.drive.steering_angle)
+        speed = self._apply_neutral_stop_assist(float(msg.drive.speed))
+        self.core.set_drive(speed, msg.drive.steering_angle)
         self.last_cmd_time = now
+
+    def _apply_neutral_stop_assist(self, speed: float) -> float:
+        """ニュートラル継続時に短い後進パルスを入れ、ESCの停止判定を助ける。"""
+        if not bool(self.get_parameter("neutral_stop_assist_enabled").value):
+            self._reset_neutral_stop_assist()
+            return speed
+
+        if speed != 0.0:
+            self._reset_neutral_stop_assist()
+            return speed
+
+        self._neutral_speed_count += 1
+
+        if self._neutral_stop_sequence:
+            return self._neutral_stop_sequence.pop(0)
+
+        if self._neutral_stop_done:
+            return 0.0
+
+        required_steps = max(1, int(self.get_parameter("neutral_stop_required_steps").value))
+        if self._neutral_speed_count < required_steps:
+            return 0.0
+
+        self._neutral_stop_sequence = self._build_neutral_stop_sequence()
+        self._neutral_stop_done = True
+        if self._neutral_stop_sequence:
+            return self._neutral_stop_sequence.pop(0)
+        return 0.0
+
+    def _build_neutral_stop_sequence(self):
+        start = float(self.get_parameter("neutral_stop_reverse_start").value)
+        end = float(self.get_parameter("neutral_stop_reverse_end").value)
+        step = float(self.get_parameter("neutral_stop_reverse_step").value)
+
+        if step == 0.0:
+            self.get_logger().warn("neutral_stop_reverse_step is 0.0; disabling stop assist pulse")
+            return []
+        if (end - start) * step < 0.0:
+            self.get_logger().warn(
+                "neutral_stop_reverse_step does not move start toward end; disabling stop assist pulse"
+            )
+            return []
+
+        sequence = []
+        value = start
+        if step > 0.0:
+            while value <= end:
+                sequence.append(round(value, 6))
+                value += step
+        else:
+            while value >= end:
+                sequence.append(round(value, 6))
+                value += step
+        sequence.append(0.0)
+        return sequence
+
+    def _reset_neutral_stop_assist(self):
+        self._neutral_speed_count = 0
+        self._neutral_stop_sequence = []
+        self._neutral_stop_done = False
 
     def _watchdog(self):
         """最後の指令から一定時間経過したら停止させる。"""
