@@ -46,6 +46,11 @@ chmod +x 3_deploy_model.sh
 ./3_deploy_model.sh
 ```
 
+デフォルトでは `/workspaces/isaac_ros_assets/models/pilotnet/` 配下の既存 numeric version directory
+（`1`, `2`, `3` など）を削除してから deploy します。Triton/Isaac ROS で古い TensorRT engine が同居すると、
+export は成功しても推論時に古い version や互換性のない plan を掴んで失敗することがあるためです。
+過去 version を残したい場合だけ `--keep-versions` を付けてください。
+
 ## 画像保存形式の推奨
 
 - `npy` (推奨):

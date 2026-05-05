@@ -2,20 +2,21 @@
 set -euo pipefail
 
 # ==============================================================================
-# Isaac ROS Camera E2E Control Deployment Script
+# Isaac ROS Camera Trajectory Deployment Script
 # 1. PyTorch (.pth) -> ONNX (.onnx) via export_onnx.py
 # 2. ONNX -> TensorRT (.plan) via trtexec
 # 3. Isaac ROS Assets (Triton) directory setup
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(realpath "${SCRIPT_DIR}/../..")"
 
 INPUT_ONNX_PATH=""
 CHECKPOINT_BASE_DIR="${SCRIPT_DIR}/ckpts"
-MODEL_NAME="pilotnet"
+MODEL_NAME="pilotnet_trajectory"
 INPUT_TENSOR_NAME="image_input"
-PROJECT_NAME="isaac_ros_camera_e2e_control"
-CONFIG_BASENAME="pilotnet_config"
+PROJECT_NAME="isaac_ros_camera_trajectory"
+CONFIG_BASENAME="pilotnet_trajectory_config"
 PRECISION="fp16"
 MAX_BATCH_SIZE="1"
 KEEP_VERSIONS="false"
@@ -24,6 +25,8 @@ PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
 CHANNELS="3"
 HEIGHT="240"
 WIDTH="320"
+NUM_POINTS="20"
+OUTPUT_SCALE="10.0"
 
 show_help() {
   cat <<EOF
@@ -36,13 +39,15 @@ Description:
 Options:
   --onnx PATH                 Use existing ONNX and skip export_onnx.py
   --precision {fp16|fp32}     TensorRT compute precision (I/O stays FP32, default: fp16)
+  --num-points N              Number of trajectory points (default: 20)
+  --output-scale X            Model output scale used at export (default: 10.0)
   --max-batch-size N          Max batch size for TensorRT profile (default: 1)
   --keep-versions             Keep existing Triton numeric version dirs and deploy to next version
   -h, --help                  Show this help message
 
 Examples:
   $0
-  $0 ./ckpts --precision fp32
+  $0 ./ckpts --precision fp32 --num-points 20 --output-scale 10.0
   $0 --onnx ./ckpts/train/run/best_model.onnx --precision fp16
 EOF
 }
@@ -68,6 +73,7 @@ resolve_config_source() {
   local config_file="$1"
   local pkg_share_path=""
   local config_source_path=""
+  local repo_config_path="${REPO_ROOT}/ros2_ws/src/isaac_ros/${PROJECT_NAME}/config/${config_file}"
 
   if [[ -f "${SCRIPT_DIR}/config/${config_file}" ]]; then
     config_source_path="${SCRIPT_DIR}/config/${config_file}"
@@ -79,7 +85,11 @@ resolve_config_source() {
     fi
   fi
 
-  [[ -n "${config_source_path}" ]] || die "'${config_file}' not found in ${SCRIPT_DIR}/config or package share"
+  if [[ -z "${config_source_path}" && -f "${repo_config_path}" ]]; then
+    config_source_path="${repo_config_path}"
+  fi
+
+  [[ -n "${config_source_path}" ]] || die "'${config_file}' not found in ${SCRIPT_DIR}/config, package share, or ${repo_config_path}"
   echo "${config_source_path}"
 }
 
@@ -109,15 +119,17 @@ select_checkpoint_interactive() {
 }
 
 print_parameters() {
-  local config_file="${CONFIG_BASENAME}_fp32.pbtxt"
+  local config_file="config.pbtxt"
   echo "==================================================="
-  echo "Camera Model Deployment Configuration"
+  echo "Camera Trajectory Deployment Configuration"
   echo "==================================================="
   echo "CHECKPOINT_BASE   : ${CHECKPOINT_BASE_DIR}"
   echo "INPUT_ONNX_PATH   : ${INPUT_ONNX_PATH:-<auto export>}"
   echo "MODEL_NAME        : ${MODEL_NAME}"
   echo "INPUT_TENSOR_NAME : ${INPUT_TENSOR_NAME}"
   echo "INPUT_SHAPE (TRT) : 1x${CHANNELS}x${HEIGHT}x${WIDTH}"
+  echo "OUTPUT_SHAPE      : 1x${NUM_POINTS}x2"
+  echo "OUTPUT_SCALE      : ${OUTPUT_SCALE}"
   echo "PRECISION         : ${PRECISION}"
   echo "KEEP_VERSIONS     : ${KEEP_VERSIONS}"
   echo "CONFIG_FILE       : ${config_file}"
@@ -143,7 +155,7 @@ clear_model_versions() {
 setup_model() {
   [[ -f "${INPUT_ONNX_PATH}" ]] || die "ONNX file not found: ${INPUT_ONNX_PATH}"
 
-  local config_file="${CONFIG_BASENAME}_fp32.pbtxt"
+  local config_file="config.pbtxt"
   local config_source_path
   config_source_path="$(resolve_config_source "${config_file}")"
 
@@ -208,6 +220,16 @@ parse_args() {
         PRECISION="$2"
         shift 2
         ;;
+      --num-points)
+        [[ $# -ge 2 ]] || die "--num-points requires a number"
+        NUM_POINTS="$2"
+        shift 2
+        ;;
+      --output-scale)
+        [[ $# -ge 2 ]] || die "--output-scale requires a number"
+        OUTPUT_SCALE="$2"
+        shift 2
+        ;;
       --max-batch-size)
         [[ $# -ge 2 ]] || die "--max-batch-size requires a number"
         MAX_BATCH_SIZE="$2"
@@ -256,6 +278,8 @@ main() {
       --channels "${CHANNELS}" \
       --height "${HEIGHT}" \
       --width "${WIDTH}" \
+      --num_points "${NUM_POINTS}" \
+      --output_scale "${OUTPUT_SCALE}" \
       --input_normalization external
 
     INPUT_ONNX_PATH="${selected_pth%.*}.onnx"

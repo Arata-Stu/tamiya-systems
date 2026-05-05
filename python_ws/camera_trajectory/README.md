@@ -36,3 +36,30 @@ python3 export_onnx.py \
   --num_points 20 \
   --output_scale 10.0
 ```
+
+## SCP Checkpoints
+
+```bash
+chmod +x scp_ckpts.sh
+./scp_ckpts.sh
+```
+
+`./ckpts/train/YYYY-MM-DD/HH-MM-SS` のような2階層目の checkpoint directory を複数選択して、
+デフォルトでは `/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/pilotnet_trajectory/` へ転送します。
+
+## Deploy
+
+```bash
+chmod +x 3_deploy_model.sh
+./3_deploy_model.sh
+```
+
+デフォルトでは `/workspaces/isaac_ros_assets/models/pilotnet_trajectory/` 配下の既存 numeric version directory
+（`1`, `2`, `3` など）を削除してから deploy します。Triton/Isaac ROS で古い TensorRT engine が同居すると、
+export は成功しても推論時に古い version や互換性のない plan を掴んで失敗することがあるためです。
+過去 version を残したい場合だけ `--keep-versions` を付けてください。
+Triton の `config.pbtxt` は `config/config.pbtxt` を source としてコピーします。
+
+```bash
+./3_deploy_model.sh --num-points 20 --output-scale 10.0 --precision fp16
+```

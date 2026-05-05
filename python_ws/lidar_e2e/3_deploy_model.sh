@@ -18,6 +18,7 @@ PROJECT_NAME="isaac_ros_lidar_e2e_control"
 CONFIG_BASENAME="tinylidarnet_config"
 PRECISION="fp16"
 MAX_BATCH_SIZE="1"
+KEEP_VERSIONS="false"
 PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
 SCAN_POINTS="320"
 
@@ -34,6 +35,7 @@ Options:
   --precision {fp16|fp32}     TensorRT compute precision (I/O stays FP32, default: fp16)
   --scan-points N             LiDAR points for TRT shape/profile (default: 320)
   --max-batch-size N          Max batch size for TensorRT profile (default: 1)
+  --keep-versions             Keep existing Triton numeric version dirs and deploy to next version
   -h, --help                  Show this help message
 
 Examples:
@@ -65,17 +67,17 @@ resolve_config_source() {
   local pkg_share_path=""
   local config_source_path=""
 
-  if pkg_share_path="$(ros2 pkg prefix "${PROJECT_NAME}" --share 2>/dev/null)"; then
+  if [[ -f "${SCRIPT_DIR}/config/${config_file}" ]]; then
+    config_source_path="${SCRIPT_DIR}/config/${config_file}"
+  fi
+
+  if [[ -z "${config_source_path}" ]] && pkg_share_path="$(ros2 pkg prefix "${PROJECT_NAME}" --share 2>/dev/null)"; then
     if [[ -f "${pkg_share_path}/config/${config_file}" ]]; then
       config_source_path="${pkg_share_path}/config/${config_file}"
     fi
   fi
 
-  if [[ -z "${config_source_path}" && -f "${SCRIPT_DIR}/config/${config_file}" ]]; then
-    config_source_path="${SCRIPT_DIR}/config/${config_file}"
-  fi
-
-  [[ -n "${config_source_path}" ]] || die "'${config_file}' not found in package share or ${SCRIPT_DIR}/config"
+  [[ -n "${config_source_path}" ]] || die "'${config_file}' not found in ${SCRIPT_DIR}/config or package share"
   echo "${config_source_path}"
 }
 
@@ -115,9 +117,25 @@ print_parameters() {
   echo "INPUT_TENSOR_NAME : ${INPUT_TENSOR_NAME}"
   echo "INPUT_SHAPE (TRT) : 1x1x${SCAN_POINTS}"
   echo "PRECISION         : ${PRECISION}"
+  echo "KEEP_VERSIONS     : ${KEEP_VERSIONS}"
   echo "CONFIG_FILE       : ${config_file}"
   echo "PROJECT_NAME      : ${PROJECT_NAME}"
   echo "==================================================="
+}
+
+clear_model_versions() {
+  local model_root="$1"
+  local version_dir
+  local version_name
+
+  [[ -d "${model_root}" ]] || return
+
+  for version_dir in "${model_root}"/[0-9]*; do
+    [[ -d "${version_dir}" ]] || continue
+    version_name="$(basename "${version_dir}")"
+    [[ "${version_name}" =~ ^[0-9]+$ ]] || continue
+    rm -rf -- "${version_dir}"
+  done
 }
 
 setup_model() {
@@ -129,6 +147,11 @@ setup_model() {
 
   local assets_base="/workspaces/isaac_ros_assets/models"
   local model_root="${assets_base}/${MODEL_NAME}"
+
+  if [[ "${KEEP_VERSIONS}" != "true" ]]; then
+    echo "Removing existing Triton versions under ${model_root}..."
+    clear_model_versions "${model_root}"
+  fi
 
   local version=1
   while [[ -d "${model_root}/${version}" ]]; do
@@ -192,6 +215,10 @@ parse_args() {
         [[ $# -ge 2 ]] || die "--max-batch-size requires a number"
         MAX_BATCH_SIZE="$2"
         shift 2
+        ;;
+      --keep-versions)
+        KEEP_VERSIONS="true"
+        shift
         ;;
       --*)
         die "unknown option: $1"
