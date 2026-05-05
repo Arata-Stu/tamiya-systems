@@ -1,0 +1,17 @@
+<launch>
+  <arg name="trajectory_pure_pursuit_param"
+       default="$(find-pkg-share trajectory_pure_pursuit)/config/trajectory_pure_pursuit.param.yaml"/>
+  <arg name="trajectory_topic" default="/autonomous/trajectory"/>
+  <arg name="drive_topic" default="/autonomous/cmd_drive"/>
+  <arg name="velocity_topic" default="/current_velocity"/>
+
+  <node pkg="trajectory_pure_pursuit"
+        exec="trajectory_pure_pursuit_node"
+        name="trajectory_pure_pursuit_node"
+        output="screen">
+    <param from="$(var trajectory_pure_pursuit_param)"/>
+    <remap from="trajectory" to="$(var trajectory_topic)"/>
+    <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
+    <remap from="current_velocity" to="$(var velocity_topic)"/>
+  </node>
+</launch>
