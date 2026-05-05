@@ -22,3 +22,15 @@ steer = atan(wheelbase * curvature)
 ```
 
 Speed is reduced from `max_speed` based on curvature and steering angle.
+
+Enable debug markers by setting `debug: true` in the parameter YAML:
+
+```bash
+ros2 launch pure_pursuit_controller pure_pursuit_controller.launch.xml
+```
+
+Marker topics:
+
+- `pure_pursuit/target_marker`
+- `pure_pursuit/target_line_marker`
+- `pure_pursuit/lookahead_marker`

@@ -36,5 +36,8 @@
     # false: use the last commanded speed.
     use_velocity_topic: false
 
-    # Publish target/lookahead markers.
+    # Publish RViz markers:
+    # - pure_pursuit/target_marker: selected lookahead target point
+    # - pure_pursuit/target_line_marker: line from base_link to target point
+    # - pure_pursuit/lookahead_marker: lookahead radius around base_link
     debug: false

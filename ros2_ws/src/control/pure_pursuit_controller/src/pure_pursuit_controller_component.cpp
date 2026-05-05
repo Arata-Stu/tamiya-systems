@@ -56,6 +56,9 @@ PurePursuitControllerComponent::PurePursuitControllerComponent(
     lookahead_marker_pub_ =
         this->create_publisher<visualization_msgs::msg::Marker>(
             "pure_pursuit/lookahead_marker", rclcpp::QoS(1));
+    target_line_marker_pub_ =
+        this->create_publisher<visualization_msgs::msg::Marker>(
+            "pure_pursuit/target_line_marker", rclcpp::QoS(1));
   }
 
   RCLCPP_INFO(
@@ -259,7 +262,7 @@ void PurePursuitControllerComponent::PublishStop(
 void PurePursuitControllerComponent::PublishDebugMarkers(
     const nav_msgs::msg::Path &path, const TargetPoint &target,
     double lookahead_distance, double steering_angle) {
-  if (!target_marker_pub_ || !lookahead_marker_pub_) {
+  if (!target_marker_pub_ || !lookahead_marker_pub_ || !target_line_marker_pub_) {
     return;
   }
 
@@ -279,6 +282,26 @@ void PurePursuitControllerComponent::PublishDebugMarkers(
   target_marker.color.b = 0.2F;
   target_marker.color.a = 0.95F;
   target_marker_pub_->publish(target_marker);
+
+  visualization_msgs::msg::Marker target_line_marker;
+  target_line_marker.header = path.header;
+  target_line_marker.ns = "pure_pursuit_controller_target_line";
+  target_line_marker.id = 0;
+  target_line_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+  target_line_marker.action = visualization_msgs::msg::Marker::ADD;
+  target_line_marker.pose.orientation.w = 1.0;
+  target_line_marker.scale.x = 0.025;
+  target_line_marker.color.r = 0.1F;
+  target_line_marker.color.g = 1.0F;
+  target_line_marker.color.b = 0.2F;
+  target_line_marker.color.a = 0.9F;
+  geometry_msgs::msg::Point origin;
+  origin.x = 0.0;
+  origin.y = 0.0;
+  origin.z = 0.0;
+  target_line_marker.points.push_back(origin);
+  target_line_marker.points.push_back(target.point);
+  target_line_marker_pub_->publish(target_line_marker);
 
   visualization_msgs::msg::Marker lookahead_marker;
   lookahead_marker.header = path.header;

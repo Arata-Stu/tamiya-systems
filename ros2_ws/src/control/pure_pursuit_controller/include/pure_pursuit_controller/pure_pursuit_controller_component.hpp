@@ -50,6 +50,8 @@ private:
       target_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
       lookahead_marker_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr
+      target_line_marker_pub_;
 
   double wheelbase_ = 0.26;
   double lookahead_min_ = 0.35;
