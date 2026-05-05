@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>isaac_ros_camera_trajectory</name>
+  <version>0.0.1</version>
+  <description>Camera E2E trajectory decoder and launch integration for DNN image encoder + Triton</description>
+
+  <maintainer email="user@example.com">ROS User</maintainer>
+  <license>Apache-2.0</license>
+  <author>ROS User</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>isaac_ros_managed_nitros</depend>
+  <depend>isaac_ros_nitros_tensor_list_type</depend>
+  <depend>nav_msgs</depend>
+
+  <build_depend>isaac_ros_common</build_depend>
+  <exec_depend>isaac_ros_dnn_image_encoder</exec_depend>
+  <exec_depend>isaac_ros_triton</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

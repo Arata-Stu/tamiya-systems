@@ -1,0 +1,9 @@
+# %YAML 1.2
+/**:
+  ros__parameters:
+    output_tensor_name: output_trajectory
+    output_frame_id: base_link
+    num_points: 20
+    use_clip: True
+    max_abs_x: 20.0
+    max_abs_y: 10.0

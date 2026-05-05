@@ -1,0 +1,35 @@
+# --- Path settings ---
+data_path: "./datasets/"
+resume_ckpt_path: null
+log_dir: ./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
+ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+# --- Dataset / transform settings ---
+dataset:
+  sequence_length: 1
+  input_channels: 3
+  image_height: 240
+  image_width: 320
+  crop_top_ratio: 0.0
+  crop_bottom_ratio: 1.0
+  pixel_mean: [0.5, 0.5, 0.5]
+  pixel_std: [0.5, 0.5, 0.5]
+  image_noise_std: 0.01
+
+# --- Training settings ---
+training:
+  epochs: 50
+  batch_size: 64
+  learning_rate: 0.0001
+  num_workers: 8
+  heading_loss_weight: 0.2
+
+# --- Model settings ---
+model:
+  num_points: 20
+  output_scale: 8.0
+
+# --- Hydra output settings ---
+hydra:
+  run:
+    dir: ./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}

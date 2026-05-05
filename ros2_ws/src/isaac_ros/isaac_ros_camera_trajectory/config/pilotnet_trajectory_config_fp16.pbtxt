@@ -1,0 +1,17 @@
+name: "pilotnet_trajectory"
+platform: "tensorrt_plan"
+max_batch_size: 1
+input [
+  {
+    name: "image_input"
+    data_type: TYPE_FP32
+    dims: [ 3, 240, 320 ]
+  }
+]
+output [
+  {
+    name: "trajectory_output"
+    data_type: TYPE_FP32
+    dims: [ 20, 2 ]
+  }
+]
