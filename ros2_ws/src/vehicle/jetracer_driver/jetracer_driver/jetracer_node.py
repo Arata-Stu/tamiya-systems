@@ -26,6 +26,8 @@ class JetRacerDriverNode(Node):
             "offset_step": 0.01,
             "throttle_gain": 1.0,
             "steering_gain": 1.0,
+            "max_throttle": 0.7,
+            "max_throttle_slew_rate": 1.0,
             "max_command_age": 0.5,
             "neutral_stop_assist_enabled": True,
             "neutral_stop_required_steps": 10,
@@ -75,6 +77,15 @@ class JetRacerDriverNode(Node):
         """外部からのパラメータ変更をCoreに即時反映する。"""
         result = SetParametersResult(successful=True)
         for p in params:
+            if p.name in ("max_throttle", "max_throttle_slew_rate") and p.value < 0.0:
+                result.successful = False
+                result.reason = f"{p.name} must be >= 0.0"
+                return result
+            if p.name == "max_throttle" and p.value > 1.0:
+                result.successful = False
+                result.reason = "max_throttle must be <= 1.0"
+                return result
+
             old_val = self.get_parameter(p.name).value if self.has_parameter(p.name) else None
             self.core.update_param(p.name, p.value)
             if old_val != p.value:

@@ -6,6 +6,9 @@
     ## スロットルとステアリングのゲイン
     throttle_gain: 1.0
     steering_gain: 1.0
+    ## ESC/モータ保護用の正規化スロットル制限
+    max_throttle: 0.7
+    max_throttle_slew_rate: 1.0  # normalized throttle / sec
     ## スロットルとステアリングのオフセット
     steering_offset: 0.0
     throttle_offset: 0.0

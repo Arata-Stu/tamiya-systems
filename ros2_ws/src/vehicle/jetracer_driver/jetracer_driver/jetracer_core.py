@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import time
 from typing import Optional
 from jetracer.nvidia_racecar import NvidiaRacecar
 
@@ -22,7 +23,11 @@ class JetRacerCore:
             "throttle_offset": 0.0,
             "throttle_gain": 1.0,
             "steering_gain": 1.0,
+            "max_throttle": 0.7,
+            "max_throttle_slew_rate": 1.0,
         }
+        self._last_throttle = 0.0
+        self._last_update_time = time.monotonic()
 
         try:
             self.car = NvidiaRacecar()
@@ -46,7 +51,9 @@ class JetRacerCore:
         throttle = (speed * self.params["throttle_gain"]) + self.params["throttle_offset"]
         if self.params["throttle_inversion"]:
             throttle *= -1.0
-        throttle = max(min(throttle, 1.0), -1.0)
+        max_throttle = max(0.0, min(float(self.params["max_throttle"]), 1.0))
+        throttle = max(min(throttle, max_throttle), -max_throttle)
+        throttle = self._apply_throttle_slew_rate(throttle)
 
         # ステアリング計算
         steering = (steering_angle * self.params["steering_gain"]) + self.params["steering_offset"]
@@ -57,10 +64,31 @@ class JetRacerCore:
         self.car.throttle = float(throttle)
         self.car.steering = float(steering)
 
+    def _apply_throttle_slew_rate(self, target_throttle: float) -> float:
+        """スロットルの急変を抑える。max_throttle_slew_rate<=0 の場合は無効。"""
+        now = time.monotonic()
+        dt = max(0.0, now - self._last_update_time)
+        self._last_update_time = now
+
+        max_rate = float(self.params["max_throttle_slew_rate"])
+        if max_rate <= 0.0 or dt <= 0.0:
+            self._last_throttle = target_throttle
+            return target_throttle
+
+        max_step = max_rate * dt
+        diff = target_throttle - self._last_throttle
+        if abs(diff) > max_step:
+            target_throttle = self._last_throttle + (max_step if diff > 0.0 else -max_step)
+
+        self._last_throttle = target_throttle
+        return target_throttle
+
     def stop(self):
         """車両の出力をゼロにして停止させる。"""
         self.car.throttle = 0.0
         self.car.steering = 0.0
+        self._last_throttle = 0.0
+        self._last_update_time = time.monotonic()
 
     def update_param(self, name: str, value: any):
         """
