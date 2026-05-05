@@ -56,7 +56,7 @@
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
-    <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter_angle_only.param.yaml" />
+    <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter_footprint_angle.param.yaml" />
     <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
 
     <!-- Jetracer Driver Node -->

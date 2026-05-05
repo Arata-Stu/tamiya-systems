@@ -1,6 +1,6 @@
 <launch>
     <arg name="lidar_container_name" default="lidar_container" />
-    <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/lidar/scan_filter.param.yaml" />
+    <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/lidar/scan_filter_footprint_angle.param.yaml" />
 
     <load_composable_node target="$(var lidar_container_name)">
         <composable_node pkg="ydlidar_ros2_driver" plugin="ydlidar_ros2_driver::YdlidarRos2DriverComponent" name="ydlidar_ros2_driver_node">

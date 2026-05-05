@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    # 最小構成: ロボット自身の除去 + 角度クロップ
+    filter1:
+      name: footprint_filter
+      type: laser_filters/LaserScanFootprintFilter
+      params:
+        inscribed_radius: 0.001  # 1 mm
+
+    filter2:
+      name: angle_crop_filter
+      type: laser_filters/LaserScanAngularBoundsFilter
+      params:
+        lower_angle: -2.35619   # -135°（rad）
+        upper_angle:  2.35619   #  135°（rad）
