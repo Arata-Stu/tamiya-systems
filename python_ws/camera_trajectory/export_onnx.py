@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from src.model import PilotNetTrajectory
+from src.model import create_trajectory_model, infer_trajectory_architecture
 
 
 class NormalizedModel(nn.Module):
@@ -31,29 +31,39 @@ def main(args):
     print(f"Checkpoint Path: {checkpoint_path}")
     print(f"Output ONNX Path: {output_path}")
     print(f"Input Shape: (1, {args.channels}, {args.height}, {args.width})")
-    print(f"Output Shape: (1, {args.num_points}, 2)")
-    print(f"Input Normalization: {args.input_normalization}")
-    print("---------------------")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    base_model = PilotNetTrajectory(
-        num_points=args.num_points,
-        input_channels=args.channels,
-        input_height=args.height,
-        input_width=args.width,
-        output_scale=args.output_scale,
-    )
-
     if not checkpoint_path.exists():
         print(f"Error: Checkpoint file not found at {checkpoint_path}")
         return
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        base_model.load_state_dict(checkpoint["model_state_dict"])
+        state_dict = checkpoint["model_state_dict"]
+        architecture = checkpoint.get("model_architecture") or infer_trajectory_architecture(state_dict, args.num_points)
+        num_points = int(checkpoint.get("num_points", args.num_points))
+        output_scale = float(checkpoint.get("output_scale", args.output_scale))
     else:
-        base_model.load_state_dict(checkpoint)
+        state_dict = checkpoint
+        architecture = infer_trajectory_architecture(state_dict, args.num_points)
+        num_points = args.num_points
+        output_scale = args.output_scale
+
+    print(f"Model Architecture: {architecture}")
+    print(f"Output Shape: (1, {num_points}, 2)")
+    print(f"Output Scale: {output_scale}")
+    print(f"Input Normalization: {args.input_normalization}")
+    print("---------------------")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    base_model = create_trajectory_model(
+        architecture=architecture,
+        num_points=num_points,
+        input_channels=args.channels,
+        input_height=args.height,
+        input_width=args.width,
+        output_scale=output_scale,
+    )
+    base_model.load_state_dict(state_dict)
 
     base_model.eval()
     if args.input_normalization == "internal":

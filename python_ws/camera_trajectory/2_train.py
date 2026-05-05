@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from src.dataset import MultiImageTrajectoryDataset
 from src.loss import TrajectoryLoss
-from src.model import PilotNetTrajectory
+from src.model import create_trajectory_model
 from src.transform import AddImageNoise, Compose, CropImage, NormalizeImage, ResizeImage
 
 
@@ -95,7 +95,8 @@ def main(cfg: DictConfig) -> None:
             num_workers=cfg.training.num_workers,
         )
 
-    model = PilotNetTrajectory(
+    model = create_trajectory_model(
+        architecture=cfg.model.architecture,
         num_points=cfg.model.num_points,
         input_channels=cfg.dataset.input_channels,
         input_height=cfg.dataset.image_height,
@@ -145,6 +146,7 @@ def main(cfg: DictConfig) -> None:
             "best_metric": best_metric,
             "num_points": cfg.model.num_points,
             "output_scale": cfg.model.output_scale,
+            "model_architecture": cfg.model.architecture,
         }
         if current_metric < best_metric:
             best_metric = current_metric

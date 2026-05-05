@@ -24,8 +24,12 @@ cd python_ws/camera_trajectory
 ## Train
 
 ```bash
-python3 2_train.py data_path=./datasets model.num_points=20 model.output_scale=10.0
+python3 2_train.py data_path=./datasets model.num_points=20 model.output_scale=8.0
 ```
+
+デフォルトの `model.architecture` は `bezier` です。モデルは cubic Bezier の制御点を予測し、
+学習・可視化・export では従来と同じ `(num_points, 2)` の軌跡点列へサンプルして扱います。
+従来の20点直接回帰に戻す場合は `model.architecture=direct` を指定してください。
 
 ## Export
 

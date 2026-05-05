@@ -29,6 +29,7 @@ training:
 
 # --- Model settings ---
 model:
+  architecture: bezier  # direct or bezier
   num_points: 20
   output_scale: 8.0
 

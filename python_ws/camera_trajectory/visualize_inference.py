@@ -11,7 +11,8 @@ np = None
 torch = None
 OmegaConf = None
 MultiImageTrajectoryDataset = None
-PilotNetTrajectory = None
+create_trajectory_model = None
+infer_trajectory_architecture = None
 Compose = None
 CropImage = None
 NormalizeImage = None
@@ -24,7 +25,8 @@ def load_runtime_dependencies():
     global torch
     global OmegaConf
     global MultiImageTrajectoryDataset
-    global PilotNetTrajectory
+    global create_trajectory_model
+    global infer_trajectory_architecture
     global Compose
     global CropImage
     global NormalizeImage
@@ -36,7 +38,8 @@ def load_runtime_dependencies():
     from omegaconf import OmegaConf as OmegaConf_module
 
     from src.dataset import MultiImageTrajectoryDataset as MultiImageTrajectoryDataset_class
-    from src.model import PilotNetTrajectory as PilotNetTrajectory_class
+    from src.model import create_trajectory_model as create_trajectory_model_fn
+    from src.model import infer_trajectory_architecture as infer_trajectory_architecture_fn
     from src.transform import Compose as Compose_class
     from src.transform import CropImage as CropImage_class
     from src.transform import NormalizeImage as NormalizeImage_class
@@ -47,7 +50,8 @@ def load_runtime_dependencies():
     torch = torch_module
     OmegaConf = OmegaConf_module
     MultiImageTrajectoryDataset = MultiImageTrajectoryDataset_class
-    PilotNetTrajectory = PilotNetTrajectory_class
+    create_trajectory_model = create_trajectory_model_fn
+    infer_trajectory_architecture = infer_trajectory_architecture_fn
     Compose = Compose_class
     CropImage = CropImage_class
     NormalizeImage = NormalizeImage_class
@@ -351,6 +355,7 @@ def main():
     state_dict, checkpoint_meta = load_checkpoint(checkpoint_path, device)
     num_points = int(checkpoint_meta.get("num_points", cfg.model.num_points))
     output_scale = float(checkpoint_meta.get("output_scale", cfg.model.output_scale))
+    architecture = checkpoint_meta.get("model_architecture") or infer_trajectory_architecture(state_dict, num_points)
 
     transform = Compose(
         [
@@ -366,7 +371,8 @@ def main():
         seq_len=int(cfg.dataset.sequence_length),
     )
 
-    model = PilotNetTrajectory(
+    model = create_trajectory_model(
+        architecture=architecture,
         num_points=num_points,
         input_channels=int(cfg.dataset.input_channels),
         input_height=int(cfg.dataset.image_height),
@@ -382,7 +388,7 @@ def main():
     print(f"Data dir   : {data_dir}")
     print(f"Output dir : {output_dir}")
     print(f"Samples    : {selected_indices}")
-    print(f"Model      : num_points={num_points}, output_scale={output_scale}")
+    print(f"Model      : architecture={architecture}, num_points={num_points}, output_scale={output_scale}")
     print(
         "Projection : "
         f"enabled={not args.no_image_projection}, "
