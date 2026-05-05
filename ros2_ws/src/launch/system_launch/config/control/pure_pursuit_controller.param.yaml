@@ -1,0 +1,40 @@
+/**:
+  ros__parameters:
+    # Vehicle geometry [m]
+    wheelbase: 0.26
+    # The controller assumes the trajectory points are already expressed in
+    # this local vehicle frame. No TF transform is applied.
+    expected_frame_id: base_link
+
+    # Adaptive lookahead: clamp(lookahead_base + lookahead_gain * speed,
+    # lookahead_min, lookahead_max)
+    lookahead_base: 0.35
+    lookahead_gain: 0.35
+    lookahead_min: 0.35
+    lookahead_max: 1.20
+
+    # Ignore predicted points behind or too close to base_link.
+    min_forward_distance: 0.05
+
+    # Steering limits [rad]. max_steering_delta limits command jumps per
+    # trajectory callback.
+    steering_limit: 0.45
+    max_steering_delta: 0.12
+
+    # Curvature-based speed control [m/s].
+    min_speed: 0.1
+    max_speed: 0.3
+    curvature_speed_gain: 1.5
+    steering_speed_gain: 1.0
+    short_path_speed_scale: 0.6
+
+    # true: publish stop command if no usable trajectory point is available.
+    # false: hold the last command.
+    stop_on_invalid_path: true
+
+    # true: subscribe current_velocity and use it for adaptive lookahead.
+    # false: use the last commanded speed.
+    use_velocity_topic: false
+
+    # Publish target/lookahead markers.
+    debug: false

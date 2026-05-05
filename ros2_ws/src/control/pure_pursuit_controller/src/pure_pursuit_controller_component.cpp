@@ -1,4 +1,4 @@
-#include "trajectory_pure_pursuit/trajectory_pure_pursuit_component.hpp"
+#include "pure_pursuit_controller/pure_pursuit_controller_component.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +8,7 @@
 
 #include "rclcpp_components/register_node_macro.hpp"
 
-namespace trajectory_pure_pursuit {
+namespace pure_pursuit_controller {
 
 namespace {
 
@@ -28,9 +28,9 @@ bool IsFinitePoint(const geometry_msgs::msg::Point &point) {
 
 } // namespace
 
-TrajectoryPurePursuitComponent::TrajectoryPurePursuitComponent(
+PurePursuitControllerComponent::PurePursuitControllerComponent(
     const rclcpp::NodeOptions &options)
-    : Node("trajectory_pure_pursuit_node", options) {
+    : Node("pure_pursuit_controller_node", options) {
   LoadParameters();
 
   drive_pub_ =
@@ -39,13 +39,13 @@ TrajectoryPurePursuitComponent::TrajectoryPurePursuitComponent(
 
   trajectory_sub_ = this->create_subscription<nav_msgs::msg::Path>(
       "trajectory", rclcpp::QoS(10),
-      std::bind(&TrajectoryPurePursuitComponent::TrajectoryCallback, this,
+      std::bind(&PurePursuitControllerComponent::TrajectoryCallback, this,
                 std::placeholders::_1));
 
   if (use_velocity_topic_) {
     velocity_sub_ = this->create_subscription<std_msgs::msg::Float32>(
         "current_velocity", rclcpp::QoS(10),
-        std::bind(&TrajectoryPurePursuitComponent::VelocityCallback, this,
+        std::bind(&PurePursuitControllerComponent::VelocityCallback, this,
                   std::placeholders::_1));
   }
 
@@ -60,12 +60,12 @@ TrajectoryPurePursuitComponent::TrajectoryPurePursuitComponent(
 
   RCLCPP_INFO(
       this->get_logger(),
-      "Trajectory Pure Pursuit initialized "
+      "Pure Pursuit Controller initialized "
       "(wheelbase=%.3f, lookahead=[%.3f, %.3f], speed=[%.3f, %.3f])",
       wheelbase_, lookahead_min_, lookahead_max_, min_speed_, max_speed_);
 }
 
-void TrajectoryPurePursuitComponent::LoadParameters() {
+void PurePursuitControllerComponent::LoadParameters() {
   wheelbase_ =
       ClampPositive(this->declare_parameter<double>("wheelbase", 0.26), 0.26);
   lookahead_min_ = ClampPositive(
@@ -105,7 +105,7 @@ void TrajectoryPurePursuitComponent::LoadParameters() {
       this->declare_parameter<std::string>("expected_frame_id", "base_link");
 }
 
-void TrajectoryPurePursuitComponent::TrajectoryCallback(
+void PurePursuitControllerComponent::TrajectoryCallback(
     const nav_msgs::msg::Path::SharedPtr msg) {
   if (msg->poses.empty()) {
     PublishStop(msg->header, "empty trajectory");
@@ -148,13 +148,13 @@ void TrajectoryPurePursuitComponent::TrajectoryCallback(
   }
 }
 
-void TrajectoryPurePursuitComponent::VelocityCallback(
+void PurePursuitControllerComponent::VelocityCallback(
     const std_msgs::msg::Float32::SharedPtr msg) {
   current_speed_ = static_cast<double>(msg->data);
 }
 
-std::optional<TrajectoryPurePursuitComponent::TargetPoint>
-TrajectoryPurePursuitComponent::SelectTargetPoint(
+std::optional<PurePursuitControllerComponent::TargetPoint>
+PurePursuitControllerComponent::SelectTargetPoint(
     const nav_msgs::msg::Path &path, double lookahead_distance) const {
   std::optional<TargetPoint> fallback;
   double cumulative_distance = 0.0;
@@ -191,12 +191,12 @@ TrajectoryPurePursuitComponent::SelectTargetPoint(
   return fallback;
 }
 
-double TrajectoryPurePursuitComponent::ComputeLookaheadDistance() const {
+double PurePursuitControllerComponent::ComputeLookaheadDistance() const {
   const double raw_lookahead = lookahead_base_ + lookahead_gain_ * current_speed_;
   return std::clamp(raw_lookahead, lookahead_min_, lookahead_max_);
 }
 
-double TrajectoryPurePursuitComponent::ComputeSteeringAngle(
+double PurePursuitControllerComponent::ComputeSteeringAngle(
     const TargetPoint &target) const {
   const double x = target.point.x;
   const double y = target.point.y;
@@ -206,7 +206,7 @@ double TrajectoryPurePursuitComponent::ComputeSteeringAngle(
   return std::clamp(steering_angle, -steering_limit_, steering_limit_);
 }
 
-double TrajectoryPurePursuitComponent::ComputeSpeed(
+double PurePursuitControllerComponent::ComputeSpeed(
     double steering_angle, const TargetPoint &target, std::size_t path_size) const {
   const double x = target.point.x;
   const double y = target.point.y;
@@ -225,7 +225,7 @@ double TrajectoryPurePursuitComponent::ComputeSpeed(
   return std::clamp(speed, min_speed_, max_speed_);
 }
 
-double TrajectoryPurePursuitComponent::ApplySteeringRateLimit(
+double PurePursuitControllerComponent::ApplySteeringRateLimit(
     double steering_angle) {
   const double limited = std::clamp(steering_angle,
                                    last_steering_angle_ - max_steering_delta_,
@@ -238,7 +238,7 @@ double TrajectoryPurePursuitComponent::ApplySteeringRateLimit(
   return limited;
 }
 
-void TrajectoryPurePursuitComponent::PublishStop(
+void PurePursuitControllerComponent::PublishStop(
     const std_msgs::msg::Header &header, const std::string &reason) {
   ackermann_msgs::msg::AckermannDriveStamped drive_msg;
   drive_msg.header = header;
@@ -256,7 +256,7 @@ void TrajectoryPurePursuitComponent::PublishStop(
                        "Pure Pursuit stop/fallback: %s", reason.c_str());
 }
 
-void TrajectoryPurePursuitComponent::PublishDebugMarkers(
+void PurePursuitControllerComponent::PublishDebugMarkers(
     const nav_msgs::msg::Path &path, const TargetPoint &target,
     double lookahead_distance, double steering_angle) {
   if (!target_marker_pub_ || !lookahead_marker_pub_) {
@@ -265,7 +265,7 @@ void TrajectoryPurePursuitComponent::PublishDebugMarkers(
 
   visualization_msgs::msg::Marker target_marker;
   target_marker.header = path.header;
-  target_marker.ns = "trajectory_pure_pursuit_target";
+  target_marker.ns = "pure_pursuit_controller_target";
   target_marker.id = 0;
   target_marker.type = visualization_msgs::msg::Marker::SPHERE;
   target_marker.action = visualization_msgs::msg::Marker::ADD;
@@ -282,7 +282,7 @@ void TrajectoryPurePursuitComponent::PublishDebugMarkers(
 
   visualization_msgs::msg::Marker lookahead_marker;
   lookahead_marker.header = path.header;
-  lookahead_marker.ns = "trajectory_pure_pursuit_lookahead";
+  lookahead_marker.ns = "pure_pursuit_controller_lookahead";
   lookahead_marker.id = 0;
   lookahead_marker.type = visualization_msgs::msg::Marker::CYLINDER;
   lookahead_marker.action = visualization_msgs::msg::Marker::ADD;
@@ -302,7 +302,7 @@ void TrajectoryPurePursuitComponent::PublishDebugMarkers(
                steering_angle);
 }
 
-} // namespace trajectory_pure_pursuit
+} // namespace pure_pursuit_controller
 
 RCLCPP_COMPONENTS_REGISTER_NODE(
-    trajectory_pure_pursuit::TrajectoryPurePursuitComponent)
+    pure_pursuit_controller::PurePursuitControllerComponent)

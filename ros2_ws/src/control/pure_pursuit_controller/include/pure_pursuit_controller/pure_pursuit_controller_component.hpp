@@ -1,5 +1,5 @@
-#ifndef TRAJECTORY_PURE_PURSUIT__TRAJECTORY_PURE_PURSUIT_COMPONENT_HPP_
-#define TRAJECTORY_PURE_PURSUIT__TRAJECTORY_PURE_PURSUIT_COMPONENT_HPP_
+#ifndef PURE_PURSUIT_CONTROLLER__PURE_PURSUIT_CONTROLLER_COMPONENT_HPP_
+#define PURE_PURSUIT_CONTROLLER__PURE_PURSUIT_CONTROLLER_COMPONENT_HPP_
 
 #include <optional>
 #include <string>
@@ -12,11 +12,11 @@
 #include "std_msgs/msg/float32.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 
-namespace trajectory_pure_pursuit {
+namespace pure_pursuit_controller {
 
-class TrajectoryPurePursuitComponent : public rclcpp::Node {
+class PurePursuitControllerComponent : public rclcpp::Node {
 public:
-  explicit TrajectoryPurePursuitComponent(const rclcpp::NodeOptions &options);
+  explicit PurePursuitControllerComponent(const rclcpp::NodeOptions &options);
 
 private:
   struct TargetPoint {
@@ -75,6 +75,6 @@ private:
   double current_speed_ = 0.0;
 };
 
-} // namespace trajectory_pure_pursuit
+} // namespace pure_pursuit_controller
 
-#endif // TRAJECTORY_PURE_PURSUIT__TRAJECTORY_PURE_PURSUIT_COMPONENT_HPP_
+#endif // PURE_PURSUIT_CONTROLLER__PURE_PURSUIT_CONTROLLER_COMPONENT_HPP_

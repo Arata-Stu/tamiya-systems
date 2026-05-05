@@ -1,4 +1,4 @@
-# trajectory_pure_pursuit
+# pure_pursuit_controller
 
 Pure Pursuit controller for local `nav_msgs/Path` trajectory output.
 
@@ -6,7 +6,7 @@ The controller assumes trajectory points are already expressed in `base_link`
 with `x` forward and `y` left. It does not apply TF transforms.
 
 ```bash
-ros2 launch trajectory_pure_pursuit trajectory_pure_pursuit.launch.xml
+ros2 launch pure_pursuit_controller pure_pursuit_controller.launch.xml
 ```
 
 Default topics:

@@ -24,6 +24,10 @@
     <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
+    <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
+    <arg name="pure_pursuit_param" default="$(find-pkg-share system_launch)/config/control/pure_pursuit_controller.param.yaml" />
+    <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
+    <arg name="pure_pursuit_velocity_topic" default="/current_velocity" />
     
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
@@ -100,6 +104,16 @@
             <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
             <arg name="container_name" value="$(var lidar_container_name)"/>
             <arg name="create_container" value="false"/>
+        </include>
+    </group>
+
+    <!-- Pure Pursuit Controller for Neural Trajectory -->
+    <group if="$(var use_pure_pursuit)">
+        <include file="$(find-pkg-share pure_pursuit_controller)/launch/pure_pursuit_controller.launch.xml">
+            <arg name="pure_pursuit_controller_param" value="$(var pure_pursuit_param)"/>
+            <arg name="trajectory_topic" value="$(var pure_pursuit_trajectory_topic)"/>
+            <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)"/>
         </include>
     </group>
 
