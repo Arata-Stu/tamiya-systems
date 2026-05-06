@@ -34,8 +34,8 @@ env:
   scan_angle_min: -2.343 # T-mini Plus profile
   scan_angle_max: 2.343 # T-mini Plus profile
   scan_fov: null # if null, use (scan_angle_max - scan_angle_min)
-  control_interface: direct # direct | local_trajectory_pp
-  action_dim: 2
+  control_interface: local_trajectory_pp # direct | local_trajectory_pp
+  action_dim: 6
 
   trajectory:
     # Used only when control_interface=local_trajectory_pp.
@@ -44,7 +44,7 @@ env:
     num_points: 20
     x_anchors: [0.4, 1.0, 1.8]
     x_offset_scale: 0.25
-    y_scale: 0.8
+    y_scale: 0.55
     min_control_dx: 0.05
     wheelbase: 0.3302
     lookahead_base: 0.35
@@ -59,17 +59,17 @@ env:
     steering_speed_gain: 1.0
     short_path_speed_scale: 0.6
     reward:
-      smoothness_coef: 0.0
-      tail_smoothness_coef: 0.0
-      tail_smoothness_power: 2.0
-      lateral_coef: 0.0
-      terminal_lateral_coef: 0.0
-      terminal_heading_coef: 0.0
-      centerline_coef: 0.0
+      smoothness_coef: 0.04
+      tail_smoothness_coef: 0.12
+      tail_smoothness_power: 2.5
+      lateral_coef: 0.04
+      terminal_lateral_coef: 0.6
+      terminal_heading_coef: 0.25
+      centerline_coef: 0.9
       centerline_horizon: 1.8
       centerline_forward_weight: 0.25
       centerline_lateral_weight: 1.0
-      centerline_tail_power: 0.0
+      centerline_tail_power: 1.5
 
   reward:
     base_reward_scale: 1.0
@@ -78,7 +78,7 @@ env:
     collision_penalty: 1.0
     progress_clip: 0.5
     tal:
-      enabled: true
+      enabled: false
       coef: 0.1
       steer_weight: 1.0
       speed_weight: 0.25
