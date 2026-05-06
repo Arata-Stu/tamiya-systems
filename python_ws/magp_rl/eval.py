@@ -35,6 +35,8 @@ class TrajectoryVideoRecorder:
         color_by_speed=True,
         speed_min_mps=0.0,
         speed_max_mps=5.0,
+        view_mode="follow",
+        follow_range_m=8.0,
     ):
         self.output_path = output_path
         self.fps = int(fps)
@@ -43,6 +45,10 @@ class TrajectoryVideoRecorder:
         self.color_by_speed = bool(color_by_speed)
         self.speed_min_mps = float(speed_min_mps)
         self.speed_max_mps = float(max(speed_max_mps, self.speed_min_mps + 1e-6))
+        self.view_mode = str(view_mode).lower()
+        self.follow_range_m = float(follow_range_m)
+        if self.view_mode not in ("global", "follow"):
+            raise ValueError(f"Unsupported video view_mode: {self.view_mode}")
 
         self.centerline_xy = np.asarray(centerline_xy, dtype=np.float32)
         self.min_xy = self.centerline_xy.min(axis=0) - self.margin
@@ -60,15 +66,30 @@ class TrajectoryVideoRecorder:
         self.traj = []
         self.traj_speeds = []
 
-    def _world_to_pixel(self, x, y):
-        px = int((x - self.min_xy[0]) * self.scale[0]) + 10
-        py = int((y - self.min_xy[1]) * self.scale[1]) + 10
+    def _world_to_pixel(self, x, y, min_xy=None, scale=None):
+        min_xy = self.min_xy if min_xy is None else min_xy
+        scale = self.scale if scale is None else scale
+        px = int((x - min_xy[0]) * scale[0]) + 10
+        py = int((y - min_xy[1]) * scale[1]) + 10
         py = self.size - py
         return px, py
 
-    def _draw_centerline(self):
-        pts = np.array([self._world_to_pixel(x, y) for x, y in self.centerline_xy], dtype=np.int32)
-        cv2.polylines(self.base, [pts], isClosed=True, color=(160, 160, 160), thickness=1, lineType=cv2.LINE_AA)
+    def _view_transform(self, x, y):
+        if self.view_mode == "global":
+            return self.min_xy, self.scale
+        half = max(self.follow_range_m * 0.5, 1.0)
+        min_xy = np.array([float(x) - half, float(y) - half], dtype=np.float32)
+        scale_value = (self.size - 20) / max(self.follow_range_m, 1e-3)
+        scale = np.array([scale_value, scale_value], dtype=np.float32)
+        return min_xy, scale
+
+    def _draw_centerline(self, frame=None, min_xy=None, scale=None):
+        target = self.base if frame is None else frame
+        pts = np.array(
+            [self._world_to_pixel(x, y, min_xy=min_xy, scale=scale) for x, y in self.centerline_xy],
+            dtype=np.int32,
+        )
+        cv2.polylines(target, [pts], isClosed=True, color=(160, 160, 160), thickness=1, lineType=cv2.LINE_AA)
 
     def _speed_to_color(self, speed_mps):
         if not self.color_by_speed:
@@ -80,13 +101,19 @@ class TrajectoryVideoRecorder:
         return (int(color[0]), int(color[1]), int(color[2]))  # BGR
 
     def add_frame(self, x, y, speed_mps, episode_idx, collided=False, planned_trajectory_xy=None):
-        frame = self.base.copy()
+        min_xy, scale = self._view_transform(x, y)
+        if self.view_mode == "global":
+            frame = self.base.copy()
+        else:
+            frame = np.full((self.size, self.size, 3), 255, dtype=np.uint8)
+            self._draw_centerline(frame=frame, min_xy=min_xy, scale=scale)
+
         self.traj.append((x, y))
         self.traj_speeds.append(float(speed_mps))
         if len(self.traj) > 1:
             for i in range(1, len(self.traj)):
-                p0 = self._world_to_pixel(self.traj[i - 1][0], self.traj[i - 1][1])
-                p1 = self._world_to_pixel(self.traj[i][0], self.traj[i][1])
+                p0 = self._world_to_pixel(self.traj[i - 1][0], self.traj[i - 1][1], min_xy=min_xy, scale=scale)
+                p1 = self._world_to_pixel(self.traj[i][0], self.traj[i][1], min_xy=min_xy, scale=scale)
                 seg_color = self._speed_to_color(self.traj_speeds[i])
                 cv2.line(frame, p0, p1, seg_color, 2, lineType=cv2.LINE_AA)
 
@@ -94,7 +121,10 @@ class TrajectoryVideoRecorder:
             planned = np.asarray(planned_trajectory_xy, dtype=np.float32)
             if planned.ndim == 2 and planned.shape[0] > 1 and planned.shape[1] == 2:
                 pts = np.array(
-                    [self._world_to_pixel(float(px), float(py)) for px, py in planned],
+                    [
+                        self._world_to_pixel(float(px), float(py), min_xy=min_xy, scale=scale)
+                        for px, py in planned
+                    ],
                     dtype=np.int32,
                 )
                 cv2.polylines(
@@ -107,7 +137,7 @@ class TrajectoryVideoRecorder:
                 )
                 cv2.circle(frame, tuple(pts[-1]), 4, (40, 180, 40), -1, lineType=cv2.LINE_AA)
 
-        car_pt = self._world_to_pixel(x, y)
+        car_pt = self._world_to_pixel(x, y, min_xy=min_xy, scale=scale)
         car_color = (0, 0, 255) if collided else (0, 180, 0)
         cv2.circle(frame, car_pt, 5, car_color, -1, lineType=cv2.LINE_AA)
         cv2.putText(frame, f"Episode {episode_idx}", (12, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (30, 30, 30), 1, cv2.LINE_AA)
@@ -443,6 +473,8 @@ def main(cfg: DictConfig):
                 color_by_speed=cfg.eval.video.get("color_by_speed", True),
                 speed_min_mps=cfg.eval.video.get("speed_min_mps", cfg.env.min_speed),
                 speed_max_mps=cfg.eval.video.get("speed_max_mps", cfg.env.max_speed),
+                view_mode=cfg.eval.video.get("view_mode", "follow"),
+                follow_range_m=cfg.eval.video.get("follow_range_m", 8.0),
             )
             video_sync_to_sim_time = bool(cfg.eval.video.get("sync_to_sim_time", True))
             sim_dt_override = cfg.eval.video.get("sim_dt_override", None)

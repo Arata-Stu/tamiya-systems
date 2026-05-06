@@ -103,8 +103,8 @@ env:
 eval:
   seed: 42
   checkpoint_dir: null
-  episodes: 5
-  max_steps: 2000
+  episodes: 1
+  max_steps: 10000
   num_envs: 1
   num_agents: null # legacy alias (prefer num_envs)
   video:
@@ -120,6 +120,8 @@ eval:
     speed_min_mps: 0.0
     speed_max_mps: 5.0
     draw_policy_trajectory: true
+    view_mode: follow # follow | global
+    follow_range_m: 8.0
 
 hydra:
   run:
