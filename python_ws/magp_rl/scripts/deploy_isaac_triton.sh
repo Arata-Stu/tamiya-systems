@@ -69,6 +69,9 @@ Options:
   --input-name NAME           ONNX/Triton input tensor name
   --output-name NAME          ONNX/Triton output tensor name
   --sac-output MODE           deterministic | mean_logstd | all (default: deterministic)
+  --trajectory-policy         Preset for local trajectory policy deployment
+                              (model=magp_rl_trajectory, action_dim=6,
+                               output-name=trajectory_action)
 
   --precision {fp16|fp32}     trtexec precision (default: fp16)
   --max-batch-size N          trtexec max batch (default: 1)
@@ -93,6 +96,13 @@ Examples:
     --input-layout scan --normalize-input \
     --input-name scan_input --output-name control_output \
     --yes
+
+  # Local trajectory policy for ROS2 Pure Pursuit
+  bash scripts/deploy_isaac_triton.sh \
+    --trajectory-policy \
+    --checkpoint-dir ./ckpts/train/YYYY-MM-DD/HH-MM-SS \
+    --lidar-profile t_mini_plus \
+    --yes
 EOF
 }
 
@@ -105,10 +115,11 @@ infer_checkpoint_obs_dim_hint() {
   local ckpt_dir="$1"
   local agent="$2"
   local step="$3"
+  local action_dim="$4"
 
   local dense_in_dim=""
   dense_in_dim="$(
-    python3 - "${EXPORT_SCRIPT}" "${ckpt_dir}" "${agent}" "${step}" <<'PY'
+    python3 - "${EXPORT_SCRIPT}" "${ckpt_dir}" "${agent}" "${step}" "${action_dim}" <<'PY'
 import importlib.util
 import sys
 
@@ -116,6 +127,7 @@ export_script = sys.argv[1]
 ckpt_dir = sys.argv[2]
 agent = sys.argv[3]
 step_raw = sys.argv[4]
+action_dim = int(sys.argv[5])
 step = int(step_raw) if step_raw else None
 
 try:
@@ -131,7 +143,7 @@ spec.loader.exec_module(mod)
 
 try:
     # Restore target shape does not need to match checkpoint exactly for reading params.
-    target = mod._make_restore_target(agent, obs_dim=1080, action_dim=2)
+    target = mod._make_restore_target(agent, obs_dim=1080, action_dim=action_dim)
     restored = checkpoints.restore_checkpoint(ckpt_dir=ckpt_dir, target=target, step=step)
     actor_tree = mod._extract_actor_param_tree(restored)
 
@@ -415,7 +427,7 @@ export_onnx_if_needed() {
   [[ -d "${selected_ckpt_dir}" ]] || die "Checkpoint directory not found: ${selected_ckpt_dir}"
 
   local inferred_obs_dim=""
-  inferred_obs_dim="$(infer_checkpoint_obs_dim_hint "${selected_ckpt_dir}" "${AGENT}" "${STEP}")"
+  inferred_obs_dim="$(infer_checkpoint_obs_dim_hint "${selected_ckpt_dir}" "${AGENT}" "${STEP}" "${ACTION_DIM}")"
   confirm_obs_dim_preflight "${selected_ckpt_dir}" "${inferred_obs_dim}"
 
   if [[ -z "${OUTPUT_ONNX_PATH}" ]]; then
@@ -509,6 +521,7 @@ while [[ $# -gt 0 ]]; do
     --input-name) INPUT_NAME="$2"; shift 2 ;;
     --output-name) OUTPUT_NAME="$2"; shift 2 ;;
     --sac-output) SAC_OUTPUT="$2"; shift 2 ;;
+    --trajectory-policy) MODEL_NAME="magp_rl_trajectory"; ACTION_DIM=6; OUTPUT_NAME="trajectory_action"; shift ;;
     --precision) PRECISION="$2"; shift 2 ;;
     --max-batch-size) MAX_BATCH_SIZE="$2"; shift 2 ;;
     --trtexec-bin) TRTEXEC_BIN="$2"; shift 2 ;;

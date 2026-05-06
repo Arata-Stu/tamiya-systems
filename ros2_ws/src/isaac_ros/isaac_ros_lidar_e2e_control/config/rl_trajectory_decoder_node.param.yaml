@@ -1,0 +1,12 @@
+# %YAML 1.2
+/**:
+  ros__parameters:
+    output_tensor_name: output_trajectory_action
+    frame_id: base_link
+    num_points: 20
+    x_anchors: [0.4, 1.0, 1.8]
+    x_offset_scale: 0.25
+    y_scale: 0.8
+    min_control_dx: 0.05
+    min_forward_distance: 0.05
+    clip_action: true

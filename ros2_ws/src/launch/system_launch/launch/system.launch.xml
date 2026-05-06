@@ -24,6 +24,13 @@
     <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
+    <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
+    <arg name="magp_rl_model_name" default="magp_rl_trajectory" />
+    <arg name="magp_rl_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
+    <arg name="magp_rl_decoder_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/rl_trajectory_decoder_node.param.yaml" />
+    <arg name="magp_rl_scan_topic" default="/scan" />
+    <arg name="magp_rl_scan_tensor_topic" default="/encoder/scan_tensor" />
+    <arg name="magp_rl_run_pure_pursuit" default="true" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
     <arg name="pure_pursuit_param" default="$(find-pkg-share system_launch)/config/control/pure_pursuit_controller.param.yaml" />
     <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
@@ -105,6 +112,25 @@
             <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
             <arg name="container_name" value="$(var lidar_container_name)"/>
             <arg name="create_container" value="false"/>
+        </include>
+    </group>
+
+    <!-- MAGP RL trajectory policy: scan -> Triton -> trajectory -> Pure Pursuit -->
+    <group if="$(var use_magp_rl_trajectory)">
+        <include file="$(find-pkg-share isaac_ros_lidar_e2e_control)/launch/magp_rl_lidar_trajectory.launch.xml">
+            <arg name="lidar_encoder_node_param" value="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/lidar_encoder_node.param.yaml" />
+            <arg name="rl_trajectory_decoder_node_param" value="$(var magp_rl_decoder_param)" />
+            <arg name="pure_pursuit_controller_param" value="$(var pure_pursuit_param)" />
+            <arg name="container_name" value="$(var lidar_container_name)" />
+            <arg name="model_repository_path" value="$(var magp_rl_model_repository_path)" />
+            <arg name="model_name" value="$(var magp_rl_model_name)" />
+            <arg name="scan_topic" value="$(var magp_rl_scan_topic)" />
+            <arg name="scan_tensor_topic" value="$(var magp_rl_scan_tensor_topic)" />
+            <arg name="output_trajectory_topic" value="$(var pure_pursuit_trajectory_topic)" />
+            <arg name="output_control_topic" value="$(var autonomous_control_cmd)" />
+            <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)" />
+            <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)" />
+            <arg name="run_pure_pursuit" value="$(var magp_rl_run_pure_pursuit)" />
         </include>
     </group>
 

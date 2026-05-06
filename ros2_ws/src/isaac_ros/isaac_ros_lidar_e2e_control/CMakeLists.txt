@@ -43,6 +43,15 @@ set_target_properties(lidarnet_decoder_node PROPERTIES
   BUILD_RPATH_USE_ORIGIN TRUE
   INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+# RL trajectory decoder node
+ament_auto_add_library(rl_trajectory_decoder_node SHARED src/rl_trajectory_decoder_node.cpp)
+rclcpp_components_register_nodes(rl_trajectory_decoder_node "isaac_ros_lidar_e2e_control::RlTrajectoryDecoderNode")
+set(node_plugins "${node_plugins}isaac_ros_lidar_e2e_control::RlTrajectoryDecoderNode;$<TARGET_FILE:rl_trajectory_decoder_node>\n")
+set_target_properties(rl_trajectory_decoder_node PROPERTIES
+  BUILD_WITH_INSTALL_RPATH TRUE
+  BUILD_RPATH_USE_ORIGIN TRUE
+  INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 # Embed versioning information into installed files
 ament_index_get_resource(ISAAC_ROS_COMMON_CMAKE_PATH isaac_ros_common_cmake_path isaac_ros_common)
 include("${ISAAC_ROS_COMMON_CMAKE_PATH}/isaac_ros_common-version-info.cmake")
