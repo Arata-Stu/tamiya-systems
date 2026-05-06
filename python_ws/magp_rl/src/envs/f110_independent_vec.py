@@ -135,10 +135,15 @@ class F110IndependentVecEnv:
     def _setup_local_trajectory_controller(self, config):
         self.local_trajectory_controller = None
         self.trajectory_smoothness_coef = 0.0
+        self.trajectory_tail_smoothness_coef = 0.0
+        self.trajectory_tail_smoothness_power = 2.0
         self.trajectory_lateral_coef = 0.0
+        self.trajectory_terminal_lateral_coef = 0.0
+        self.trajectory_terminal_heading_coef = 0.0
         self.trajectory_centerline_coef = 0.0
         self.trajectory_centerline_forward_weight = 0.25
         self.trajectory_centerline_lateral_weight = 1.0
+        self.trajectory_centerline_tail_power = 0.0
         self.trajectory_centerline_distances = None
         if self.control_interface == "direct":
             if self.policy_action_dim != 2:
@@ -186,13 +191,28 @@ class F110IndependentVecEnv:
             )
         reward_cfg = traj_cfg.get("reward", {})
         self.trajectory_smoothness_coef = float(reward_cfg.get("smoothness_coef", 0.0))
+        self.trajectory_tail_smoothness_coef = float(
+            reward_cfg.get("tail_smoothness_coef", 0.0)
+        )
+        self.trajectory_tail_smoothness_power = float(
+            reward_cfg.get("tail_smoothness_power", 2.0)
+        )
         self.trajectory_lateral_coef = float(reward_cfg.get("lateral_coef", 0.0))
+        self.trajectory_terminal_lateral_coef = float(
+            reward_cfg.get("terminal_lateral_coef", 0.0)
+        )
+        self.trajectory_terminal_heading_coef = float(
+            reward_cfg.get("terminal_heading_coef", 0.0)
+        )
         self.trajectory_centerline_coef = float(reward_cfg.get("centerline_coef", 0.0))
         self.trajectory_centerline_forward_weight = float(
             reward_cfg.get("centerline_forward_weight", 0.25)
         )
         self.trajectory_centerline_lateral_weight = float(
             reward_cfg.get("centerline_lateral_weight", 1.0)
+        )
+        self.trajectory_centerline_tail_power = float(
+            reward_cfg.get("centerline_tail_power", 0.0)
         )
         centerline_horizon = float(reward_cfg.get("centerline_horizon", x_anchors[-1]))
         self.trajectory_centerline_distances = jnp.linspace(
@@ -274,11 +294,32 @@ class F110IndependentVecEnv:
                 - self.trajectory_smoothness_coef
                 * self.local_trajectory_controller.smoothness_penalty(action_normalized)
             )
+        if self.trajectory_tail_smoothness_coef > 0.0:
+            reward = (
+                reward
+                - self.trajectory_tail_smoothness_coef
+                * self.local_trajectory_controller.tail_smoothness_penalty(
+                    action_normalized,
+                    self.trajectory_tail_smoothness_power,
+                )
+            )
         if self.trajectory_lateral_coef > 0.0:
             reward = (
                 reward
                 - self.trajectory_lateral_coef
                 * self.local_trajectory_controller.lateral_penalty(action_normalized)
+            )
+        if self.trajectory_terminal_lateral_coef > 0.0:
+            reward = (
+                reward
+                - self.trajectory_terminal_lateral_coef
+                * self.local_trajectory_controller.terminal_lateral_penalty(action_normalized)
+            )
+        if self.trajectory_terminal_heading_coef > 0.0:
+            reward = (
+                reward
+                - self.trajectory_terminal_heading_coef
+                * self.local_trajectory_controller.terminal_heading_penalty(action_normalized)
             )
         if self.trajectory_centerline_coef > 0.0:
             reward = (
@@ -328,6 +369,11 @@ class F110IndependentVecEnv:
             self.trajectory_centerline_forward_weight * error[:, :, 0] ** 2
             + self.trajectory_centerline_lateral_weight * error[:, :, 1] ** 2
         )
+        if self.trajectory_centerline_tail_power > 0.0:
+            weights = jnp.linspace(0.0, 1.0, weighted_error.shape[1], dtype=jnp.float32)
+            weights = weights**self.trajectory_centerline_tail_power
+            weights = weights / jnp.maximum(jnp.mean(weights), 1.0e-6)
+            weighted_error = weighted_error * weights[None, :]
         return jnp.mean(weighted_error, axis=1)
 
     def _to_normalized_action(self, action_physical):

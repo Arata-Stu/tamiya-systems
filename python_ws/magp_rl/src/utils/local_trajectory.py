@@ -138,6 +138,23 @@ class LocalTrajectoryPurePursuit:
         curvature = traj[:, 2:, :] - 2.0 * traj[:, 1:-1, :] + traj[:, :-2, :]
         return jnp.mean(jnp.sum(curvature**2, axis=-1), axis=1)
 
+    def tail_smoothness_penalty(self, action_normalized, power=2.0):
+        traj = self.action_to_trajectory(action_normalized)
+        curvature = traj[:, 2:, :] - 2.0 * traj[:, 1:-1, :] + traj[:, :-2, :]
+        weights = jnp.linspace(0.0, 1.0, curvature.shape[1], dtype=jnp.float32) ** float(power)
+        weights = weights / jnp.maximum(jnp.mean(weights), 1.0e-6)
+        return jnp.mean(jnp.sum(curvature**2, axis=-1) * weights[None, :], axis=1)
+
     def lateral_penalty(self, action_normalized):
         traj = self.action_to_trajectory(action_normalized)
         return jnp.mean(traj[:, :, 1] ** 2, axis=1)
+
+    def terminal_lateral_penalty(self, action_normalized):
+        traj = self.action_to_trajectory(action_normalized)
+        return traj[:, -1, 1] ** 2
+
+    def terminal_heading_penalty(self, action_normalized):
+        traj = self.action_to_trajectory(action_normalized)
+        terminal_delta = traj[:, -1, :] - traj[:, -2, :]
+        heading = jnp.arctan2(terminal_delta[:, 1], jnp.maximum(terminal_delta[:, 0], 1.0e-6))
+        return heading**2

@@ -160,6 +160,22 @@ python3 train.py \
 
 `env.trajectory.reward.smoothness_coef` と `env.trajectory.reward.lateral_coef` を上げると、曲線の暴れを報酬側でも抑制できます。
 `env.trajectory.reward.centerline_coef` を上げると、ego frame に切り出した centerline と policy trajectory の誤差を罰します。最初は `0.2 ~ 1.0` くらいから試すのが扱いやすいです。
+後半の経路がうねる場合は、後方点を強く見る設定を併用します。
+
+```bash
+python3 train.py \
+  agent=sac \
+  env.parallel.mode=independent \
+  train.num_envs=128 \
+  env.control_interface=local_trajectory_pp \
+  env.action_dim=6 \
+  env.reward.tal.enabled=false \
+  env.trajectory.reward.centerline_coef=0.8 \
+  env.trajectory.reward.centerline_tail_power=2.0 \
+  env.trajectory.reward.tail_smoothness_coef=0.1 \
+  env.trajectory.reward.terminal_lateral_coef=0.5 \
+  env.trajectory.reward.terminal_heading_coef=0.2
+```
 
 ## 6. 評価（Eval）
 

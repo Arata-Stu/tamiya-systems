@@ -80,11 +80,16 @@ env:
     short_path_speed_scale: 0.6
     reward:
       smoothness_coef: 0.0
+      tail_smoothness_coef: 0.0
+      tail_smoothness_power: 2.0
       lateral_coef: 0.0
+      terminal_lateral_coef: 0.0
+      terminal_heading_coef: 0.0
       centerline_coef: 0.0
       centerline_horizon: 1.8
       centerline_forward_weight: 0.25
       centerline_lateral_weight: 1.0
+      centerline_tail_power: 0.0
 
   reward:
     base_reward_scale: 1.0
