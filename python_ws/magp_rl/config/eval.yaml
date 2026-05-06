@@ -61,6 +61,10 @@ env:
     reward:
       smoothness_coef: 0.0
       lateral_coef: 0.0
+      centerline_coef: 0.0
+      centerline_horizon: 1.8
+      centerline_forward_weight: 0.25
+      centerline_lateral_weight: 1.0
 
   reward:
     base_reward_scale: 1.0

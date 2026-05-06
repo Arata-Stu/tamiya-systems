@@ -146,6 +146,10 @@ class F110EnvWrapper:
         self.local_trajectory_controller = None
         self.trajectory_smoothness_coef = 0.0
         self.trajectory_lateral_coef = 0.0
+        self.trajectory_centerline_coef = 0.0
+        self.trajectory_centerline_forward_weight = 0.25
+        self.trajectory_centerline_lateral_weight = 1.0
+        self.trajectory_centerline_distances = None
         if self.control_interface == "direct":
             if self.policy_action_dim != 2:
                 raise ValueError(
@@ -160,13 +164,14 @@ class F110EnvWrapper:
             )
 
         traj_cfg = config.get("trajectory", {})
+        x_anchors = tuple(traj_cfg.get("x_anchors", [0.4, 1.0, 1.8]))
         traj_max_speed = traj_cfg.get("max_speed", self.max_speed)
         if traj_max_speed is None:
             traj_max_speed = self.max_speed
 
         self.local_trajectory_controller = LocalTrajectoryPurePursuit(
             num_points=int(traj_cfg.get("num_points", 20)),
-            x_anchors=tuple(traj_cfg.get("x_anchors", [0.4, 1.0, 1.8])),
+            x_anchors=x_anchors,
             x_offset_scale=float(traj_cfg.get("x_offset_scale", 0.25)),
             y_scale=float(traj_cfg.get("y_scale", 0.8)),
             min_control_dx=float(traj_cfg.get("min_control_dx", 0.05)),
@@ -192,6 +197,20 @@ class F110EnvWrapper:
         reward_cfg = traj_cfg.get("reward", {})
         self.trajectory_smoothness_coef = float(reward_cfg.get("smoothness_coef", 0.0))
         self.trajectory_lateral_coef = float(reward_cfg.get("lateral_coef", 0.0))
+        self.trajectory_centerline_coef = float(reward_cfg.get("centerline_coef", 0.0))
+        self.trajectory_centerline_forward_weight = float(
+            reward_cfg.get("centerline_forward_weight", 0.25)
+        )
+        self.trajectory_centerline_lateral_weight = float(
+            reward_cfg.get("centerline_lateral_weight", 1.0)
+        )
+        centerline_horizon = float(reward_cfg.get("centerline_horizon", x_anchors[-1]))
+        self.trajectory_centerline_distances = jnp.linspace(
+            centerline_horizon / self.local_trajectory_controller.num_points,
+            centerline_horizon,
+            self.local_trajectory_controller.num_points,
+            dtype=jnp.float32,
+        )
 
     def _setup_npc_controller(self, tal_cfg, npc_cfg):
         self.npc_teacher = None
@@ -281,7 +300,60 @@ class F110EnvWrapper:
                 - self.trajectory_lateral_coef
                 * self.local_trajectory_controller.lateral_penalty(action_normalized)
             )
+        if self.trajectory_centerline_coef > 0.0:
+            reward = (
+                reward
+                - self.trajectory_centerline_coef
+                * self._trajectory_centerline_error(action_normalized)
+            )
         return reward
+
+    def _interpolate_centerline_xy(self, target_s):
+        idx_b = jnp.searchsorted(self.waypoints_s, target_s, side="left")
+        idx_b = jnp.where(idx_b >= self.waypoints_s.shape[0], 0, idx_b)
+        idx_a = jnp.where(idx_b == 0, self.waypoints_s.shape[0] - 1, idx_b - 1)
+
+        s_a = self.waypoints_s[idx_a]
+        s_b = self.waypoints_s[idx_b]
+        s_b = jnp.where(s_b <= s_a, s_b + self.track_length, s_b)
+        target_unwrapped = jnp.where(target_s < s_a, target_s + self.track_length, target_s)
+        ratio = jnp.clip((target_unwrapped - s_a) / jnp.maximum(s_b - s_a, 1.0e-6), 0.0, 1.0)
+
+        xy_a = self.waypoints_xy[idx_a]
+        xy_b = self.waypoints_xy[idx_b]
+        return xy_a + ratio[..., None] * (xy_b - xy_a)
+
+    def _centerline_reference_local(self, poses_x, poses_y, poses_theta):
+        current_s = self._project_to_centerline_s(poses_x, poses_y)
+        target_s = jnp.mod(
+            current_s[:, None] + self.trajectory_centerline_distances[None, :],
+            self.track_length,
+        )
+        ref_xy = self._interpolate_centerline_xy(target_s)
+
+        dx = ref_xy[:, :, 0] - poses_x[:, None]
+        dy = ref_xy[:, :, 1] - poses_y[:, None]
+        cos_th = jnp.cos(-poses_theta)[:, None]
+        sin_th = jnp.sin(-poses_theta)[:, None]
+        ref_x = cos_th * dx - sin_th * dy
+        ref_y = sin_th * dx + cos_th * dy
+        return jnp.stack([ref_x, ref_y], axis=2)
+
+    def _trajectory_centerline_error(self, action_normalized):
+        state = self.sim.sim_state["state"]
+        selected_state = self._select_controlled(state)
+        ref = self._centerline_reference_local(
+            selected_state[:, 0],
+            selected_state[:, 1],
+            selected_state[:, 4],
+        )
+        pred = self.local_trajectory_controller.action_to_trajectory(action_normalized)
+        error = pred - ref
+        weighted_error = (
+            self.trajectory_centerline_forward_weight * error[:, :, 0] ** 2
+            + self.trajectory_centerline_lateral_weight * error[:, :, 1] ** 2
+        )
+        return jnp.mean(weighted_error, axis=1)
 
     def _to_normalized_action(self, action_physical):
         action_normalized = (action_physical - self.action_bias) / self.action_scale

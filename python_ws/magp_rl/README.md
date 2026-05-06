@@ -149,7 +149,8 @@ python3 train.py \
   train.num_envs=128 \
   env.control_interface=local_trajectory_pp \
   env.action_dim=6 \
-  env.reward.tal.enabled=false
+  env.reward.tal.enabled=false \
+  env.trajectory.reward.centerline_coef=0.5
 ```
 
 - action: `[p1_x, p1_y, p2_x, p2_y, p3_x, p3_y]` の正規化値
@@ -158,6 +159,7 @@ python3 train.py \
 - 既存の `direct` mode は `env.control_interface=direct env.action_dim=2`
 
 `env.trajectory.reward.smoothness_coef` と `env.trajectory.reward.lateral_coef` を上げると、曲線の暴れを報酬側でも抑制できます。
+`env.trajectory.reward.centerline_coef` を上げると、ego frame に切り出した centerline と policy trajectory の誤差を罰します。最初は `0.2 ~ 1.0` くらいから試すのが扱いやすいです。
 
 ## 6. 評価（Eval）
 
