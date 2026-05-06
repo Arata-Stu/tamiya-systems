@@ -17,7 +17,7 @@ env:
 
   track:
     root: '../f1tenth_racetracks'
-    name: 'Austin'
+    name: 'BrandsHatch'
     line_type: 'centerline' # centerline | raceline
 
   map_path: null
