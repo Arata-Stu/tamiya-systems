@@ -79,7 +79,7 @@ class TrajectoryVideoRecorder:
         color = cv2.applyColorMap(np.array([[color_idx]], dtype=np.uint8), cv2.COLORMAP_TURBO)[0, 0]
         return (int(color[0]), int(color[1]), int(color[2]))  # BGR
 
-    def add_frame(self, x, y, speed_mps, episode_idx, collided=False):
+    def add_frame(self, x, y, speed_mps, episode_idx, collided=False, planned_trajectory_xy=None):
         frame = self.base.copy()
         self.traj.append((x, y))
         self.traj_speeds.append(float(speed_mps))
@@ -89,6 +89,23 @@ class TrajectoryVideoRecorder:
                 p1 = self._world_to_pixel(self.traj[i][0], self.traj[i][1])
                 seg_color = self._speed_to_color(self.traj_speeds[i])
                 cv2.line(frame, p0, p1, seg_color, 2, lineType=cv2.LINE_AA)
+
+        if planned_trajectory_xy is not None:
+            planned = np.asarray(planned_trajectory_xy, dtype=np.float32)
+            if planned.ndim == 2 and planned.shape[0] > 1 and planned.shape[1] == 2:
+                pts = np.array(
+                    [self._world_to_pixel(float(px), float(py)) for px, py in planned],
+                    dtype=np.int32,
+                )
+                cv2.polylines(
+                    frame,
+                    [pts],
+                    isClosed=False,
+                    color=(80, 220, 80),
+                    thickness=2,
+                    lineType=cv2.LINE_AA,
+                )
+                cv2.circle(frame, tuple(pts[-1]), 4, (40, 180, 40), -1, lineType=cv2.LINE_AA)
 
         car_pt = self._world_to_pixel(x, y)
         car_color = (0, 0, 255) if collided else (0, 180, 0)
@@ -108,6 +125,29 @@ class TrajectoryVideoRecorder:
 
     def close(self):
         self.writer.release()
+
+
+def _policy_trajectory_world(env, action_normalized):
+    controller = getattr(env, "local_trajectory_controller", None)
+    if controller is None or not hasattr(env, "get_headings"):
+        return None
+
+    local_traj = np.asarray(jax.device_get(controller.action_to_trajectory(action_normalized)))
+    if local_traj.ndim != 3 or local_traj.shape[0] == 0:
+        return None
+
+    pos_x, pos_y = env.get_positions()
+    headings = env.get_headings()
+    ego_x = float(jax.device_get(pos_x[0]))
+    ego_y = float(jax.device_get(pos_y[0]))
+    yaw = float(jax.device_get(headings[0]))
+    cos_yaw = np.cos(yaw)
+    sin_yaw = np.sin(yaw)
+
+    local = local_traj[0]
+    world_x = ego_x + cos_yaw * local[:, 0] - sin_yaw * local[:, 1]
+    world_y = ego_y + sin_yaw * local[:, 0] + cos_yaw * local[:, 1]
+    return np.stack([world_x, world_y], axis=1)
 
 
 def _restore_ppo_actor(cfg: DictConfig, rng, obs_shape):
@@ -418,6 +458,20 @@ def main(cfg: DictConfig):
 
         for _ in range(cfg.eval.max_steps):
             action = act_fn(actor_state, obs)
+
+            planned_trajectory_xy = None
+            frame_x = None
+            frame_y = None
+            frame_speed = None
+            if video_recorder is not None:
+                pre_pos_x, pre_pos_y = env.get_positions()
+                pre_speeds = env.get_speeds()
+                frame_x = float(jax.device_get(pre_pos_x[0]))
+                frame_y = float(jax.device_get(pre_pos_y[0]))
+                frame_speed = float(jax.device_get(pre_speeds[0]))
+                if bool(cfg.eval.video.get("draw_policy_trajectory", True)):
+                    planned_trajectory_xy = _policy_trajectory_world(env, action)
+
             obs, reward, done, info = env.step(action)
 
             episode_return += float(jax.device_get(jnp.mean(reward)))
@@ -433,17 +487,27 @@ def main(cfg: DictConfig):
             speed_count += 1
 
             if video_recorder is not None:
-                pos_x, pos_y = env.get_positions()
-                ego_x = float(jax.device_get(pos_x[0]))
-                ego_y = float(jax.device_get(pos_y[0]))
-                ego_speed = float(jax.device_get(speeds[0]))
                 if video_sync_to_sim_time:
                     sim_time = episode_steps * video_sim_dt
                     while sim_time + 1e-9 >= video_next_frame_time:
-                        video_recorder.add_frame(ego_x, ego_y, ego_speed, ep + 1, collided=False)
+                        video_recorder.add_frame(
+                            frame_x,
+                            frame_y,
+                            frame_speed,
+                            ep + 1,
+                            collided=False,
+                            planned_trajectory_xy=planned_trajectory_xy,
+                        )
                         video_next_frame_time += video_frame_interval
                 else:
-                    video_recorder.add_frame(ego_x, ego_y, ego_speed, ep + 1, collided=False)
+                    video_recorder.add_frame(
+                        frame_x,
+                        frame_y,
+                        frame_speed,
+                        ep + 1,
+                        collided=False,
+                        planned_trajectory_xy=planned_trajectory_xy,
+                    )
 
             checkpoint_done = info.get("checkpoint_done", jnp.zeros((env.num_envs,), dtype=jnp.float32))
             lap_done = bool(jax.device_get(jnp.any(checkpoint_done > 0.5)))

@@ -119,6 +119,7 @@ eval:
     color_by_speed: true
     speed_min_mps: 0.0
     speed_max_mps: 5.0
+    draw_policy_trajectory: true
 
 hydra:
   run:

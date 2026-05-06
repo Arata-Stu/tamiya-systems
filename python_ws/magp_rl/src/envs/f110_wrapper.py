@@ -496,6 +496,10 @@ class F110EnvWrapper:
         poses_y = self._select_controlled(state[:, 1])
         return poses_x, poses_y
 
+    def get_headings(self):
+        state = self.sim.sim_state["state"]
+        return self._select_controlled(state[:, 4])
+
     def get_speeds(self):
         speed_all = jnp.abs(self.sim.sim_state["state"][:, 3])
         return self._select_controlled(speed_all)

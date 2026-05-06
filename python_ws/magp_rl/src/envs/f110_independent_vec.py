@@ -415,6 +415,10 @@ class F110IndependentVecEnv:
         state = self.sim_state["state"][:, 0, :]
         return state[:, 0], state[:, 1]
 
+    def get_headings(self):
+        state = self.sim_state["state"][:, 0, :]
+        return state[:, 4]
+
     def get_speeds(self):
         return jnp.abs(self.sim_state["state"][:, 0, 3])
 
