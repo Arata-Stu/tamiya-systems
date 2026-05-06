@@ -30,6 +30,7 @@ LIDAR_FOV_RAD=""
 INPUT_NAME="scan_input"
 OUTPUT_NAME="control_output"
 SAC_OUTPUT="deterministic"
+POLICY_MODE="auto"           # auto | direct | trajectory
 
 PRECISION="fp16"             # fp16 | fp32
 MAX_BATCH_SIZE=1
@@ -41,6 +42,10 @@ OBS_DIM_SET=false
 SCAN_POINTS_SET=false
 MAX_LIDAR_RANGE_SET=false
 LIDAR_FOV_SET=false
+MODEL_NAME_SET=false
+ACTION_DIM_SET=false
+OUTPUT_NAME_SET=false
+POLICY_MODE_SET=false
 
 usage() {
   cat <<'EOF'
@@ -69,6 +74,7 @@ Options:
   --input-name NAME           ONNX/Triton input tensor name
   --output-name NAME          ONNX/Triton output tensor name
   --sac-output MODE           deterministic | mean_logstd | all (default: deterministic)
+  --policy-mode MODE          auto | direct | trajectory (default: auto)
   --trajectory-policy         Preset for local trajectory policy deployment
                               (model=magp_rl_trajectory, action_dim=6,
                                output-name=trajectory_action)
@@ -109,6 +115,133 @@ EOF
 die() {
   echo "ERROR: $*" >&2
   exit 1
+}
+
+apply_policy_preset() {
+  local mode="$1"
+  case "${mode}" in
+    direct)
+      if [[ "${MODEL_NAME_SET}" == false ]]; then MODEL_NAME="magp_rl_policy"; fi
+      if [[ "${ACTION_DIM_SET}" == false ]]; then ACTION_DIM=2; fi
+      if [[ "${OUTPUT_NAME_SET}" == false ]]; then OUTPUT_NAME="control_output"; fi
+      ;;
+    trajectory)
+      if [[ "${MODEL_NAME_SET}" == false ]]; then MODEL_NAME="magp_rl_trajectory"; fi
+      if [[ "${ACTION_DIM_SET}" == false ]]; then ACTION_DIM=6; fi
+      if [[ "${OUTPUT_NAME_SET}" == false ]]; then OUTPUT_NAME="trajectory_action"; fi
+      ;;
+    *)
+      die "Unsupported policy mode: ${mode}"
+      ;;
+  esac
+  POLICY_MODE="${mode}"
+}
+
+infer_checkpoint_action_dim_hint() {
+  local ckpt_dir="$1"
+  local agent="$2"
+  local step="$3"
+
+  local action_dim=""
+  action_dim="$(
+    python3 - "${EXPORT_SCRIPT}" "${ckpt_dir}" "${agent}" "${step}" <<'PY'
+import importlib.util
+import sys
+
+export_script = sys.argv[1]
+ckpt_dir = sys.argv[2]
+agent = sys.argv[3]
+step_raw = sys.argv[4]
+step = int(step_raw) if step_raw else None
+
+try:
+    import jax  # noqa: F401
+    from flax.training import checkpoints
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+spec = importlib.util.spec_from_file_location("magp_rl_export_onnx", export_script)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+
+def read_action_dim(candidate_action_dim):
+    target = mod._make_restore_target(agent, obs_dim=1080, action_dim=candidate_action_dim)
+    restored = checkpoints.restore_checkpoint(ckpt_dir=ckpt_dir, target=target, step=step)
+    actor_tree = mod._extract_actor_param_tree(restored)
+
+    if agent == "ppo":
+        mlp = actor_tree["actor_mlp"]
+        dense_keys = mod._sorted_layer_keys(mlp, "Dense")
+        layer = mlp[dense_keys[-1]]
+    else:
+        dense_keys = mod._sorted_layer_keys(actor_tree, "Dense")
+        layer = actor_tree[dense_keys[-2] if agent == "sac" else dense_keys[-1]]
+
+    return int(mod._as_numpy(layer["kernel"]).shape[1])
+
+for candidate in (2, 6):
+    try:
+        print(str(read_action_dim(candidate)))
+        raise SystemExit(0)
+    except Exception:
+        pass
+
+print("")
+PY
+  )"
+  echo "${action_dim}" | tr -d '[:space:]'
+}
+
+select_policy_mode_interactive() {
+  [[ -t 0 ]] || die "Policy mode auto-detection failed and no TTY is available. Use --policy-mode direct or --policy-mode trajectory."
+
+  local options=("trajectory (6D Bezier -> Pure Pursuit)" "direct (2D steer/speed)" "Quit")
+  echo "=== Select MAGP RL deployment policy mode ===" >&2
+  PS3="Enter number: "
+  select opt in "${options[@]}"; do
+    case "${opt}" in
+      "trajectory (6D Bezier -> Pure Pursuit)") echo "trajectory"; return ;;
+      "direct (2D steer/speed)") echo "direct"; return ;;
+      "Quit") exit 1 ;;
+      *) echo "Invalid selection." >&2 ;;
+    esac
+  done
+}
+
+configure_policy_mode_from_checkpoint() {
+  local selected_ckpt_dir="$1"
+
+  if [[ "${POLICY_MODE}" == "direct" || "${POLICY_MODE}" == "trajectory" ]]; then
+    apply_policy_preset "${POLICY_MODE}"
+    return
+  fi
+
+  [[ "${POLICY_MODE}" == "auto" ]] || die "Unsupported --policy-mode: ${POLICY_MODE}"
+
+  local inferred_action_dim=""
+  inferred_action_dim="$(infer_checkpoint_action_dim_hint "${selected_ckpt_dir}" "${AGENT}" "${STEP}")"
+
+  case "${inferred_action_dim}" in
+    2)
+      echo "Policy mode auto-detected: direct (action_dim=2)"
+      apply_policy_preset "direct"
+      ;;
+    6)
+      echo "Policy mode auto-detected: trajectory (action_dim=6)"
+      apply_policy_preset "trajectory"
+      ;;
+    *)
+      if [[ "${YES}" == true ]]; then
+        echo "WARNING: Could not auto-detect policy mode from checkpoint. Falling back to direct for --yes compatibility." >&2
+        apply_policy_preset "direct"
+      else
+        local selected_mode
+        selected_mode="$(select_policy_mode_interactive)"
+        apply_policy_preset "${selected_mode}"
+      fi
+      ;;
+  esac
 }
 
 infer_checkpoint_obs_dim_hint() {
@@ -279,6 +412,7 @@ print_parameters() {
   echo "MAGP RL Deployment Configuration"
   echo "==================================================="
   echo "AGENT              : ${AGENT}"
+  echo "POLICY_MODE        : ${POLICY_MODE}"
   echo "MODEL_NAME         : ${MODEL_NAME}"
   echo "TRITON_MODEL_REPO  : ${TRITON_MODEL_REPO}"
   echo "INPUT_ONNX_PATH    : ${INPUT_ONNX_PATH}"
@@ -399,6 +533,13 @@ build_trt_engine() {
 export_onnx_if_needed() {
   if [[ -n "${INPUT_ONNX_PATH}" ]]; then
     [[ -f "${INPUT_ONNX_PATH}" ]] || die "ONNX file not found: ${INPUT_ONNX_PATH}"
+    if [[ "${POLICY_MODE}" == "direct" || "${POLICY_MODE}" == "trajectory" ]]; then
+      apply_policy_preset "${POLICY_MODE}"
+    elif [[ "${POLICY_MODE}" == "auto" && "${YES}" == false ]]; then
+      local selected_mode
+      selected_mode="$(select_policy_mode_interactive)"
+      apply_policy_preset "${selected_mode}"
+    fi
     return
   fi
 
@@ -425,6 +566,8 @@ export_onnx_if_needed() {
   fi
 
   [[ -d "${selected_ckpt_dir}" ]] || die "Checkpoint directory not found: ${selected_ckpt_dir}"
+
+  configure_policy_mode_from_checkpoint "${selected_ckpt_dir}"
 
   local inferred_obs_dim=""
   inferred_obs_dim="$(infer_checkpoint_obs_dim_hint "${selected_ckpt_dir}" "${AGENT}" "${STEP}" "${ACTION_DIM}")"
@@ -507,10 +650,10 @@ while [[ $# -gt 0 ]]; do
     --step) STEP="$2"; shift 2 ;;
     --output-onnx) OUTPUT_ONNX_PATH="$2"; shift 2 ;;
     --agent) AGENT="$2"; shift 2 ;;
-    --model-name) MODEL_NAME="$2"; shift 2 ;;
+    --model-name) MODEL_NAME="$2"; MODEL_NAME_SET=true; shift 2 ;;
     --triton-model-repo) TRITON_MODEL_REPO="$2"; shift 2 ;;
     --obs-dim) OBS_DIM="$2"; OBS_DIM_SET=true; shift 2 ;;
-    --action-dim) ACTION_DIM="$2"; shift 2 ;;
+    --action-dim) ACTION_DIM="$2"; ACTION_DIM_SET=true; shift 2 ;;
     --input-layout) INPUT_LAYOUT="$2"; shift 2 ;;
     --scan-points) SCAN_POINTS="$2"; SCAN_POINTS_SET=true; shift 2 ;;
     --normalize-input) NORMALIZE_INPUT=true; shift ;;
@@ -519,9 +662,10 @@ while [[ $# -gt 0 ]]; do
     --lidar-profile) LIDAR_PROFILE="$2"; shift 2 ;;
     --lidar-fov-rad) LIDAR_FOV_RAD="$2"; LIDAR_FOV_SET=true; shift 2 ;;
     --input-name) INPUT_NAME="$2"; shift 2 ;;
-    --output-name) OUTPUT_NAME="$2"; shift 2 ;;
+    --output-name) OUTPUT_NAME="$2"; OUTPUT_NAME_SET=true; shift 2 ;;
     --sac-output) SAC_OUTPUT="$2"; shift 2 ;;
-    --trajectory-policy) MODEL_NAME="magp_rl_trajectory"; ACTION_DIM=6; OUTPUT_NAME="trajectory_action"; shift ;;
+    --policy-mode) POLICY_MODE="$2"; POLICY_MODE_SET=true; shift 2 ;;
+    --trajectory-policy) POLICY_MODE="trajectory"; POLICY_MODE_SET=true; shift ;;
     --precision) PRECISION="$2"; shift 2 ;;
     --max-batch-size) MAX_BATCH_SIZE="$2"; shift 2 ;;
     --trtexec-bin) TRTEXEC_BIN="$2"; shift 2 ;;
@@ -536,6 +680,7 @@ done
 [[ "${INPUT_LAYOUT}" == "scan" || "${INPUT_LAYOUT}" == "flat" ]] || die "input-layout must be scan or flat"
 [[ "${LIDAR_PROFILE}" == "custom" || "${LIDAR_PROFILE}" == "hokuyo" || "${LIDAR_PROFILE}" == "t_mini_plus" ]] || die "invalid --lidar-profile"
 [[ "${SAC_OUTPUT}" == "deterministic" || "${SAC_OUTPUT}" == "mean_logstd" || "${SAC_OUTPUT}" == "all" ]] || die "invalid --sac-output"
+[[ "${POLICY_MODE}" == "auto" || "${POLICY_MODE}" == "direct" || "${POLICY_MODE}" == "trajectory" ]] || die "invalid --policy-mode"
 if [[ "${AGENT}" == "sac" ]]; then
   [[ "${SAC_OUTPUT}" == "deterministic" ]] || die "Deployment expects deterministic control output. Use --sac-output deterministic."
 fi

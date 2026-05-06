@@ -248,11 +248,13 @@ bash ./scripts/deploy_isaac_triton.sh \
   --yes
 ```
 
-局所 trajectory policy を ROS2 の Pure Pursuit へつなぐ場合は、6D action 出力として deploy します。
+checkpoint を読める環境では、deploy script が actor の action dimension を見て `direct` / `trajectory` を自動判定します。推定に失敗した場合は interactive に選択できます。
+
+局所 trajectory policy を ROS2 の Pure Pursuit へつなぐ場合は、明示的に指定することもできます。
 
 ```bash
 bash ./scripts/deploy_isaac_triton.sh \
-  --trajectory-policy \
+  --policy-mode trajectory \
   --checkpoint-dir ./ckpts/train/YYYY-MM-DD/HH-MM-SS \
   --lidar-profile t_mini_plus \
   --input-layout scan \
@@ -260,7 +262,7 @@ bash ./scripts/deploy_isaac_triton.sh \
   --yes
 ```
 
-この preset は `model_name=magp_rl_trajectory`, `action_dim=6`, `output_name=trajectory_action` を使います。ROS2 側は `magp_rl_lidar_trajectory.launch.xml` が Triton 出力を `nav_msgs/Path` に戻し、`pure_pursuit_controller` へ接続します。
+`--trajectory-policy` は `--policy-mode trajectory` の短縮形です。この preset は `model_name=magp_rl_trajectory`, `action_dim=6`, `output_name=trajectory_action` を使います。ROS2 側は `magp_rl_lidar_trajectory.launch.xml` が Triton 出力を `nav_msgs/Path` に戻し、`pure_pursuit_controller` へ接続します。
 
 注: Hokuyoへ切替える場合は `--lidar-profile hokuyo` に変更します。
 `--precision fp16|fp32` は TensorRT build の計算精度に反映されます。
