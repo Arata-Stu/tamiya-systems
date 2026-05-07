@@ -1,0 +1,12 @@
+<launch>
+    <arg name="esc_calibration_param" default="$(find-pkg-share jetracer_driver)/config/esc_calibration.param.yaml"/>
+    <arg name="armed" default="true"/>
+
+    <node pkg="jetracer_driver"
+          exec="esc_calibration_node.py"
+          name="esc_calibration_node"
+          output="screen">
+        <param from="$(var esc_calibration_param)"/>
+        <param name="armed" value="$(var armed)"/>
+    </node>
+</launch>

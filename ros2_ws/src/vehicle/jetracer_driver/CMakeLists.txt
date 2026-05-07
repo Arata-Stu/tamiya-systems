@@ -9,6 +9,7 @@ ament_python_install_package(${PROJECT_NAME})
 
 # Install entry point script for the node
 install(PROGRAMS
+  jetracer_driver/esc_calibration_node.py
   jetracer_driver/jetracer_node.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    ## Safety gate: launch file sets this true. Direct ros2 run must opt in explicitly.
+    armed: true
+
+    ## Time to press/hold the ESC set button before full throttle is sent.
+    initial_delay: 3.0
+
+    ## Keep these long enough for the ESC to record each endpoint.
+    max_throttle_duration: 4.0
+    min_throttle_duration: 4.0
+    neutral_duration: 2.0
+
+    ## Exact normalized throttle path: speed -> JetRacerCore throttle.
+    throttle_inversion: false
+    throttle_gain: 1.0
+    throttle_offset: 0.0
+
+    ## Steering is kept neutral during ESC calibration.
+    steering: 0.0
+    publish_rate: 20.0
+    auto_shutdown: true
