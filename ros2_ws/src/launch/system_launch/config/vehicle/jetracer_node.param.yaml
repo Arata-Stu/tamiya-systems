@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     ## スロットルとステアリングの反転
-    throttle_inversion: True
+    throttle_inversion: False
     steering_inversion: False
     ## スロットルとステアリングのゲイン
     throttle_gain: 1.0
