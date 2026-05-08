@@ -7,6 +7,7 @@ echo "=== インタラクティブ rsync 受信スクリプト ==="
 # ==========================================
 DEFAULT_REMOTE_USER="tamiya"
 IP_CANDIDATES=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+REMOTE_LIST_MAX_DEPTH=${REMOTE_LIST_MAX_DEPTH:-4}
 
 # 種別ごとのパス設定
 ROSBAG_REMOTE_DIR="/home/tamiya/workspaces/tamiya-systems/record/"
@@ -66,6 +67,37 @@ read -p "選択 (1 or 2): " MODE_CHOICE
 
 SELECTED_DIRS=()
 
+remote_relative_path() {
+    local path="$1"
+    local base="${REMOTE_BASE_DIR%/}"
+
+    if [[ "$path" == "$base"/* ]]; then
+        printf '%s\n' "${path#"$base"/}"
+    else
+        printf '%s\n' "$path"
+    fi
+}
+
+is_under_remote_base() {
+    local path="$1"
+    local base="${REMOTE_BASE_DIR%/}"
+
+    [[ "$path" == "$base"/* ]]
+}
+
+remote_rsync_source() {
+    local path="$1"
+    local base="${REMOTE_BASE_DIR%/}"
+    local rel
+
+    if [[ "$path" == "$base"/* ]]; then
+        rel="${path#"$base"/}"
+        printf '%s@%s:%s/./%s\n' "$REMOTE_USER" "$REMOTE_IP" "$base" "$rel"
+    else
+        printf '%s@%s:%s\n' "$REMOTE_USER" "$REMOTE_IP" "$path"
+    fi
+}
+
 if [ "$MODE_CHOICE" = "1" ]; then
     echo "リモートサーバー (${REMOTE_IP}) からディレクトリ一覧を取得中..."
 
@@ -74,7 +106,7 @@ if [ "$MODE_CHOICE" = "1" ]; then
         dirs+=("$d")
     done < <(
         ssh -n -o ConnectTimeout=5 "${REMOTE_USER}@${REMOTE_IP}" \
-        "find \"$REMOTE_BASE_DIR\" -maxdepth 1 -mindepth 1 -type d -print0" \
+        "find \"$REMOTE_BASE_DIR\" -mindepth 1 -maxdepth \"$REMOTE_LIST_MAX_DEPTH\" -type d -print0 | sort -z" \
         2>/dev/null
     )
 
@@ -86,7 +118,7 @@ if [ "$MODE_CHOICE" = "1" ]; then
     echo ""
     echo "取得対象を選択 (例: 1 3)"
     for i in "${!dirs[@]}"; do
-        printf "  %2d) %s\n" "$((i+1))" "$(basename "${dirs[$i]}")"
+        printf "  %2d) %s\n" "$((i+1))" "$(remote_relative_path "${dirs[$i]}")"
     done
 
     read -p "番号を入力: " DIR_CHOICES
@@ -139,8 +171,12 @@ read -p "rsyncを開始しますか？ (Y/n): " CONFIRM
 
 if [[ "${CONFIRM:-y}" =~ ^[Yy]$ ]]; then
     for target_dir in "${SELECTED_DIRS[@]}"; do
-        echo ">>> Transferring: $(basename "$target_dir")"
-        rsync -avzP "${REMOTE_USER}@${REMOTE_IP}:${target_dir}" "$LOCAL_DEST_DIR/"
+        echo ">>> Transferring: $(remote_relative_path "$target_dir")"
+        if is_under_remote_base "$target_dir"; then
+            rsync -avzP -R "$(remote_rsync_source "$target_dir")" "$LOCAL_DEST_DIR/"
+        else
+            rsync -avzP "$(remote_rsync_source "$target_dir")" "$LOCAL_DEST_DIR/"
+        fi
     done
     echo "✅ 完了しました。"
 else

@@ -18,7 +18,7 @@ WINDOW_DATA="data"
 WINDOW_LOCALIZATION_EVAL="localization_eval"
 
 SETUP_SCRIPT="source /workspaces/install/setup.bash"
-CMD_BASE="ros2 launch system_launch system.launch.xml use_section_localizer:=false localization:=false vslam:=true use_camera:=true use_lidar:=true use_ftg:=false use_emergency:=false record:=false"
+CMD_BASE="bash /scripts/launch_system.sh base"
 CMD_MONITOR="bash /scripts/monitor.sh"
 
 PYTHON_PANE1_DIR="/python_ws"

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== インタラクティブ SCP 転送スクリプト (複数選択・2階層厳密・複数IP対応) ==="
+echo "=== インタラクティブ checkpoint 転送スクリプト (複数選択・複数IP対応) ==="
 
 # ==========================================
 # デフォルト設定
@@ -10,6 +10,7 @@ DEFAULT_REMOTE_USER="tamiya"
 # ★ 複数IPのリストを定義
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
 DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/pilotnet/"
+LOCAL_LIST_MAX_DEPTH=${LOCAL_LIST_MAX_DEPTH:-4}
 # ==========================================
 
 # 1. ベースディレクトリの指定
@@ -25,11 +26,13 @@ if [ ! -d "$BASE_DIR" ]; then
 fi
 
 # 2. ベースディレクトリ内のディレクトリを配列に取得
-# -mindepth 2 -maxdepth 2 で「必ず2階層目」のみを取得し、名前順にソート
-IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -print0 | sort -z)
+dirs=()
+while IFS= read -r -d '' d; do
+    dirs+=("$d")
+done < <(find "$BASE_DIR" -mindepth 1 -maxdepth "$LOCAL_LIST_MAX_DEPTH" -type d -print0 | sort -z)
 
 if [ ${#dirs[@]} -eq 0 ]; then
-    echo "エラー: '$BASE_DIR' の中に2階層目のディレクトリが見つかりません。"
+    echo "エラー: '$BASE_DIR' の中にディレクトリが見つかりません。"
     exit 1
 fi
 
@@ -119,15 +122,22 @@ CONFIRM=${CONFIRM:-y}
 
 if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "転送を開始します..."
-    
-    # scpコマンドの実行 (余計な事前確認なしで直接送信)
-    scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
-    
-    if [ $? -eq 0 ]; then
-        echo "✅ 転送が正常に完了しました！"
-    else
-        echo "❌ 転送中にエラーが発生しました。"
+
+    if ! ssh "${REMOTE_USER}@${REMOTE_IP}" "mkdir -p '${REMOTE_DIR}'"; then
+        echo "❌ 送信先ディレクトリの作成に失敗しました。"
+        exit 1
     fi
+    transfer_status=0
+    for src_dir in "${SELECTED_DIRS[@]}"; do
+        rel_path="${src_dir#$BASE_DIR}"
+        echo ">>> Transferring: $rel_path"
+        rsync -avzP -R "$BASE_DIR./$rel_path" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}" || transfer_status=1
+    done
+    if [ "$transfer_status" -ne 0 ]; then
+        echo "❌ 転送中にエラーが発生しました。"
+        exit 1
+    fi
+    echo "✅ 転送が正常に完了しました！"
 else
     echo "転送をキャンセルしました。"
 fi

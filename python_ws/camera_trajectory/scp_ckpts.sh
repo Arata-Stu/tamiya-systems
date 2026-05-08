@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "=== Interactive SCP checkpoint transfer (multi-select, 2-level dirs, multi-IP) ==="
+echo "=== Interactive checkpoint transfer (multi-select, multi-IP) ==="
 
 # ==========================================
 # Defaults
@@ -9,6 +9,7 @@ DEFAULT_BASE_DIR="./ckpts/train/"
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
 DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/python_ws/ckpts/pilotnet_trajectory/"
+LOCAL_LIST_MAX_DEPTH=${LOCAL_LIST_MAX_DEPTH:-4}
 # ==========================================
 
 read -p "Base directory (Enter for '${DEFAULT_BASE_DIR}'): " BASE_DIR
@@ -20,10 +21,13 @@ if [ ! -d "$BASE_DIR" ]; then
     exit 1
 fi
 
-IFS=$'\n' read -r -d '' -a dirs < <(find "$BASE_DIR" -mindepth 2 -maxdepth 2 -type d -print0 | sort -z)
+dirs=()
+while IFS= read -r -d '' d; do
+    dirs+=("$d")
+done < <(find "$BASE_DIR" -mindepth 1 -maxdepth "$LOCAL_LIST_MAX_DEPTH" -type d -print0 | sort -z)
 
 if [ ${#dirs[@]} -eq 0 ]; then
-    echo "Error: no second-level checkpoint directories were found in '$BASE_DIR'."
+    echo "Error: no checkpoint directories were found in '$BASE_DIR'."
     exit 1
 fi
 
@@ -103,13 +107,21 @@ CONFIRM=${CONFIRM:-y}
 
 if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
     echo "Starting transfer..."
-    scp -r "${SELECTED_DIRS[@]}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
-
-    if [ $? -eq 0 ]; then
-        echo "Transfer completed successfully."
-    else
-        echo "Transfer failed."
+    if ! ssh "${REMOTE_USER}@${REMOTE_IP}" "mkdir -p '${REMOTE_DIR}'"; then
+        echo "Failed to create destination directory."
+        exit 1
     fi
+    transfer_status=0
+    for src_dir in "${SELECTED_DIRS[@]}"; do
+        rel_path="${src_dir#$BASE_DIR}"
+        echo ">>> Transferring: $rel_path"
+        rsync -avzP -R "$BASE_DIR./$rel_path" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}" || transfer_status=1
+    done
+    if [ "$transfer_status" -ne 0 ]; then
+        echo "Transfer failed."
+        exit 1
+    fi
+    echo "Transfer completed successfully."
 else
     echo "Transfer cancelled."
 fi
