@@ -10,13 +10,13 @@
       - /camera/left/camera_info
       - /camera/right/image_raw
       - /camera/right/camera_info
-      - /realsense2_camera/color/camera_info
-      - /realsense2_camera/color/image_raw
+      # - /realsense2_camera/color/camera_info
+      # - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
-      - /autonomous/cmd_drive
-      - /autonomous/trajectory
-      - /emergency/cmd_drive
-      - /emergency/signal
+      # - /autonomous/cmd_drive
+      # - /autonomous/trajectory
+      # - /emergency/cmd_drive
+      # - /emergency/signal
       - /joy
       - /tf
       - /tf_static
@@ -27,7 +27,7 @@
       - /visual_slam/status
       - /visual_slam/vis/slam_odometry
       - /visual_slam/vis/velocity
-      - /localization/current_section
-      - /localization/current_section_marker
-      - /localization/section_markers
-      - /localization_result
+      # - /localization/current_section
+      # - /localization/current_section_marker
+      # - /localization/section_markers
+      # - /localization_result

@@ -9,11 +9,11 @@ DEFAULT_REMOTE_USER="tamiya"
 IP_CANDIDATES=("10.42.0.1" "192.168.55.1" "192.168.11.190")
 
 # 種別ごとのパス設定
-ROSBAG_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/record/"
-ROSBAG_LOCAL_DIR="/home/arata-22/workspace/tamiya-systems/record/"
+ROSBAG_REMOTE_DIR="/home/tamiya/workspaces/tamiya-systems/record/"
+ROSBAG_LOCAL_DIR="/home/arata-22/workspaces/tamiya-systems/record/"
 
-MAP_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/map/"
-MAP_LOCAL_DIR="/home/arata-22/workspace/tamiya-systems/map/"
+MAP_REMOTE_DIR="/home/tamiya/workspaces/tamiya-systems/map/"
+MAP_LOCAL_DIR="/home/arata-22/workspaces/tamiya-systems/map/"
 # ==========================================
 
 # 0. 転送対象選択

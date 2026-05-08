@@ -6,10 +6,10 @@
     topics:
       - /scan
       - /scan_raw
-      - /camera/left/image_raw
-      - /camera/left/camera_info
-      - /camera/right/image_raw
-      - /camera/right/camera_info
+      # - /camera/left/image_raw
+      # - /camera/left/camera_info
+      # - /camera/right/image_raw
+      # - /camera/right/camera_info
       - /realsense2_camera/color/camera_info
       - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
@@ -27,7 +27,7 @@
       - /visual_slam/status
       - /visual_slam/vis/slam_odometry
       - /visual_slam/vis/velocity
-      - /localization/current_section
-      - /localization/current_section_marker
-      - /localization/section_markers
-      - /localization_result
+      # - /localization/current_section
+      # - /localization/current_section_marker
+      # - /localization/section_markers
+      # - /localization_result

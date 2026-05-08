@@ -324,7 +324,7 @@ def main():
     parser.add_argument("--config", type=str, default="./config/train.yaml")
     parser.add_argument("--output-dir", type=str, default="./outputs/trajectory_vis")
     parser.add_argument("--indices", type=str, default="", help="Comma-separated dataset indices, e.g. 0,10,20")
-    parser.add_argument("--num-samples", type=int, default=12)
+    parser.add_argument("--num-samples", type=int, default=100)
     parser.add_argument("--stride", type=int, default=20)
     parser.add_argument("--device", type=str, default="auto")
     parser.add_argument("--no-image-projection", action="store_true")
