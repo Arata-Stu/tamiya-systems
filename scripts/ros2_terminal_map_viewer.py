@@ -398,7 +398,7 @@ class TerminalMapViewer(Node):
         if not ok:
             self.get_logger().warn("failed to encode terminal map frame")
             return
-        sys.stdout.write("\033[H\033[2J")
+        sys.stdout.write("\033[H")
         sys.stdout.flush()
         write_kitty_image(bytes(encoded), self.args.width, self.args.height)
         sys.stdout.write("\n")

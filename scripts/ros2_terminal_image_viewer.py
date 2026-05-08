@@ -204,7 +204,7 @@ class TerminalImageViewer(Node):
             rgb = resize_to_fit(rgb, self.args.width, self.args.height)
             png = rgb_to_png(rgb)
             height, width = rgb.shape[:2]
-            sys.stdout.write("\033[H\033[2J")
+            sys.stdout.write("\033[H\033[2K")
             sys.stdout.write(f"topic={self.args.topic} frame={self.stats.frames + 1} size={width}x{height} source={label}\n")
             sys.stdout.flush()
             write_kitty_image(png, width, height)
