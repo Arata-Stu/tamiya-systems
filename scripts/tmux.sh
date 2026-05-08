@@ -20,6 +20,8 @@ WINDOW_LOCALIZATION_EVAL="localization_eval"
 SETUP_SCRIPT="source /workspaces/install/setup.bash"
 CMD_BASE="bash /scripts/launch_system.sh base"
 CMD_MONITOR="bash /scripts/monitor.sh"
+CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
+RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz'
 
 PYTHON_PANE1_DIR="/python_ws"
 PYTHON_PANE2_DIR="/record/"
@@ -146,6 +148,7 @@ create_map_layout() {
   tmux split-window -v -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0
   tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0
   tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2
+  tmux split-window -h -t "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1
 
   # 全てのペインで初期化（source等）を先に流す
   init_pane "$SESSION_NAME":"$WINDOW_MAIN".0 "cd /workspaces && $SETUP_SCRIPT"
@@ -153,8 +156,9 @@ create_map_layout() {
   
   init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "cd /workspaces && $SETUP_SCRIPT"
   init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "cd /workspaces && $SETUP_SCRIPT"
-  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /python_ws/data_analysis/ && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "cd /workspaces && $SETUP_SCRIPT"
   init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "cd /workspaces && $SETUP_SCRIPT"
+  init_pane "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".4 "cd /workspaces && $SETUP_SCRIPT"
 
   # 全ペインの初期化が終わるのを一括で待機
   sleep 2.0
@@ -165,9 +169,10 @@ create_map_layout() {
 
   # localization_eval ウィンドウのコマンド準備
   prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "ros2 bag play <bag_path> --clock --start-paused"
-  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=false publish_localization_tf:=false"
-  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "python3 evaluate_global_localization_sweep.py --map-yaml <yaml>"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=true publish_localization_tf:=true"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "$CMD_LOCALIZATION_TRIGGER"
   prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".4 "$RVIZ_LOCALIZATION_EVAL"
 
   tmux select-window -t "$SESSION_NAME":"$WINDOW_MAIN"
   tmux select-pane -t "$SESSION_NAME":"$WINDOW_MAIN".0
