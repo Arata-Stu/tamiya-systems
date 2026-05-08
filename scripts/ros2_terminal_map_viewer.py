@@ -15,7 +15,7 @@ from typing import Optional
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseArray, PoseStamped, PoseWithCovarianceStamped
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -107,9 +107,11 @@ class TerminalMapViewer(Node):
         self.args = args
         self.map_state: Optional[MapState] = None
         self.pose: Optional[Pose2D] = None
+        self.live_pose: Optional[Pose2D] = None
         self.particles: Optional[PoseArray] = None
         self.scan: Optional[LaserScan] = None
         self.path: Optional[Path] = None
+        self.live_trace: list[tuple[float, float]] = []
         self.section_markers: dict[tuple[str, int], Marker] = {}
         self.current_section_marker: Optional[Marker] = None
         self.current_section_name = "-"
@@ -155,6 +157,8 @@ class TerminalMapViewer(Node):
             self.create_subscription(PoseWithCovarianceStamped, args.pose_topic, self.on_pose_cov, default_qos)
         if args.pose_stamped_topic:
             self.create_subscription(PoseStamped, args.pose_stamped_topic, self.on_pose_stamped, default_qos)
+        if args.odom_topic:
+            self.create_subscription(Odometry, args.odom_topic, self.on_odom, sensor_qos)
         if args.particles_topic:
             self.create_subscription(PoseArray, args.particles_topic, self.on_particles, sensor_qos)
         if args.scan_topic:
@@ -171,11 +175,12 @@ class TerminalMapViewer(Node):
         period = 1.0 / max(args.max_fps, 0.2)
         self.create_timer(period, self.render)
         self.get_logger().info(
-            "subscribed: map=%s pose=%s pose_stamped=%s particles=%s scan=%s path=%s sections=%s current_section=%s"
+            "subscribed: map=%s pose=%s pose_stamped=%s odom=%s particles=%s scan=%s path=%s sections=%s current_section=%s"
             % (
                 args.map_topic,
                 args.pose_topic,
                 args.pose_stamped_topic,
+                args.odom_topic or "-",
                 args.particles_topic or "-",
                 args.scan_topic or "-",
                 args.path_topic or "-",
@@ -223,6 +228,17 @@ class TerminalMapViewer(Node):
             yaw=yaw_from_quat(pose.orientation),
             frame_id=msg.header.frame_id or self.args.map_frame,
             stamp=msg.header.stamp,
+        )
+
+    def on_odom(self, msg: Odometry) -> None:
+        pose = msg.pose.pose
+        self.live_pose = Pose2D(
+            x=float(pose.position.x),
+            y=float(pose.position.y),
+            yaw=yaw_from_quat(pose.orientation),
+            frame_id=msg.header.frame_id or self.args.odom_frame,
+            stamp=msg.header.stamp,
+            covariance=list(msg.pose.covariance),
         )
 
     def on_particles(self, msg: PoseArray) -> None:
@@ -300,6 +316,35 @@ class TerminalMapViewer(Node):
         x, y, yaw = transform_xy_yaw(pose.x, pose.y, pose.yaw, tf)
         return Pose2D(x=x, y=y, yaw=yaw, frame_id=self.map_state.frame_id, stamp=pose.stamp, covariance=pose.covariance)
 
+    def tf_pose_in_map(self) -> Optional[Pose2D]:
+        if self.map_state is None or self.tf_buffer is None:
+            return None
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                self.map_state.frame_id,
+                self.args.base_frame,
+                Time(),
+                timeout=Duration(seconds=self.args.tf_timeout),
+            ).transform
+        except Exception as exc:  # noqa: BLE001
+            self.last_status = f"TF live pose unavailable: {self.args.base_frame}->{self.map_state.frame_id}: {exc}"
+            return None
+        return Pose2D(
+            x=float(tf.translation.x),
+            y=float(tf.translation.y),
+            yaw=yaw_from_transform(tf),
+            frame_id=self.map_state.frame_id,
+            stamp=None,
+        )
+
+    def current_pose_in_map(self) -> Optional[Pose2D]:
+        if self.args.live_pose_source == "tf":
+            return self.tf_pose_in_map()
+        if self.args.live_pose_source == "odom":
+            return self.pose_in_map(self.live_pose) if self.live_pose is not None else None
+        odom_pose = self.pose_in_map(self.live_pose) if self.live_pose is not None else None
+        return odom_pose if odom_pose is not None else self.tf_pose_in_map()
+
     def world_to_map_px(self, x: float, y: float) -> tuple[int, int]:
         assert self.map_state is not None
         dx = x - self.map_state.origin_x
@@ -319,14 +364,42 @@ class TerminalMapViewer(Node):
         pixels = [self.map_px_to_view_px(*self.world_to_map_px(x, y), scale, pad_x, pad_y) for x, y in points]
         cv2.polylines(canvas, [np.asarray(pixels, dtype=np.int32)], False, color, thickness, cv2.LINE_AA)
 
-    def draw_pose(self, canvas: np.ndarray, pose: Pose2D, scale: float, pad_x: int, pad_y: int) -> None:
+    def draw_pose(
+        self,
+        canvas: np.ndarray,
+        pose: Pose2D,
+        scale: float,
+        pad_x: int,
+        pad_y: int,
+        color: Color = (30, 30, 245),
+        draw_covariance: bool = True,
+    ) -> None:
         px, py = self.map_px_to_view_px(*self.world_to_map_px(pose.x, pose.y), scale, pad_x, pad_y)
         length = max(22, int(0.55 / max(self.map_state.resolution, 1e-6) * scale))
         end = (int(px + math.cos(pose.yaw) * length), int(py - math.sin(pose.yaw) * length))
-        cv2.arrowedLine(canvas, (px, py), end, (30, 30, 245), max(2, int(4 * scale)), cv2.LINE_AA, tipLength=0.35)
+        cv2.arrowedLine(canvas, (px, py), end, color, max(2, int(4 * scale)), cv2.LINE_AA, tipLength=0.35)
         cv2.circle(canvas, (px, py), max(4, int(7 * scale)), (255, 255, 255), -1, cv2.LINE_AA)
-        cv2.circle(canvas, (px, py), max(3, int(4 * scale)), (30, 30, 245), -1, cv2.LINE_AA)
-        self.draw_covariance(canvas, pose, scale, pad_x, pad_y)
+        cv2.circle(canvas, (px, py), max(3, int(4 * scale)), color, -1, cv2.LINE_AA)
+        if draw_covariance:
+            self.draw_covariance(canvas, pose, scale, pad_x, pad_y)
+
+    def update_live_trace(self, pose: Optional[Pose2D]) -> None:
+        if pose is None:
+            return
+        if not self.live_trace:
+            self.live_trace.append((pose.x, pose.y))
+        else:
+            dx = pose.x - self.live_trace[-1][0]
+            dy = pose.y - self.live_trace[-1][1]
+            if math.hypot(dx, dy) >= self.args.live_trace_min_step:
+                self.live_trace.append((pose.x, pose.y))
+        if len(self.live_trace) > self.args.live_trace_length:
+            del self.live_trace[: len(self.live_trace) - self.args.live_trace_length]
+
+    def draw_live_trace(self, canvas: np.ndarray, scale: float, pad_x: int, pad_y: int) -> None:
+        if len(self.live_trace) < 2:
+            return
+        self.draw_polyline_world(canvas, self.live_trace, (80, 230, 120), 3, scale, pad_x, pad_y)
 
     def draw_covariance(self, canvas: np.ndarray, pose: Pose2D, scale: float, pad_x: int, pad_y: int) -> None:
         if not pose.covariance:
@@ -505,9 +578,14 @@ class TerminalMapViewer(Node):
         self.draw_path(canvas, scale, pad_x, pad_y)
         self.draw_scan(canvas, scale, pad_x, pad_y)
         self.draw_particles(canvas, scale, pad_x, pad_y)
-        pose = self.pose_in_map(self.pose) if self.pose is not None else None
-        if pose is not None:
-            self.draw_pose(canvas, pose, scale, pad_x, pad_y)
+        live_pose = self.current_pose_in_map()
+        self.update_live_trace(live_pose)
+        self.draw_live_trace(canvas, scale, pad_x, pad_y)
+        if live_pose is not None:
+            self.draw_pose(canvas, live_pose, scale, pad_x, pad_y, color=(75, 235, 105), draw_covariance=False)
+        localization_pose = self.pose_in_map(self.pose) if self.pose is not None else None
+        if localization_pose is not None:
+            self.draw_pose(canvas, localization_pose, scale, pad_x, pad_y, color=(30, 30, 245), draw_covariance=True)
 
         self.frame_count += 1
         status = self.status_line(scale, time.monotonic() - start)
@@ -525,14 +603,17 @@ class TerminalMapViewer(Node):
         sys.stdout.flush()
 
     def status_line(self, scale: float, render_sec: float) -> str:
-        pose_age = "-"
+        localization_frame = "-"
         if self.pose is not None:
-            pose_age = self.pose.frame_id or "?"
+            localization_frame = self.pose.frame_id or "?"
+        live_source = self.args.live_pose_source
+        if live_source == "auto":
+            live_source = "odom" if self.live_pose is not None else "tf"
         scan_age = self.scan.header.frame_id if self.scan is not None else "-"
         particles = len(self.particles.poses) if self.particles is not None else 0
         return (
             f"frame={self.frame_count} map={self.map_state.width}x{self.map_state.height}@{self.map_state.resolution:.3f}m "
-            f"scale={scale:.2f} pose={pose_age} section={self.current_section_name} "
+            f"scale={scale:.2f} loc={localization_frame} live={live_source} trace={len(self.live_trace)} section={self.current_section_name} "
             f"markers={len(self.section_markers)} particles={particles} scan={scan_age} render={render_sec * 1000:.1f}ms"
         )
 
@@ -543,6 +624,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--map-qos", choices=("both", "transient_local", "volatile"), default="both")
     parser.add_argument("--pose-topic", default="/localization_result", help="PoseWithCovarianceStamped topic, empty to disable")
     parser.add_argument("--pose-stamped-topic", default="", help="PoseStamped topic, empty to disable")
+    parser.add_argument("--odom-topic", default="", help="nav_msgs/Odometry topic for live pose, empty to use TF only")
+    parser.add_argument("--odom-frame", default="odom", help="fallback frame_id when odometry header.frame_id is empty")
+    parser.add_argument("--base-frame", default="base_link", help="base frame used for live TF pose")
+    parser.add_argument("--live-pose-source", choices=("auto", "tf", "odom"), default="auto")
     parser.add_argument("--particles-topic", default="/particle_cloud", help="PoseArray topic, empty to disable")
     parser.add_argument("--scan-topic", default="/scan", help="LaserScan topic, empty to disable")
     parser.add_argument("--path-topic", default="", help="nav_msgs/Path topic, empty to disable")
@@ -562,6 +647,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--particle-stride", type=int, default=1)
     parser.add_argument("--particle-radius", type=int, default=2)
     parser.add_argument("--particle-heading", action="store_true")
+    parser.add_argument("--live-trace-length", type=int, default=400)
+    parser.add_argument("--live-trace-min-step", type=float, default=0.03)
     parser.add_argument("--show-sections", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--show-section-labels", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--show-gates", action=argparse.BooleanOptionalAction, default=True)
