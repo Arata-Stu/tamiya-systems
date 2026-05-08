@@ -46,6 +46,10 @@ def yaw_from_quat(q: object) -> float:
     return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
 
 
+def angle_wrap(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
 def yaw_from_transform(transform: object) -> float:
     return yaw_from_quat(transform.rotation)
 
@@ -108,6 +112,8 @@ class TerminalMapViewer(Node):
         self.map_state: Optional[MapState] = None
         self.pose: Optional[Pose2D] = None
         self.live_pose: Optional[Pose2D] = None
+        self.localization_anchor: Optional[Pose2D] = None
+        self.odom_anchor: Optional[Pose2D] = None
         self.particles: Optional[PoseArray] = None
         self.scan: Optional[LaserScan] = None
         self.path: Optional[Path] = None
@@ -220,6 +226,7 @@ class TerminalMapViewer(Node):
             stamp=msg.header.stamp,
             covariance=list(msg.pose.covariance),
         )
+        self.update_odom_anchor()
         if self.args.reset_trace_on_localization:
             self.live_trace.clear()
 
@@ -232,6 +239,7 @@ class TerminalMapViewer(Node):
             frame_id=msg.header.frame_id or self.args.map_frame,
             stamp=msg.header.stamp,
         )
+        self.update_odom_anchor()
         if self.args.reset_trace_on_localization:
             self.live_trace.clear()
 
@@ -245,6 +253,12 @@ class TerminalMapViewer(Node):
             stamp=msg.header.stamp,
             covariance=list(msg.pose.covariance),
         )
+        if self.args.live_pose_source == "anchored_odom" and self.localization_anchor is not None and self.odom_anchor is None:
+            self.odom_anchor = self.live_pose
+
+    def update_odom_anchor(self) -> None:
+        self.localization_anchor = self.pose_in_map(self.pose) if self.pose is not None else None
+        self.odom_anchor = self.live_pose if self.live_pose is not None else None
 
     def on_particles(self, msg: PoseArray) -> None:
         self.particles = msg
@@ -351,14 +365,48 @@ class TerminalMapViewer(Node):
             pose = self.pose_in_map(self.live_pose) if self.live_pose is not None else None
             self.last_live_pose_source = "odom" if pose is not None else "-"
             return pose
+        if self.args.live_pose_source == "anchored_odom":
+            pose = self.anchored_odom_pose_in_map()
+            self.last_live_pose_source = "anchored_odom" if pose is not None else "-"
+            return pose
 
         tf_pose = self.tf_pose_in_map()
         if tf_pose is not None:
             self.last_live_pose_source = "tf"
             return tf_pose
+        anchored_pose = self.anchored_odom_pose_in_map()
+        if anchored_pose is not None:
+            self.last_live_pose_source = "anchored_odom"
+            return anchored_pose
         odom_pose = self.pose_in_map(self.live_pose) if self.live_pose is not None else None
         self.last_live_pose_source = "odom" if odom_pose is not None else "-"
         return odom_pose
+
+    def anchored_odom_pose_in_map(self) -> Optional[Pose2D]:
+        if self.localization_anchor is None or self.odom_anchor is None or self.live_pose is None:
+            return None
+        if self.live_pose.frame_id != self.odom_anchor.frame_id:
+            return None
+
+        dx = self.live_pose.x - self.odom_anchor.x
+        dy = self.live_pose.y - self.odom_anchor.y
+        ca = math.cos(-self.odom_anchor.yaw)
+        sa = math.sin(-self.odom_anchor.yaw)
+        local_dx = ca * dx - sa * dy
+        local_dy = sa * dx + ca * dy
+
+        cm = math.cos(self.localization_anchor.yaw)
+        sm = math.sin(self.localization_anchor.yaw)
+        map_x = self.localization_anchor.x + cm * local_dx - sm * local_dy
+        map_y = self.localization_anchor.y + sm * local_dx + cm * local_dy
+        map_yaw = self.localization_anchor.yaw + angle_wrap(self.live_pose.yaw - self.odom_anchor.yaw)
+        return Pose2D(
+            x=map_x,
+            y=map_y,
+            yaw=map_yaw,
+            frame_id=self.map_state.frame_id if self.map_state is not None else self.args.map_frame,
+            stamp=self.live_pose.stamp,
+        )
 
     def world_to_map_px(self, x: float, y: float) -> tuple[int, int]:
         assert self.map_state is not None
@@ -644,7 +692,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--odom-topic", default="", help="nav_msgs/Odometry topic for live pose, empty to use TF only")
     parser.add_argument("--odom-frame", default="odom", help="fallback frame_id when odometry header.frame_id is empty")
     parser.add_argument("--base-frame", default="base_link", help="base frame used for live TF pose")
-    parser.add_argument("--live-pose-source", choices=("auto", "tf", "odom"), default="auto", help="auto prefers TF map->base_link, then falls back to odometry")
+    parser.add_argument(
+        "--live-pose-source",
+        choices=("auto", "tf", "odom", "anchored_odom"),
+        default="auto",
+        help="auto prefers TF map->base_link, then anchored odometry, then direct odometry",
+    )
     parser.add_argument("--particles-topic", default="/particle_cloud", help="PoseArray topic, empty to disable")
     parser.add_argument("--scan-topic", default="/scan", help="LaserScan topic, empty to disable")
     parser.add_argument("--path-topic", default="", help="nav_msgs/Path topic, empty to disable")
