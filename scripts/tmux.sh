@@ -169,7 +169,7 @@ create_map_layout() {
 
   # localization_eval ウィンドウのコマンド準備
   prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".0 "ros2 bag play <bag_path> --clock --start-paused"
-  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_localization_manager:=true publish_localization_tf:=true"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".1 "ros2 launch system_launch localization.launch.xml lidar_container_name:=lidar_container map_yaml_path:=<yaml> scan_topic:=/scan flatscan_topic:=/flatscan use_sim_time:=true map_server_use_sim_time:=true use_localization_manager:=true publish_localization_tf:=true"
   prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".2 "$CMD_LOCALIZATION_TRIGGER"
   prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".3 "ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
   prepare_cmd "$SESSION_NAME":"$WINDOW_LOCALIZATION_EVAL".4 "$RVIZ_LOCALIZATION_EVAL"

@@ -41,6 +41,7 @@
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
     <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+    <arg name="use_sim_time" default="false" />
     <arg name="localization_result_topic" default="/localization_result" />
     <arg name="publish_map" default="true" />
     <arg name="map_topic" default="/map" />
@@ -185,6 +186,7 @@
             <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
             <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
+            <arg name="use_sim_time" value="$(var use_sim_time)"/>
             <arg name="localization_result_topic" value="$(var localization_result_topic)"/>
             <arg name="publish_map" value="$(var publish_map)"/>
             <arg name="map_topic" value="$(var map_topic)"/>

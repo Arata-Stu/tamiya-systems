@@ -7,6 +7,7 @@
   <arg name="localization_result_topic" default="/localization_result" />
   <arg name="localization_trigger_topic" default="/localization/trigger" />
   <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+  <arg name="use_sim_time" default="false" />
   <arg name="publish_map" default="true" />
   <arg name="map_topic" default="/map" />
   <arg name="map_frame" default="map" />
@@ -83,6 +84,7 @@
       <arg name="localization_trigger_service" value="$(var localization_trigger_service)" />
       <arg name="localization_result_topic" value="$(var localization_result_topic)" />
       <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)" />
+      <arg name="use_sim_time" value="$(var use_sim_time)" />
       <arg name="publish_localization_tf" value="$(var publish_localization_tf)" />
       <arg name="localization_tf_mode" value="$(var localization_tf_mode)" />
       <arg name="localization_tf_map_frame" value="$(var localization_tf_map_frame)" />
@@ -103,6 +105,7 @@
       <arg name="current_section_topic" value="$(var section_localizer_topic)" />
       <arg name="update_rate_hz" value="$(var section_localizer_update_rate_hz)" />
       <arg name="debug_mode" value="$(var section_localizer_debug_mode)" />
+      <arg name="use_sim_time" value="$(var use_sim_time)" />
       <arg name="marker_topic" value="$(var section_localizer_marker_topic)" />
       <arg name="current_marker_topic" value="$(var section_localizer_current_marker_topic)" />
     </include>
