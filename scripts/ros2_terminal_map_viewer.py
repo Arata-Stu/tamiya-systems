@@ -21,6 +21,8 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
+from visualization_msgs.msg import Marker, MarkerArray
 
 try:
     import cv2
@@ -108,6 +110,9 @@ class TerminalMapViewer(Node):
         self.particles: Optional[PoseArray] = None
         self.scan: Optional[LaserScan] = None
         self.path: Optional[Path] = None
+        self.section_markers: dict[tuple[str, int], Marker] = {}
+        self.current_section_marker: Optional[Marker] = None
+        self.current_section_name = "-"
         self.frame_count = 0
         self.last_status = ""
 
@@ -124,6 +129,12 @@ class TerminalMapViewer(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         default_qos = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1, reliability=ReliabilityPolicy.RELIABLE)
+        marker_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
         sensor_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -150,11 +161,17 @@ class TerminalMapViewer(Node):
             self.create_subscription(LaserScan, args.scan_topic, self.on_scan, sensor_qos)
         if args.path_topic:
             self.create_subscription(Path, args.path_topic, self.on_path, default_qos)
+        if args.section_markers_topic:
+            self.create_subscription(MarkerArray, args.section_markers_topic, self.on_section_markers, marker_qos)
+        if args.current_section_marker_topic:
+            self.create_subscription(Marker, args.current_section_marker_topic, self.on_current_section_marker, marker_qos)
+        if args.current_section_topic:
+            self.create_subscription(String, args.current_section_topic, self.on_current_section, marker_qos)
 
         period = 1.0 / max(args.max_fps, 0.2)
         self.create_timer(period, self.render)
         self.get_logger().info(
-            "subscribed: map=%s pose=%s pose_stamped=%s particles=%s scan=%s path=%s"
+            "subscribed: map=%s pose=%s pose_stamped=%s particles=%s scan=%s path=%s sections=%s current_section=%s"
             % (
                 args.map_topic,
                 args.pose_topic,
@@ -162,6 +179,8 @@ class TerminalMapViewer(Node):
                 args.particles_topic or "-",
                 args.scan_topic or "-",
                 args.path_topic or "-",
+                args.section_markers_topic or "-",
+                args.current_section_topic or "-",
             )
         )
 
@@ -214,6 +233,36 @@ class TerminalMapViewer(Node):
 
     def on_path(self, msg: Path) -> None:
         self.path = msg
+
+    def on_section_markers(self, msg: MarkerArray) -> None:
+        for marker in msg.markers:
+            self.store_section_marker(marker, current=False)
+
+    def on_current_section_marker(self, msg: Marker) -> None:
+        self.store_section_marker(msg, current=True)
+
+    def on_current_section(self, msg: String) -> None:
+        self.current_section_name = msg.data or "-"
+
+    def store_section_marker(self, marker: Marker, current: bool) -> None:
+        if marker.action == Marker.DELETEALL:
+            if current:
+                self.current_section_marker = None
+            else:
+                self.section_markers.clear()
+            return
+        if marker.action == Marker.DELETE:
+            if current:
+                self.current_section_marker = None
+            else:
+                self.section_markers.pop((marker.ns, marker.id), None)
+            return
+        if marker.action != Marker.ADD:
+            return
+        if current:
+            self.current_section_marker = marker
+        else:
+            self.section_markers[(marker.ns, marker.id)] = marker
 
     def lookup_transform(self, source_frame: str, stamp: object) -> Optional[object]:
         if self.map_state is None or not source_frame or source_frame == self.map_state.frame_id:
@@ -364,6 +413,76 @@ class TerminalMapViewer(Node):
             points.append((x, y))
         self.draw_polyline_world(canvas, points, (40, 180, 80), 3, scale, pad_x, pad_y)
 
+    def marker_color(self, marker: Marker, fallback: Color) -> Color:
+        if marker.color.a <= 0.0:
+            return fallback
+        return (
+            int(max(0.0, min(1.0, marker.color.b)) * 255),
+            int(max(0.0, min(1.0, marker.color.g)) * 255),
+            int(max(0.0, min(1.0, marker.color.r)) * 255),
+        )
+
+    def marker_point_to_world(self, marker: Marker, point: object, tf: Optional[object]) -> tuple[float, float, float]:
+        marker_yaw = yaw_from_quat(marker.pose.orientation)
+        c = math.cos(marker_yaw)
+        s = math.sin(marker_yaw)
+        x = float(marker.pose.position.x) + c * float(point.x) - s * float(point.y)
+        y = float(marker.pose.position.y) + s * float(point.x) + c * float(point.y)
+        yaw = marker_yaw
+        if tf is not None:
+            x, y, yaw = transform_xy_yaw(x, y, yaw, tf)
+        return x, y, yaw
+
+    def draw_marker(self, canvas: np.ndarray, marker: Marker, scale: float, pad_x: int, pad_y: int, current: bool = False) -> None:
+        if self.map_state is None:
+            return
+        frame_id = marker.header.frame_id or self.map_state.frame_id
+        tf = self.lookup_transform(frame_id, marker.header.stamp)
+        if tf is None and frame_id != self.map_state.frame_id and not self.args.assume_same_frame:
+            return
+
+        fallback = (30, 70, 245) if current else (255, 180, 70)
+        color = self.marker_color(marker, fallback)
+        thickness = max(1, int(round(float(marker.scale.x or 0.05) / self.map_state.resolution * scale)))
+        if current:
+            thickness = max(thickness, 3)
+
+        if marker.type in (Marker.LINE_STRIP, Marker.LINE_LIST):
+            points = [self.marker_point_to_world(marker, pt, tf)[:2] for pt in marker.points]
+            pixels = [self.map_px_to_view_px(*self.world_to_map_px(x, y), scale, pad_x, pad_y) for x, y in points]
+            if marker.type == Marker.LINE_STRIP and len(pixels) >= 2:
+                cv2.polylines(canvas, [np.asarray(pixels, dtype=np.int32)], False, color, thickness, cv2.LINE_AA)
+            elif marker.type == Marker.LINE_LIST and len(pixels) >= 2:
+                for a, b in zip(pixels[0::2], pixels[1::2]):
+                    cv2.line(canvas, a, b, color, thickness, cv2.LINE_AA)
+            return
+
+        if marker.type == Marker.TEXT_VIEW_FACING and marker.text:
+            # TEXT markers store their anchor in marker.pose.position, not points.
+            x = float(marker.pose.position.x)
+            y = float(marker.pose.position.y)
+            if tf is not None:
+                x, y = transform_xy(x, y, tf)
+            elif frame_id != self.map_state.frame_id and not self.args.assume_same_frame:
+                return
+            px, py = self.map_px_to_view_px(*self.world_to_map_px(x, y), scale, pad_x, pad_y)
+            font_scale = max(0.38, min(0.72, float(marker.scale.z or 0.4) * 0.9))
+            cv2.putText(canvas, marker.text[:40], (px + 4, py - 4), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (20, 20, 20), 3, cv2.LINE_AA)
+            cv2.putText(canvas, marker.text[:40], (px + 4, py - 4), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, 1, cv2.LINE_AA)
+
+    def draw_sections(self, canvas: np.ndarray, scale: float, pad_x: int, pad_y: int) -> None:
+        if not self.args.show_sections:
+            return
+        markers = sorted(self.section_markers.values(), key=lambda m: (m.ns, m.id))
+        for marker in markers:
+            if not self.args.show_section_labels and marker.type == Marker.TEXT_VIEW_FACING:
+                continue
+            if not self.args.show_gates and marker.ns.startswith("section_gate"):
+                continue
+            self.draw_marker(canvas, marker, scale, pad_x, pad_y)
+        if self.current_section_marker is not None:
+            self.draw_marker(canvas, self.current_section_marker, scale, pad_x, pad_y, current=True)
+
     def render(self) -> None:
         if self.map_state is None:
             sys.stdout.write("\033[H\033[2Jwaiting for OccupancyGrid on %s...\n" % self.args.map_topic)
@@ -382,6 +501,7 @@ class TerminalMapViewer(Node):
         pad_y = (self.args.height - view_h) // 2
         canvas[pad_y : pad_y + view_h, pad_x : pad_x + view_w] = resized
 
+        self.draw_sections(canvas, scale, pad_x, pad_y)
         self.draw_path(canvas, scale, pad_x, pad_y)
         self.draw_scan(canvas, scale, pad_x, pad_y)
         self.draw_particles(canvas, scale, pad_x, pad_y)
@@ -412,7 +532,8 @@ class TerminalMapViewer(Node):
         particles = len(self.particles.poses) if self.particles is not None else 0
         return (
             f"frame={self.frame_count} map={self.map_state.width}x{self.map_state.height}@{self.map_state.resolution:.3f}m "
-            f"scale={scale:.2f} pose={pose_age} particles={particles} scan={scan_age} render={render_sec * 1000:.1f}ms"
+            f"scale={scale:.2f} pose={pose_age} section={self.current_section_name} "
+            f"markers={len(self.section_markers)} particles={particles} scan={scan_age} render={render_sec * 1000:.1f}ms"
         )
 
 
@@ -425,6 +546,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--particles-topic", default="/particle_cloud", help="PoseArray topic, empty to disable")
     parser.add_argument("--scan-topic", default="/scan", help="LaserScan topic, empty to disable")
     parser.add_argument("--path-topic", default="", help="nav_msgs/Path topic, empty to disable")
+    parser.add_argument("--section-markers-topic", default="/localization/section_markers", help="MarkerArray topic, empty to disable")
+    parser.add_argument("--current-section-marker-topic", default="/localization/current_section_marker", help="Marker topic, empty to disable")
+    parser.add_argument("--current-section-topic", default="/localization/current_section", help="std_msgs/String topic, empty to disable")
     parser.add_argument("--map-frame", default="map")
     parser.add_argument("--width", type=int, default=1200)
     parser.add_argument("--height", type=int, default=800)
@@ -438,6 +562,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--particle-stride", type=int, default=1)
     parser.add_argument("--particle-radius", type=int, default=2)
     parser.add_argument("--particle-heading", action="store_true")
+    parser.add_argument("--show-sections", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--show-section-labels", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--show-gates", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--png-compression", type=int, default=3)
     return parser.parse_args()
 
