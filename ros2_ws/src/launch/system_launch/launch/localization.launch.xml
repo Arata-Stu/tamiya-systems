@@ -7,6 +7,10 @@
   <arg name="localization_result_topic" default="/localization_result" />
   <arg name="localization_trigger_topic" default="/localization/trigger" />
   <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+  <arg name="publish_map" default="true" />
+  <arg name="map_topic" default="/map" />
+  <arg name="map_frame" default="map" />
+  <arg name="map_server_use_sim_time" default="false" />
   <arg name="use_localization_manager" default="true" />
   <arg name="localization_manager_param" default="$(find-pkg-share localization_manager)/config/localization_manager.param.yaml" />
   <arg name="localization_feedback_timeout_sec" default="0.0" />
@@ -27,6 +31,27 @@
   <arg name="section_localizer_debug_mode" default="true" />
   <arg name="section_localizer_marker_topic" default="/localization/section_markers" />
   <arg name="section_localizer_current_marker_topic" default="/localization/current_section_marker" />
+
+  <group if="$(var publish_map)">
+    <node pkg="nav2_map_server"
+          exec="map_server"
+          name="map_server"
+          output="screen">
+      <param name="yaml_filename" value="$(var map_yaml_path)" />
+      <param name="topic_name" value="$(var map_topic)" />
+      <param name="frame_id" value="$(var map_frame)" />
+      <param name="use_sim_time" value="$(var map_server_use_sim_time)" />
+    </node>
+
+    <node pkg="nav2_lifecycle_manager"
+          exec="lifecycle_manager"
+          name="lifecycle_manager_map_server"
+          output="screen">
+      <param name="use_sim_time" value="$(var map_server_use_sim_time)" />
+      <param name="autostart" value="true" />
+      <param name="node_names" value="['map_server']" />
+    </node>
+  </group>
 
   <load_composable_node target="$(var lidar_container_name)">
     <composable_node pkg="isaac_ros_pointcloud_utils"

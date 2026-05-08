@@ -7,8 +7,10 @@
   <maintainer email="you@example.com">Your Name</maintainer>
   <license>Apache-2.0</license>
 
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>
 </package>
-

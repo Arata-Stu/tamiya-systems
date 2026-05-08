@@ -160,7 +160,7 @@ create_map_layout() {
   sleep 2.0
 
   # main ウィンドウのコマンド準備
-  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom /record/  <map_name>"
+  prepare_cmd "$SESSION_NAME":"$WINDOW_MAIN".0 "bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom"
   tmux send-keys -t "$SESSION_NAME":"$WINDOW_MAIN".1 C-l
 
   # localization_eval ウィンドウのコマンド準備

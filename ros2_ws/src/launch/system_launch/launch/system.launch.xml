@@ -42,6 +42,10 @@
     <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
     <arg name="localization_result_topic" default="/localization_result" />
+    <arg name="publish_map" default="true" />
+    <arg name="map_topic" default="/map" />
+    <arg name="map_frame" default="map" />
+    <arg name="map_server_use_sim_time" default="false" />
     <arg name="use_localization_manager" default="true" />
     <arg name="localization_manager_param" default="$(find-pkg-share system_launch)/config/localization/localization_manager.param.yaml" />
     <arg name="localization_feedback_timeout_sec" default="0.0" />
@@ -182,6 +186,10 @@
             <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
             <arg name="localization_result_topic" value="$(var localization_result_topic)"/>
+            <arg name="publish_map" value="$(var publish_map)"/>
+            <arg name="map_topic" value="$(var map_topic)"/>
+            <arg name="map_frame" value="$(var map_frame)"/>
+            <arg name="map_server_use_sim_time" value="$(var map_server_use_sim_time)"/>
             <arg name="use_localization_manager" value="$(var use_localization_manager)"/>
             <arg name="localization_manager_param" value="$(var localization_manager_param)"/>
             <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>
