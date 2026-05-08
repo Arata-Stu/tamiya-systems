@@ -37,8 +37,17 @@ exec_container() {
     workspace="${workspace:-/workspaces}"
 
     echo "Exec into running container: $name"
-    echo "Workspace: $workspace"
-    exec docker exec -it -u admin --workdir "$workspace" "$name" /bin/bash
+    echo "Preferred workspace: $workspace"
+    exec docker exec -it -u admin "$name" /bin/bash -lc '
+        for dir in "${ISAAC_ROS_WS:-}" /workspaces /workspaces/tamiya-systems /workspaces/isaac_ros-dev /; do
+            if [ -n "$dir" ] && [ -d "$dir" ]; then
+                cd "$dir"
+                break
+            fi
+        done
+        echo "Workspace: $(pwd)"
+        exec /bin/bash
+    '
 }
 
 ask_exec_running_container() {
