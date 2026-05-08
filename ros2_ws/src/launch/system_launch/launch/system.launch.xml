@@ -1,62 +1,73 @@
 <launch>
+    <!-- Boolean toggles -->
     <arg name="record" default="false" description="run rosbag2 record node"/>
     <arg name="vslam" default="false" description="run vslam node"/>
     <arg name="localization" default="false" description="run localization node"/>
-    
-    <arg name="use_lidar" default="true" description="use lidar"/>
+    <arg name="use_lidar" default="false" description="use lidar"/>
+    <arg name="use_camera" default="false" description="use camera"/>
+    <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
+    <arg name="use_emergency" default="false" description="run emergency override controller"/>
+    <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
+    <arg name="magp_rl_run_pure_pursuit" default="false" />
+    <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
+    <arg name="use_sim_time" default="false" />
+    <arg name="publish_map" default="false" />
+    <arg name="map_server_use_sim_time" default="false" />
+    <arg name="use_localization_manager" default="false" />
+    <arg name="publish_localization_tf" default="false" />
+    <arg name="use_section_localizer" default="false" />
+    <arg name="section_localizer_debug_mode" default="false" />
+    <arg name="enable_localization_and_mapping" default="false" />
+
+    <!-- Vehicle and command topics -->
+    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
+    <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
+    <arg name="emergency_scan_topic" default="/scan" />
+    <arg name="emergency_control_cmd" default="/emergency/cmd_drive" description="emergency override ackermann command"/>
+    <arg name="emergency_signal_topic" default="/emergency/signal" description="emergency override activation signal"/>
+
+    <!-- Sensing -->
     <arg name="lidar_model" default="t_mini_plus" />
     <arg name="lidar_container_name" default="lidar_container" />
-
-    <arg name="use_camera" default="true" description="use camera"/>
     <arg name="camera_model" default="realsense" />
     <arg name="camera_container_name" default="camera_container" />
     <arg name="image_width" default="424" />
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="90.0" />
-    
-    <arg name="vehicle_control_topic" default="/jetracer/cmd_drive" description="final command to vehicle"/>
-    <arg name="autonomous_control_cmd" default="/autonomous/cmd_drive" description="autonomous ackermann control command"/>
-    <arg name="use_emergency" default="false" description="run emergency override controller"/>
-    <arg name="emergency_param" default="$(find-pkg-share emergency_controller)/config/emergency_controller.param.yaml" />
-    <arg name="emergency_scan_topic" default="/scan" />
-    <arg name="emergency_control_cmd" default="/emergency/cmd_drive" description="emergency override ackermann command"/>
-    <arg name="emergency_signal_topic" default="/emergency/signal" description="emergency override activation signal"/>
-    <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
+
+    <!-- Control -->
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
-    <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
+    <arg name="emergency_param" default="$(find-pkg-share emergency_controller)/config/emergency_controller.param.yaml" />
     <arg name="magp_rl_model_name" default="magp_rl_trajectory" />
     <arg name="magp_rl_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
     <arg name="magp_rl_decoder_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/rl_trajectory_decoder_node.param.yaml" />
     <arg name="magp_rl_scan_topic" default="/scan" />
     <arg name="magp_rl_scan_tensor_topic" default="/encoder/scan_tensor" />
-    <arg name="magp_rl_run_pure_pursuit" default="true" />
-    <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
     <arg name="pure_pursuit_param" default="$(find-pkg-share system_launch)/config/control/pure_pursuit_controller.param.yaml" />
     <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
     <arg name="pure_pursuit_velocity_topic" default="/current_velocity" />
     <arg name="pure_pursuit_odometry_topic" default="/visual_slam/tracking/odometry" />
-    
+
+    <!-- Operation tools -->
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
+    <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
+    <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
+
+    <!-- Localization and mapping -->
     <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
-    <arg name="use_sim_time" default="false" />
     <arg name="localization_result_topic" default="/localization_result" />
-    <arg name="publish_map" default="true" />
     <arg name="map_topic" default="/map" />
     <arg name="map_frame" default="map" />
-    <arg name="map_server_use_sim_time" default="false" />
-    <arg name="use_localization_manager" default="true" />
     <arg name="localization_manager_param" default="$(find-pkg-share system_launch)/config/localization/localization_manager.param.yaml" />
     <arg name="localization_feedback_timeout_sec" default="0.0" />
-    <arg name="publish_localization_tf" default="true" />
     <arg name="localization_tf_mode" default="map_to_odom" />
     <arg name="localization_tf_map_frame" default="map" />
     <arg name="localization_tf_odom_frame" default="odom" />
     <arg name="localization_tf_base_frame" default="base_link" />
     <arg name="localization_tf_publish_rate_hz" default="20.0" />
-    <arg name="use_section_localizer" default="false" />
     <arg name="section_localizer_param" default="$(find-pkg-share system_launch)/config/localization/section_localizer.param.yaml" />
     <arg name="section_definition_path" default="" />
     <arg name="gate_definition_path" default="" />
@@ -64,14 +75,11 @@
     <arg name="section_localizer_base_frame" default="base_link" />
     <arg name="section_localizer_topic" default="/localization/current_section" />
     <arg name="section_localizer_update_rate_hz" default="10.0" />
-    <arg name="section_localizer_debug_mode" default="true" />
     <arg name="section_localizer_marker_topic" default="/localization/section_markers" />
     <arg name="section_localizer_current_marker_topic" default="/localization/current_section_marker" />
     <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
-    <arg name="enable_localization_and_mapping" default="true" />
-    
-    <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
-    <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
+
+    <!-- Param files -->
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
     <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter_footprint_angle.param.yaml" />
     <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />

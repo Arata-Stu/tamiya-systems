@@ -5,32 +5,44 @@ set -eo pipefail
 SCRIPT_NAME="$(basename "$0")"
 
 BOOL_KEYS=(
-  use_section_localizer
-  localization
+  record
   vslam
-  use_camera
+  localization
   use_lidar
+  use_camera
   use_ftg
   use_emergency
-  record
   use_magp_rl_trajectory
+  magp_rl_run_pure_pursuit
   use_pure_pursuit
+  use_sim_time
+  publish_map
+  map_server_use_sim_time
   use_localization_manager
+  publish_localization_tf
+  use_section_localizer
+  section_localizer_debug_mode
   enable_localization_and_mapping
 )
 
-ARG_use_section_localizer="false"
+ARG_record="false"
+ARG_vslam="false"
 ARG_localization="false"
-ARG_vslam="true"
-ARG_use_camera="true"
-ARG_use_lidar="true"
+ARG_use_lidar="false"
+ARG_use_camera="false"
 ARG_use_ftg="false"
 ARG_use_emergency="false"
-ARG_record="false"
 ARG_use_magp_rl_trajectory="false"
+ARG_magp_rl_run_pure_pursuit="false"
 ARG_use_pure_pursuit="false"
-ARG_use_localization_manager="true"
-ARG_enable_localization_and_mapping="true"
+ARG_use_sim_time="false"
+ARG_publish_map="false"
+ARG_map_server_use_sim_time="false"
+ARG_use_localization_manager="false"
+ARG_publish_localization_tf="false"
+ARG_use_section_localizer="false"
+ARG_section_localizer_debug_mode="false"
+ARG_enable_localization_and_mapping="false"
 ARG_bag_manager_param='$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml'
 
 BAG_MANAGER_PRESETS=(
@@ -47,6 +59,7 @@ BAG_MANAGER_PATHS=(
 
 MODE="base"
 INTERACTIVE="false"
+LEGACY_INTERACTIVE="false"
 DRY_RUN="false"
 EXTRA_ARGS=()
 OVERRIDES=()
@@ -63,6 +76,7 @@ Modes:
 
 Options:
   -i, --interactive       Toggle launch arguments interactively before running
+  --legacy-interactive    Use the old line-based interactive prompt
   -n, --dry-run           Print the command without running it
   --bag-manager NAME      Select bag manager yaml: default|mapping|e2e|PATH
   --set KEY=VALUE         Override an argument (also accepts KEY:=VALUE)
@@ -114,7 +128,7 @@ set_arg() {
   fi
 
   case "$key" in
-    use_section_localizer|localization|vslam|use_camera|use_lidar|use_ftg|use_emergency|record|use_magp_rl_trajectory|use_pure_pursuit|use_localization_manager|enable_localization_and_mapping)
+    record|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
       value="$(normalize_bool "$value")"
       var_name="ARG_${key}"
       printf -v "$var_name" '%s' "$value"
@@ -136,25 +150,45 @@ get_arg() {
 apply_mode() {
   case "$1" in
     base)
-      ARG_use_section_localizer="false"
-      ARG_localization="false"
+      ARG_record="false"
       ARG_vslam="true"
-      ARG_use_camera="true"
+      ARG_localization="false"
       ARG_use_lidar="true"
+      ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
-      ARG_record="false"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="true"
+      ARG_publish_localization_tf="true"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
       ;;
     mapping)
-      ARG_use_section_localizer="false"
-      ARG_localization="false"
+      ARG_record="true"
       ARG_vslam="true"
-      ARG_use_camera="true"
+      ARG_localization="false"
       ARG_use_lidar="true"
+      ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
-      ARG_record="true"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="true"
+      ARG_publish_localization_tf="true"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
       ;;
     *)
@@ -248,7 +282,7 @@ choose_mode_interactive() {
   esac
 }
 
-toggle_interactive() {
+toggle_interactive_legacy() {
   local answer
   local key
   local idx
@@ -292,6 +326,126 @@ toggle_interactive() {
   done
 }
 
+render_checkbox_interactive() {
+  local cursor="$1"
+  local idx
+  local key
+  local marker
+  local checked
+
+  printf '\033[H\033[J'
+  echo "Mode: $MODE"
+  echo ""
+  echo "Launch arguments:"
+
+  for idx in "${!BOOL_KEYS[@]}"; do
+    key="${BOOL_KEYS[$idx]}"
+    marker=" "
+    checked=" "
+
+    if [[ "$idx" -eq "$cursor" ]]; then
+      marker=">"
+    fi
+
+    if [[ "$(get_arg "$key")" == "true" ]]; then
+      checked="x"
+    fi
+
+    printf " %s [%s] %-34s %s\n" "$marker" "$checked" "$key" "$(get_arg "$key")"
+  done
+
+  echo ""
+  printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
+  echo ""
+  echo "j/k or ↑/↓: move  space: toggle  b: bag manager  s: set KEY=VALUE  enter: run  q: quit"
+}
+
+read_checkbox_key() {
+  local key
+  local rest
+
+  IFS= read -rsn1 key || return 1
+
+  if [[ "$key" == $'\033' ]]; then
+    IFS= read -rsn2 -t 0.1 rest || true
+    key+="$rest"
+  fi
+
+  printf '%s' "$key"
+}
+
+toggle_bool_key() {
+  local key="$1"
+
+  if [[ "$(get_arg "$key")" == "true" ]]; then
+    set_arg "${key}=false"
+  else
+    set_arg "${key}=true"
+  fi
+}
+
+prompt_set_arg_interactive() {
+  local answer
+
+  printf '\033[H\033[J'
+  echo "Set launch argument"
+  echo ""
+  echo "Examples:"
+  echo "  use_lidar=false"
+  echo "  map_yaml_path:=/map/course/map.yaml"
+  echo ""
+  read -r -p "KEY=VALUE: " answer
+  [[ -n "$answer" ]] && set_arg "$answer"
+}
+
+toggle_interactive_checkbox() {
+  local cursor=0
+  local key
+  local current
+
+  while true; do
+    render_checkbox_interactive "$cursor"
+    key="$(read_checkbox_key)"
+
+    case "$key" in
+      ""|$'\n'|$'\r')
+        printf '\033[H\033[J'
+        break
+        ;;
+      q|Q)
+        printf '\033[H\033[J'
+        echo "Canceled." >&2
+        exit 1
+        ;;
+      j|$'\033[B')
+        cursor=$(((cursor + 1) % ${#BOOL_KEYS[@]}))
+        ;;
+      k|$'\033[A')
+        cursor=$(((cursor + ${#BOOL_KEYS[@]} - 1) % ${#BOOL_KEYS[@]}))
+        ;;
+      " ")
+        current="${BOOL_KEYS[$cursor]}"
+        toggle_bool_key "$current"
+        ;;
+      b|B)
+        printf '\033[H\033[J'
+        choose_bag_manager_interactive
+        ;;
+      s|S)
+        prompt_set_arg_interactive
+        ;;
+    esac
+  done
+}
+
+toggle_interactive() {
+  if [[ "$LEGACY_INTERACTIVE" == "true" || ! -t 0 ]]; then
+    toggle_interactive_legacy
+  else
+    toggle_interactive_checkbox
+  fi
+}
+
 build_command() {
   local cmd=("ros2" "launch" "system_launch" "system.launch.xml")
   local key
@@ -330,6 +484,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     -i|--interactive)
       INTERACTIVE="true"
+      shift
+      ;;
+    --legacy-interactive)
+      INTERACTIVE="true"
+      LEGACY_INTERACTIVE="true"
       shift
       ;;
     -n|--dry-run)
@@ -397,17 +556,23 @@ fi
 
 source_setup_if_available
 exec ros2 launch system_launch system.launch.xml \
-  "use_section_localizer:=${ARG_use_section_localizer}" \
-  "localization:=${ARG_localization}" \
+  "record:=${ARG_record}" \
   "vslam:=${ARG_vslam}" \
-  "use_camera:=${ARG_use_camera}" \
+  "localization:=${ARG_localization}" \
   "use_lidar:=${ARG_use_lidar}" \
+  "use_camera:=${ARG_use_camera}" \
   "use_ftg:=${ARG_use_ftg}" \
   "use_emergency:=${ARG_use_emergency}" \
-  "record:=${ARG_record}" \
   "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}" \
+  "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}" \
   "use_pure_pursuit:=${ARG_use_pure_pursuit}" \
+  "use_sim_time:=${ARG_use_sim_time}" \
+  "publish_map:=${ARG_publish_map}" \
+  "map_server_use_sim_time:=${ARG_map_server_use_sim_time}" \
   "use_localization_manager:=${ARG_use_localization_manager}" \
+  "publish_localization_tf:=${ARG_publish_localization_tf}" \
+  "use_section_localizer:=${ARG_use_section_localizer}" \
+  "section_localizer_debug_mode:=${ARG_section_localizer_debug_mode}" \
   "enable_localization_and_mapping:=${ARG_enable_localization_and_mapping}" \
   "bag_manager_param:=${ARG_bag_manager_param}" \
   "${EXTRA_ARGS[@]}"
