@@ -115,6 +115,7 @@ class TerminalMapViewer(Node):
         self.section_markers: dict[tuple[str, int], Marker] = {}
         self.current_section_marker: Optional[Marker] = None
         self.current_section_name = "-"
+        self.last_live_pose_source = "-"
         self.frame_count = 0
         self.last_status = ""
 
@@ -219,6 +220,8 @@ class TerminalMapViewer(Node):
             stamp=msg.header.stamp,
             covariance=list(msg.pose.covariance),
         )
+        if self.args.reset_trace_on_localization:
+            self.live_trace.clear()
 
     def on_pose_stamped(self, msg: PoseStamped) -> None:
         pose = msg.pose
@@ -229,6 +232,8 @@ class TerminalMapViewer(Node):
             frame_id=msg.header.frame_id or self.args.map_frame,
             stamp=msg.header.stamp,
         )
+        if self.args.reset_trace_on_localization:
+            self.live_trace.clear()
 
     def on_odom(self, msg: Odometry) -> None:
         pose = msg.pose.pose
@@ -339,11 +344,21 @@ class TerminalMapViewer(Node):
 
     def current_pose_in_map(self) -> Optional[Pose2D]:
         if self.args.live_pose_source == "tf":
-            return self.tf_pose_in_map()
+            pose = self.tf_pose_in_map()
+            self.last_live_pose_source = "tf" if pose is not None else "-"
+            return pose
         if self.args.live_pose_source == "odom":
-            return self.pose_in_map(self.live_pose) if self.live_pose is not None else None
+            pose = self.pose_in_map(self.live_pose) if self.live_pose is not None else None
+            self.last_live_pose_source = "odom" if pose is not None else "-"
+            return pose
+
+        tf_pose = self.tf_pose_in_map()
+        if tf_pose is not None:
+            self.last_live_pose_source = "tf"
+            return tf_pose
         odom_pose = self.pose_in_map(self.live_pose) if self.live_pose is not None else None
-        return odom_pose if odom_pose is not None else self.tf_pose_in_map()
+        self.last_live_pose_source = "odom" if odom_pose is not None else "-"
+        return odom_pose
 
     def world_to_map_px(self, x: float, y: float) -> tuple[int, int]:
         assert self.map_state is not None
@@ -391,7 +406,12 @@ class TerminalMapViewer(Node):
         else:
             dx = pose.x - self.live_trace[-1][0]
             dy = pose.y - self.live_trace[-1][1]
-            if math.hypot(dx, dy) >= self.args.live_trace_min_step:
+            distance = math.hypot(dx, dy)
+            if self.args.live_trace_reset_jump > 0.0 and distance > self.args.live_trace_reset_jump:
+                self.live_trace.clear()
+                self.live_trace.append((pose.x, pose.y))
+                return
+            if distance >= self.args.live_trace_min_step:
                 self.live_trace.append((pose.x, pose.y))
         if len(self.live_trace) > self.args.live_trace_length:
             del self.live_trace[: len(self.live_trace) - self.args.live_trace_length]
@@ -606,14 +626,11 @@ class TerminalMapViewer(Node):
         localization_frame = "-"
         if self.pose is not None:
             localization_frame = self.pose.frame_id or "?"
-        live_source = self.args.live_pose_source
-        if live_source == "auto":
-            live_source = "odom" if self.live_pose is not None else "tf"
         scan_age = self.scan.header.frame_id if self.scan is not None else "-"
         particles = len(self.particles.poses) if self.particles is not None else 0
         return (
             f"frame={self.frame_count} map={self.map_state.width}x{self.map_state.height}@{self.map_state.resolution:.3f}m "
-            f"scale={scale:.2f} loc={localization_frame} live={live_source} trace={len(self.live_trace)} section={self.current_section_name} "
+            f"scale={scale:.2f} loc={localization_frame} live={self.last_live_pose_source} trace={len(self.live_trace)} section={self.current_section_name} "
             f"markers={len(self.section_markers)} particles={particles} scan={scan_age} render={render_sec * 1000:.1f}ms"
         )
 
@@ -627,7 +644,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--odom-topic", default="", help="nav_msgs/Odometry topic for live pose, empty to use TF only")
     parser.add_argument("--odom-frame", default="odom", help="fallback frame_id when odometry header.frame_id is empty")
     parser.add_argument("--base-frame", default="base_link", help="base frame used for live TF pose")
-    parser.add_argument("--live-pose-source", choices=("auto", "tf", "odom"), default="auto")
+    parser.add_argument("--live-pose-source", choices=("auto", "tf", "odom"), default="auto", help="auto prefers TF map->base_link, then falls back to odometry")
     parser.add_argument("--particles-topic", default="/particle_cloud", help="PoseArray topic, empty to disable")
     parser.add_argument("--scan-topic", default="/scan", help="LaserScan topic, empty to disable")
     parser.add_argument("--path-topic", default="", help="nav_msgs/Path topic, empty to disable")
@@ -649,6 +666,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--particle-heading", action="store_true")
     parser.add_argument("--live-trace-length", type=int, default=400)
     parser.add_argument("--live-trace-min-step", type=float, default=0.03)
+    parser.add_argument("--live-trace-reset-jump", type=float, default=1.0, help="clear live trace if pose jumps more than this many meters; 0 disables")
+    parser.add_argument("--reset-trace-on-localization", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--show-sections", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--show-section-labels", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--show-gates", action=argparse.BooleanOptionalAction, default=True)
