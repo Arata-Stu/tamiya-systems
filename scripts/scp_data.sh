@@ -2,6 +2,20 @@
 
 echo "=== インタラクティブ rsync 受信スクリプト ==="
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+TUI_SCRIPT_PATH="${SCRIPT_DIR}/common/tui.sh"
+
+if [ -f "$TUI_SCRIPT_PATH" ]; then
+    # shellcheck source=scripts/common/tui.sh
+    source "$TUI_SCRIPT_PATH"
+fi
+
+LEGACY_SELECT="false"
+if [[ "${1:-}" == "--legacy-select" ]]; then
+    LEGACY_SELECT="true"
+    shift
+fi
+
 # ==========================================
 # デフォルト設定
 # ==========================================
@@ -115,21 +129,27 @@ if [ "$MODE_CHOICE" = "1" ]; then
         exit 1
     fi
 
-    echo ""
-    echo "取得対象を選択 (例: 1 3)"
-    for i in "${!dirs[@]}"; do
-        printf "  %2d) %s\n" "$((i+1))" "$(remote_relative_path "${dirs[$i]}")"
-    done
+    if [[ "$LEGACY_SELECT" != "true" ]] && declare -F tui_select_paths >/dev/null 2>&1; then
+        tui_select_paths "取得対象を選択してください。" dirs SELECTED_DIRS "$REMOTE_BASE_DIR" || true
+    fi
 
-    read -p "番号を入力: " DIR_CHOICES
+    if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
+        echo ""
+        echo "取得対象を選択 (例: 1 3)"
+        for i in "${!dirs[@]}"; do
+            printf "  %2d) %s\n" "$((i+1))" "$(remote_relative_path "${dirs[$i]}")"
+        done
 
-    for choice in $DIR_CHOICES; do
-        if [[ "$choice" =~ ^[0-9]+$ ]] && \
-           [ "$choice" -ge 1 ] && \
-           [ "$choice" -le "${#dirs[@]}" ]; then
-            SELECTED_DIRS+=("${dirs[$((choice-1))]}")
-        fi
-    done
+        read -p "番号を入力: " DIR_CHOICES
+
+        for choice in $DIR_CHOICES; do
+            if [[ "$choice" =~ ^[0-9]+$ ]] && \
+               [ "$choice" -ge 1 ] && \
+               [ "$choice" -le "${#dirs[@]}" ]; then
+                SELECTED_DIRS+=("${dirs[$((choice-1))]}")
+            fi
+        done
+    fi
 
 else
     echo ""

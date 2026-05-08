@@ -146,3 +146,99 @@ tui_checkbox_menu() {
     esac
   done
 }
+
+TUI_PATH_SELECT_KEYS=()
+TUI_PATH_SELECT_VALUES=()
+TUI_PATH_SELECT_PATHS=()
+
+tui_path_select_get_value() {
+  local key="$1"
+  local idx
+
+  for idx in "${!TUI_PATH_SELECT_KEYS[@]}"; do
+    if [[ "${TUI_PATH_SELECT_KEYS[$idx]}" == "$key" ]]; then
+      echo "${TUI_PATH_SELECT_VALUES[$idx]}"
+      return 0
+    fi
+  done
+
+  echo "false"
+}
+
+tui_path_select_toggle_value() {
+  local key="$1"
+  local idx
+
+  for idx in "${!TUI_PATH_SELECT_KEYS[@]}"; do
+    if [[ "${TUI_PATH_SELECT_KEYS[$idx]}" == "$key" ]]; then
+      if [[ "${TUI_PATH_SELECT_VALUES[$idx]}" == "true" ]]; then
+        TUI_PATH_SELECT_VALUES[$idx]="false"
+      else
+        TUI_PATH_SELECT_VALUES[$idx]="true"
+      fi
+      return 0
+    fi
+  done
+}
+
+tui_path_relative_label() {
+  local path="$1"
+  local base="${2:-}"
+
+  if [[ -n "$base" ]]; then
+    base="${base%/}"
+    if [[ "$path" == "$base"/* ]]; then
+      printf '%s\n' "${path#"$base"/}"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' "$path"
+}
+
+tui_select_paths() {
+  local title="$1"
+  local paths_array="$2"
+  local output_array="$3"
+  local base_dir="${4:-}"
+  local length
+  local idx
+  local path
+  local label
+  local selected=()
+
+  if [[ ! -t 0 ]]; then
+    return 2
+  fi
+
+  length="$(tui_array_length "$paths_array")"
+  if [[ "$length" -eq 0 ]]; then
+    eval "$output_array=()"
+    return 0
+  fi
+
+  TUI_PATH_SELECT_KEYS=()
+  TUI_PATH_SELECT_VALUES=()
+  TUI_PATH_SELECT_PATHS=()
+
+  for ((idx = 0; idx < length; idx++)); do
+    path="$(tui_array_get "$paths_array" "$idx")"
+    label="$(tui_path_relative_label "$path" "$base_dir")"
+    TUI_PATH_SELECT_KEYS+=("$(printf "%02d %s" "$((idx + 1))" "$label")")
+    TUI_PATH_SELECT_VALUES+=("false")
+    TUI_PATH_SELECT_PATHS+=("$path")
+  done
+
+  tui_checkbox_menu "$title" TUI_PATH_SELECT_KEYS tui_path_select_get_value tui_path_select_toggle_value
+
+  for idx in "${!TUI_PATH_SELECT_VALUES[@]}"; do
+    if [[ "${TUI_PATH_SELECT_VALUES[$idx]}" == "true" ]]; then
+      selected+=("${TUI_PATH_SELECT_PATHS[$idx]}")
+    fi
+  done
+
+  eval "$output_array=()"
+  for path in "${selected[@]}"; do
+    eval "$output_array+=(\"\$path\")"
+  done
+}

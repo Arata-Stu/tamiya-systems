@@ -2,6 +2,21 @@
 
 echo "=== Interactive checkpoint transfer (multi-select, multi-IP) ==="
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." &> /dev/null && pwd)"
+TUI_SCRIPT_PATH="${PROJECT_ROOT}/scripts/common/tui.sh"
+
+if [ -f "$TUI_SCRIPT_PATH" ]; then
+    # shellcheck source=scripts/common/tui.sh
+    source "$TUI_SCRIPT_PATH"
+fi
+
+LEGACY_SELECT="false"
+if [[ "${1:-}" == "--legacy-select" ]]; then
+    LEGACY_SELECT="true"
+    shift
+fi
+
 # ==========================================
 # Defaults
 # ==========================================
@@ -31,31 +46,38 @@ if [ ${#dirs[@]} -eq 0 ]; then
     exit 1
 fi
 
-echo ""
-echo "Select directories to transfer:"
-i=1
-for d in "${dirs[@]}"; do
-    rel_path="${d#$BASE_DIR}"
-    echo "  $i) $rel_path"
-    ((i++))
-done
-echo ""
+SELECTED_DIRS=()
 
-read -p "Enter numbers separated by spaces (example: 1 3 4): " DIR_CHOICES
-
-if [ -z "$DIR_CHOICES" ]; then
-    echo "Error: no directory was selected."
-    exit 1
+if [[ "$LEGACY_SELECT" != "true" ]] && declare -F tui_select_paths >/dev/null 2>&1; then
+    tui_select_paths "Select checkpoint directories to transfer." dirs SELECTED_DIRS "$BASE_DIR" || true
 fi
 
-SELECTED_DIRS=()
-for choice in $DIR_CHOICES; do
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dirs[@]}" ]; then
-        SELECTED_DIRS+=("${dirs[$((choice-1))]}")
-    else
-        echo "Warning: invalid selection '$choice' was skipped."
+if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
+    echo ""
+    echo "Select directories to transfer:"
+    i=1
+    for d in "${dirs[@]}"; do
+        rel_path="${d#$BASE_DIR}"
+        echo "  $i) $rel_path"
+        ((i++))
+    done
+    echo ""
+
+    read -p "Enter numbers separated by spaces (example: 1 3 4): " DIR_CHOICES
+
+    if [ -z "$DIR_CHOICES" ]; then
+        echo "Error: no directory was selected."
+        exit 1
     fi
-done
+
+    for choice in $DIR_CHOICES; do
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#dirs[@]}" ]; then
+            SELECTED_DIRS+=("${dirs[$((choice-1))]}")
+        else
+            echo "Warning: invalid selection '$choice' was skipped."
+        fi
+    done
+fi
 
 if [ ${#SELECTED_DIRS[@]} -eq 0 ]; then
     echo "Error: no valid directories were selected."

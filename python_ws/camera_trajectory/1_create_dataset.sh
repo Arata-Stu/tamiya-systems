@@ -2,7 +2,14 @@
 
 PREPROCESS_SCRIPT_NAME="extract_topics.py"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." &> /dev/null && pwd)"
 PREPROCESS_SCRIPT_PATH="${SCRIPT_DIR}/${PREPROCESS_SCRIPT_NAME}"
+TUI_SCRIPT_PATH="${PROJECT_ROOT}/scripts/common/tui.sh"
+
+if [ -f "$TUI_SCRIPT_PATH" ]; then
+    # shellcheck source=scripts/common/tui.sh
+    source "$TUI_SCRIPT_PATH"
+fi
 
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
@@ -31,6 +38,7 @@ show_help() {
     echo "  --target_distances          Explicit distances in meters, e.g. 0.5 1.0 1.5 2.0"
     echo "  --max_pose_time_diff        Max image/pose sync offset in seconds (default: 0.2)"
     echo "  --workers                   Number of parallel workers"
+    echo "  --legacy-select             Use the old number-input selector instead of checkbox TUI"
     echo "  -h, --help                  Show this help message"
 }
 
@@ -45,6 +53,7 @@ MAX_DISTANCE="8.0"
 MAX_POSE_TIME_DIFF="0.2"
 WORKERS=""
 TARGET_DISTANCES=()
+LEGACY_SELECT="false"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -97,6 +106,10 @@ while [[ $# -gt 0 ]]; do
         WORKERS="$2"
         shift 2
         ;;
+        --legacy-select)
+        LEGACY_SELECT="true"
+        shift
+        ;;
         -h|--help)
         show_help
         exit 0
@@ -126,7 +139,10 @@ if [ ! -f "$PREPROCESS_SCRIPT_PATH" ]; then
 fi
 
 echo -e "Searching sequences under: ${CYAN}$BASE_DIR${NC}"
-mapfile -t sequences < <(find "$BASE_DIR" -name "metadata.yaml" -print0 | xargs -0 -I {} dirname {} | sort)
+sequences=()
+while IFS= read -r metadata_path; do
+    sequences+=("$(dirname "$metadata_path")")
+done < <(find "$BASE_DIR" -name "metadata.yaml" -print | sort)
 
 if [ ${#sequences[@]} -eq 0 ]; then
     echo -e "${YELLOW}No sequences found.${NC}"
@@ -140,28 +156,46 @@ for i in "${!sequences[@]}"; do
 done
 echo -e "-----------------------\n"
 
-select_sequences() {
+select_sequences_legacy() {
     local prompt_message="$1"
-    local -n output_array=$2
+    local output_name="$2"
+    local selected=()
+    local idx
+    local path
 
     echo -e "${CYAN}$prompt_message${NC}"
     echo "  Enter numbers separated by spaces (e.g. 1 3 5)"
     read -p "  Select: " -a indices
 
-    output_array=()
+    eval "$output_name=()"
     for idx in "${indices[@]}"; do
         if [[ "$idx" =~ ^[0-9]+$ ]] && [ "$idx" -ge 1 ] && [ "$idx" -le "${#sequences[@]}" ]; then
-            output_array+=("${sequences[$((idx-1))]}")
+            path="${sequences[$((idx-1))]}"
+            eval "$output_name+=(\"\$path\")"
         else
             echo -e "  ${YELLOW}Skip invalid number: $idx${NC}"
         fi
     done
 
+    eval "selected=(\"\${${output_name}[@]}\")"
     echo "  Selected:"
-    for p in "${output_array[@]}"; do
+    for p in "${selected[@]}"; do
         echo -e "    ${GREEN}$(basename "$p")${NC}"
     done
     echo ""
+}
+
+select_sequences() {
+    local prompt_message="$1"
+    local output_name="$2"
+
+    if [[ "$LEGACY_SELECT" != "true" ]] && declare -F tui_select_paths >/dev/null 2>&1; then
+        if tui_select_paths "$prompt_message" sequences "$output_name" "$BASE_DIR"; then
+            return
+        fi
+    fi
+
+    select_sequences_legacy "$prompt_message" "$output_name"
 }
 
 run_extraction() {

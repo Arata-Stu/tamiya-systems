@@ -3,7 +3,14 @@
 # --- スクリプト設定 ---
 PREPROCESS_SCRIPT_NAME="extract_topics.py"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." &> /dev/null && pwd)"
 PREPROCESS_SCRIPT_PATH="${SCRIPT_DIR}/${PREPROCESS_SCRIPT_NAME}"
+TUI_SCRIPT_PATH="${PROJECT_ROOT}/scripts/common/tui.sh"
+
+if [ -f "$TUI_SCRIPT_PATH" ]; then
+    # shellcheck source=scripts/common/tui.sh
+    source "$TUI_SCRIPT_PATH"
+fi
 
 # --- 色付け (オプション) ---
 CYAN='\033[0;36m'
@@ -21,12 +28,14 @@ show_help() {
     echo "Options:"
     echo "  -b, --base_dir   Base directory to search for sequences (recursively)"
     echo "  -o, --outdir     Output root directory for datasets (e.g., ./datasets)"
+    echo "  --legacy-select  Use the old number-input selector instead of checkbox TUI"
     echo "  -h, --help       Show this help message"
 }
 
 # --- 引数解析 ---
 BASE_DIR=""
 OUTDIR=""
+LEGACY_SELECT="false"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -38,6 +47,10 @@ while [[ $# -gt 0 ]]; do
         -o|--outdir)
         OUTDIR="$2"
         shift 2
+        ;;
+        --legacy-select)
+        LEGACY_SELECT="true"
+        shift
         ;;
         -h|--help)
         show_help
@@ -66,7 +79,10 @@ fi
 
 # --- 1. シーケンスを探索 ---
 echo -e "🔄 Searching for sequences under: ${CYAN}$BASE_DIR${NC}"
-mapfile -t sequences < <(find "$BASE_DIR" -name "metadata.yaml" -print0 | xargs -0 -I {} dirname {} | sort)
+sequences=()
+while IFS= read -r metadata_path; do
+    sequences+=("$(dirname "$metadata_path")")
+done < <(find "$BASE_DIR" -name "metadata.yaml" -print | sort)
 
 if [ ${#sequences[@]} -eq 0 ]; then
     echo -e "${YELLOW}❌ No sequences found.${NC}"
@@ -82,28 +98,46 @@ done
 echo -e "----------------------------\n"
 
 # --- 3. 選択関数 ---
-select_sequences() {
+select_sequences_legacy() {
     local prompt_message="$1"
-    local -n output_array=$2
+    local output_name="$2"
+    local selected=()
+    local idx
+    local path
     
     echo -e "👉 ${CYAN}$prompt_message${NC}"
     echo "   (Enter numbers separated by space, e.g., 1 3 5)"
     read -p "   Select: " -a indices
 
-    output_array=()
+    eval "$output_name=()"
     for idx in "${indices[@]}"; do
         if [[ "$idx" =~ ^[0-9]+$ ]] && [ "$idx" -ge 1 ] && [ "$idx" -le "${#sequences[@]}" ]; then
-            output_array+=("${sequences[$((idx-1))]}")
+            path="${sequences[$((idx-1))]}"
+            eval "$output_name+=(\"\$path\")"
         else
             echo -e "   ${YELLOW}⚠️ Invalid number skipped: $idx${NC}"
         fi
     done
     
+    eval "selected=(\"\${${output_name}[@]}\")"
     echo "   Selected:"
-    for p in "${output_array[@]}"; do
+    for p in "${selected[@]}"; do
         echo -e "     ${GREEN}✅ $(basename "$p")${NC}"
     done
     echo ""
+}
+
+select_sequences() {
+    local prompt_message="$1"
+    local output_name="$2"
+
+    if [[ "$LEGACY_SELECT" != "true" ]] && declare -F tui_select_paths >/dev/null 2>&1; then
+        if tui_select_paths "$prompt_message" sequences "$output_name" "$BASE_DIR"; then
+            return
+        fi
+    fi
+
+    select_sequences_legacy "$prompt_message" "$output_name"
 }
 
 # --- 4. 実行関数 ---
@@ -147,4 +181,3 @@ run_extraction "$OUTDIR/test" "TEST" "${test_paths[@]}"
 if [ $? -ne 0 ]; then exit 1; fi
 
 echo -e "\n🎉 Dataset created successfully at ${CYAN}$OUTDIR${NC}"
-
