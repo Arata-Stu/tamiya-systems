@@ -367,7 +367,8 @@ toggle_interactive_checkbox() {
     render_launch_extra_interactive \
     choose_bag_manager_interactive \
     prompt_set_arg_interactive \
-    "bag manager"
+    "bag manager" \
+    "set value"
 }
 
 toggle_interactive() {

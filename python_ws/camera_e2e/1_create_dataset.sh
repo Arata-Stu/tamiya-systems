@@ -3,7 +3,14 @@
 # --- Script Settings ---
 PREPROCESS_SCRIPT_NAME="extract_topics.py"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." &> /dev/null && pwd)"
 PREPROCESS_SCRIPT_PATH="${SCRIPT_DIR}/${PREPROCESS_SCRIPT_NAME}"
+TUI_SCRIPT_PATH="${PROJECT_ROOT}/scripts/common/tui.sh"
+
+if [ -f "$TUI_SCRIPT_PATH" ]; then
+    # shellcheck source=scripts/common/tui.sh
+    source "$TUI_SCRIPT_PATH"
+fi
 
 # --- Colors (optional) ---
 CYAN='\033[0;36m'
@@ -24,6 +31,7 @@ show_help() {
     echo "  --cmd_topic           Ackermann topic name (default: /jetracer/cmd_drive)"
     echo "  --image_storage       Image storage format: npy or png (default: npy)"
     echo "  --workers             Number of parallel workers"
+    echo "  --legacy-select       Use the old number-input selector instead of checkbox TUI"
     echo "  -h, --help            Show this help message"
 }
 
@@ -33,6 +41,7 @@ IMAGE_TOPIC="/realsense2_camera/color/image_raw"
 CMD_TOPIC="/jetracer/cmd_drive"
 IMAGE_STORAGE="npy"
 WORKERS=""
+LEGACY_SELECT="false"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -60,6 +69,10 @@ while [[ $# -gt 0 ]]; do
         --workers)
         WORKERS="$2"
         shift 2
+        ;;
+        --legacy-select)
+        LEGACY_SELECT="true"
+        shift
         ;;
         -h|--help)
         show_help
@@ -90,7 +103,10 @@ if [ ! -f "$PREPROCESS_SCRIPT_PATH" ]; then
 fi
 
 echo -e "Searching sequences under: ${CYAN}$BASE_DIR${NC}"
-mapfile -t sequences < <(find "$BASE_DIR" -name "metadata.yaml" -print0 | xargs -0 -I {} dirname {} | sort)
+sequences=()
+while IFS= read -r metadata_path; do
+    sequences+=("$(dirname "$metadata_path")")
+done < <(find "$BASE_DIR" -name "metadata.yaml" -print | sort)
 
 if [ ${#sequences[@]} -eq 0 ]; then
     echo -e "${YELLOW}No sequences found.${NC}"
@@ -104,28 +120,132 @@ for i in "${!sequences[@]}"; do
 done
 echo -e "-----------------------\n"
 
-select_sequences() {
+select_sequences_legacy() {
     local prompt_message="$1"
-    local -n output_array=$2
+    local output_name="$2"
+    local idx
+    local path
+    local selected=()
 
     echo -e "${CYAN}$prompt_message${NC}"
     echo "  Enter numbers separated by spaces (e.g. 1 3 5)"
     read -p "  Select: " -a indices
 
-    output_array=()
+    eval "$output_name=()"
     for idx in "${indices[@]}"; do
         if [[ "$idx" =~ ^[0-9]+$ ]] && [ "$idx" -ge 1 ] && [ "$idx" -le "${#sequences[@]}" ]; then
-            output_array+=("${sequences[$((idx-1))]}")
+            path="${sequences[$((idx-1))]}"
+            eval "$output_name+=(\"\$path\")"
         else
             echo -e "  ${YELLOW}Skip invalid number: $idx${NC}"
         fi
     done
 
+    eval "selected=(\"\${${output_name}[@]}\")"
     echo "  Selected:"
-    for p in "${output_array[@]}"; do
+    for p in "${selected[@]}"; do
         echo -e "    ${GREEN}$(basename "$p")${NC}"
     done
     echo ""
+}
+
+SELECT_KEYS=()
+SELECT_VALUES=()
+
+sequence_relative_path() {
+    local path="$1"
+    echo "${path#"$BASE_DIR"/}"
+}
+
+build_sequence_select_keys() {
+    local i
+    local relative_path
+
+    SELECT_KEYS=()
+    SELECT_VALUES=()
+    for i in "${!sequences[@]}"; do
+        relative_path="$(sequence_relative_path "${sequences[$i]}")"
+        SELECT_KEYS+=("$(printf "%02d %s" "$((i + 1))" "$relative_path")")
+        SELECT_VALUES+=("false")
+    done
+}
+
+sequence_select_index_for_key() {
+    local key="$1"
+    local idx
+
+    for idx in "${!SELECT_KEYS[@]}"; do
+        if [[ "${SELECT_KEYS[$idx]}" == "$key" ]]; then
+            echo "$idx"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+get_sequence_select_value() {
+    local key="$1"
+    local idx
+
+    idx="$(sequence_select_index_for_key "$key")" || {
+        echo "false"
+        return 0
+    }
+
+    echo "${SELECT_VALUES[$idx]}"
+}
+
+toggle_sequence_select_value() {
+    local key="$1"
+    local idx
+
+    idx="$(sequence_select_index_for_key "$key")" || return 0
+
+    if [[ "${SELECT_VALUES[$idx]}" == "true" ]]; then
+        SELECT_VALUES[$idx]="false"
+    else
+        SELECT_VALUES[$idx]="true"
+    fi
+}
+
+select_sequences_tui() {
+    local prompt_message="$1"
+    local output_name="$2"
+    local idx
+    local path
+    local selected=()
+
+    if ! declare -F tui_checkbox_menu >/dev/null 2>&1 || [[ ! -t 0 ]]; then
+        select_sequences_legacy "$prompt_message" "$output_name"
+        return
+    fi
+
+    build_sequence_select_keys
+    tui_checkbox_menu "$prompt_message" SELECT_KEYS get_sequence_select_value toggle_sequence_select_value
+
+    eval "$output_name=()"
+    for idx in "${!SELECT_VALUES[@]}"; do
+        if [[ "${SELECT_VALUES[$idx]}" == "true" ]]; then
+            path="${sequences[$idx]}"
+            eval "$output_name+=(\"\$path\")"
+        fi
+    done
+
+    eval "selected=(\"\${${output_name}[@]}\")"
+    echo "Selected:"
+    for p in "${selected[@]}"; do
+        echo -e "  ${GREEN}$(sequence_relative_path "$p")${NC}"
+    done
+    echo ""
+}
+
+select_sequences() {
+    if [[ "$LEGACY_SELECT" == "true" ]]; then
+        select_sequences_legacy "$@"
+    else
+        select_sequences_tui "$@"
+    fi
 }
 
 run_extraction() {
@@ -171,4 +291,3 @@ run_extraction "$OUTDIR/test" "TEST" "${test_paths[@]}"
 if [ $? -ne 0 ]; then exit 1; fi
 
 echo -e "\nDataset created successfully at ${CYAN}$OUTDIR${NC}"
-

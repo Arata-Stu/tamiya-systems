@@ -38,13 +38,15 @@ tui_render_checkbox_menu() {
   local get_value_func="$3"
   local extra_render_func="$4"
   local cursor="$5"
-  local extra_menu_label="${6:-extra menu}"
+  local extra_menu_label="${6:-}"
+  local set_value_label="${7:-}"
   local length
   local idx
   local key
   local value
   local marker
   local checked
+  local help="j/k or ↑/↓: move  space: toggle"
 
   length="$(tui_array_length "$keys_array")"
 
@@ -76,7 +78,13 @@ tui_render_checkbox_menu() {
   fi
 
   echo ""
-  echo "j/k or ↑/↓: move  space: toggle  b: $extra_menu_label  s: set value  enter: run  q: quit"
+  if [[ -n "$extra_menu_label" ]]; then
+    help="$help  b: $extra_menu_label"
+  fi
+  if [[ -n "$set_value_label" ]]; then
+    help="$help  s: $set_value_label"
+  fi
+  echo "$help  enter: done  q: quit"
 }
 
 tui_checkbox_menu() {
@@ -87,7 +95,8 @@ tui_checkbox_menu() {
   local extra_render_func="${5:-}"
   local extra_menu_func="${6:-}"
   local set_value_func="${7:-}"
-  local extra_menu_label="${8:-extra menu}"
+  local extra_menu_label="${8:-}"
+  local set_value_label="${9:-}"
   local cursor=0
   local length
   local key
@@ -100,7 +109,7 @@ tui_checkbox_menu() {
   fi
 
   while true; do
-    tui_render_checkbox_menu "$title" "$keys_array" "$get_value_func" "$extra_render_func" "$cursor" "$extra_menu_label"
+    tui_render_checkbox_menu "$title" "$keys_array" "$get_value_func" "$extra_render_func" "$cursor" "$extra_menu_label" "$set_value_label"
     key="$(tui_read_key)"
 
     case "$key" in
