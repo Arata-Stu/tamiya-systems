@@ -4,6 +4,10 @@
     <arg name="image_width" default="424" />
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="90.0" />
+    <arg name="camera_mount_frame" default="camera_link" />
+    <arg name="realsense_base_frame" default="camera_camera_link" />
+    <arg name="publish_realsense_mount_tf" default="true" />
+    <arg name="publish_vslam_optical_alias_tf" default="false" />
     <!-- RealSense infrared stream profile is specified as WIDTHxHEIGHTxFPS -->
     <let name="safe_image_fps" value="$(eval 'max(1, min(90, int(float(\'$(var image_fps)\'))))')"/>
     <let
@@ -40,15 +44,27 @@
         </composable_node>
     </load_composable_node>
 
-    <!-- vslam default expects camera_infra{1,2}_optical_frame.
-         Realsense TF naming may differ, so provide aliases from URDF optical frames. -->
+    <!-- RealSense prefixes frames with camera_name, so attach its TF tree to the
+         vehicle camera mount frame published by robot_state_publisher. -->
     <node
+        if="$(var publish_realsense_mount_tf)"
+        pkg="tf2_ros"
+        exec="static_transform_publisher"
+        name="realsense_mount_frame_alias"
+        args="0 0 0 0 0 0 $(var camera_mount_frame) $(var realsense_base_frame)" />
+
+    <!-- Kept for compatibility with old bags/configs. In current RealSense runs
+         the driver already publishes camera_infra{1,2}_optical_frame, so this is
+         disabled by default to avoid duplicate TF parents. -->
+    <node
+        if="$(var publish_vslam_optical_alias_tf)"
         pkg="tf2_ros"
         exec="static_transform_publisher"
         name="left_optical_frame_alias"
         args="0 0 0 0 0 0 camera_link_left_optical_frame camera_infra1_optical_frame" />
 
     <node
+        if="$(var publish_vslam_optical_alias_tf)"
         pkg="tf2_ros"
         exec="static_transform_publisher"
         name="right_optical_frame_alias"
