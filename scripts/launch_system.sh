@@ -3,6 +3,10 @@
 set -eo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=scripts/common/tui.sh
+source "$SCRIPT_DIR/common/tui.sh"
 
 BOOL_KEYS=(
   record
@@ -326,54 +330,6 @@ toggle_interactive_legacy() {
   done
 }
 
-render_checkbox_interactive() {
-  local cursor="$1"
-  local idx
-  local key
-  local marker
-  local checked
-
-  printf '\033[H\033[J'
-  echo "Mode: $MODE"
-  echo ""
-  echo "Launch arguments:"
-
-  for idx in "${!BOOL_KEYS[@]}"; do
-    key="${BOOL_KEYS[$idx]}"
-    marker=" "
-    checked=" "
-
-    if [[ "$idx" -eq "$cursor" ]]; then
-      marker=">"
-    fi
-
-    if [[ "$(get_arg "$key")" == "true" ]]; then
-      checked="x"
-    fi
-
-    printf " %s [%s] %-34s %s\n" "$marker" "$checked" "$key" "$(get_arg "$key")"
-  done
-
-  echo ""
-  printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
-  echo ""
-  echo "j/k or ↑/↓: move  space: toggle  b: bag manager  s: set KEY=VALUE  enter: run  q: quit"
-}
-
-read_checkbox_key() {
-  local key
-  local rest
-
-  IFS= read -rsn1 key || return 1
-
-  if [[ "$key" == $'\033' ]]; then
-    IFS= read -rsn2 -t 0.1 rest || true
-    key+="$rest"
-  fi
-
-  printf '%s' "$key"
-}
-
 toggle_bool_key() {
   local key="$1"
 
@@ -387,7 +343,7 @@ toggle_bool_key() {
 prompt_set_arg_interactive() {
   local answer
 
-  printf '\033[H\033[J'
+  tui_clear_screen
   echo "Set launch argument"
   echo ""
   echo "Examples:"
@@ -398,44 +354,20 @@ prompt_set_arg_interactive() {
   [[ -n "$answer" ]] && set_arg "$answer"
 }
 
+render_launch_extra_interactive() {
+  printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
+}
+
 toggle_interactive_checkbox() {
-  local cursor=0
-  local key
-  local current
-
-  while true; do
-    render_checkbox_interactive "$cursor"
-    key="$(read_checkbox_key)"
-
-    case "$key" in
-      ""|$'\n'|$'\r')
-        printf '\033[H\033[J'
-        break
-        ;;
-      q|Q)
-        printf '\033[H\033[J'
-        echo "Canceled." >&2
-        exit 1
-        ;;
-      j|$'\033[B')
-        cursor=$(((cursor + 1) % ${#BOOL_KEYS[@]}))
-        ;;
-      k|$'\033[A')
-        cursor=$(((cursor + ${#BOOL_KEYS[@]} - 1) % ${#BOOL_KEYS[@]}))
-        ;;
-      " ")
-        current="${BOOL_KEYS[$cursor]}"
-        toggle_bool_key "$current"
-        ;;
-      b|B)
-        printf '\033[H\033[J'
-        choose_bag_manager_interactive
-        ;;
-      s|S)
-        prompt_set_arg_interactive
-        ;;
-    esac
-  done
+  tui_checkbox_menu \
+    "Mode: $MODE" \
+    BOOL_KEYS \
+    get_arg \
+    toggle_bool_key \
+    render_launch_extra_interactive \
+    choose_bag_manager_interactive \
+    prompt_set_arg_interactive \
+    "bag manager"
 }
 
 toggle_interactive() {
