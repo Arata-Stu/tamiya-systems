@@ -23,14 +23,14 @@ Options:
   -h, --help          show this help
 
 Outputs:
-  /map/<bag_name>/<MAP_NAME>.pbstream
-  /map/<bag_name>/<MAP_NAME>.yaml
-  /map/<bag_name>/<MAP_NAME>.pgm
-  /map/<bag_name>/<MAP_NAME>.png (optional; generated if converter is available)
-  /map/<bag_name>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pbstream
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.yaml
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
 
 After map creation:
-  optionally transfer /map/<bag_name>/ to remote host by scp
+  optionally transfer /map/<bag_name>/<MAP_NAME>/ to remote host by scp
 
 Interactive flow:
   1) /record を再帰探索して metadata.yaml を持つ rosbag2 ディレクトリを一覧表示
@@ -194,6 +194,7 @@ done
 BAG_PATH=""
 MAP_NAME=""
 BAG_DIR_NAME=""
+BAG_OUT_DIR=""
 OUT_DIR=""
 MAP_STEM=""
 PBSTREAM_PATH=""
@@ -291,7 +292,8 @@ BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 
 # output paths
-OUT_DIR="/map/${BAG_DIR_NAME}"
+BAG_OUT_DIR="/map/${BAG_DIR_NAME}"
+OUT_DIR="${BAG_OUT_DIR}/${MAP_NAME}"
 MAP_STEM="${OUT_DIR}/${MAP_NAME}"
 PBSTREAM_PATH="${MAP_STEM}.pbstream"
 MAP_YAML_PATH="${MAP_STEM}.yaml"
@@ -693,7 +695,7 @@ REMOTE_DIR=${REMOTE_DIR:-$DEFAULT_REMOTE_DIR}
 echo ""
 echo "================ 転送内容確認 ================"
 echo "送信元 : ${OUT_DIR}"
-echo "送信先 : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
+echo "送信先 : ${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR%/}/${BAG_DIR_NAME}/"
 echo "=============================================="
 echo ""
 
@@ -706,8 +708,8 @@ if [[ ! "$FINAL_CONFIRM" =~ ^[Yy]$ ]]; then
 fi
 
 echo "scp転送を開始します..."
-ssh "${REMOTE_USER}@${REMOTE_IP}" "mkdir -p '${REMOTE_DIR}'"
-scp -r "${OUT_DIR}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR}"
+ssh "${REMOTE_USER}@${REMOTE_IP}" "mkdir -p '${REMOTE_DIR%/}/${BAG_DIR_NAME}'"
+scp -r "${OUT_DIR}" "${REMOTE_USER}@${REMOTE_IP}:${REMOTE_DIR%/}/${BAG_DIR_NAME}/"
 
 echo ""
 echo "✅ scp転送が完了しました！"

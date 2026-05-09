@@ -316,7 +316,7 @@ def select_best_centerline_component(
     skel: np.ndarray,
     dist: np.ndarray,
     min_pixels: int,
-) -> Optional[np.ndarray]:
+) -> Optional[Tuple[np.ndarray, float]]:
     n, labels, stats, _ = cv2.connectedComponentsWithStats(skel.astype(np.uint8), connectivity=8)
     if n <= 1:
         return None
@@ -344,7 +344,9 @@ def select_best_centerline_component(
             best_score = score
             best = comp
 
-    return best
+    if best is None:
+        return None
+    return best, best_score
 
 
 def extract_centerline_skeleton(
@@ -358,6 +360,8 @@ def extract_centerline_skeleton(
     if positive.size == 0:
         raise RuntimeError("Distance transform is empty for selected track mask.")
 
+    candidates: List[Tuple[float, np.ndarray]] = []
+
     for q in quantiles:
         thr = float(np.quantile(positive, q))
         centers = ((dist >= thr) & (track_mask > 0)).astype(np.uint8)
@@ -369,16 +373,25 @@ def extract_centerline_skeleton(
         skel = zhang_suen_thinning(centers)
         skel = prune_spurs(skel, prune_iters)
         best = select_best_centerline_component(skel, dist, min_centerline_pixels)
-        if best is not None and int(best.sum()) >= min_centerline_pixels:
-            return best.astype(np.uint8)
+        if best is not None:
+            mask, score = best
+            if int(mask.sum()) >= min_centerline_pixels:
+                candidates.append((score, mask.astype(np.uint8)))
 
-    # Fallback: thin full track mask and pick best component.
+    # Also evaluate the full track skeleton. Distance-quantile candidates can
+    # miss narrow sections when the course width changes a lot.
     skel = zhang_suen_thinning(track_mask)
     skel = prune_spurs(skel, prune_iters * 2)
     best = select_best_centerline_component(skel, dist, min_centerline_pixels)
-    if best is None:
+    if best is not None:
+        mask, score = best
+        candidates.append((score, mask.astype(np.uint8)))
+
+    if not candidates:
         raise RuntimeError("Unable to extract stable centerline skeleton.")
-    return best.astype(np.uint8)
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1].astype(np.uint8)
 
 
 def adjacency_from_mask(mask: np.ndarray):
@@ -681,8 +694,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--center-quantiles",
         type=parse_quantiles,
-        default=parse_quantiles("0.75,0.65,0.55,0.45"),
-        help="Comma-separated EDT quantiles to try, e.g. 0.75,0.65,0.55,0.45",
+        default=parse_quantiles("0.75,0.65,0.55,0.45,0.35,0.25,0.15"),
+        help="Comma-separated EDT quantiles to try, e.g. 0.75,0.65,0.55,0.45,0.35,0.25,0.15",
     )
     p.add_argument("--prune-iters", type=int, default=30)
     p.add_argument("--min-centerline-pixels", type=int, default=120)

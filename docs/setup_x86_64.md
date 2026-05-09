@@ -216,9 +216,9 @@ source /opt/ros/humble/setup.bash
 source /workspaces/install/setup.bash
 
 # rosbag2ディレクトリ -> map生成（.yaml/.pgm/.pbstream、可能なら .png も生成）
+# 出力先: /map/<bag_name>/<map_name>/
 bash /scripts/create_2d_map_from_bag.sh \
-  /workspaces/bags/<bag_dir> \
-  /workspaces/maps/<map_name>
+  --record-root /workspaces/bags
 
 # .png 生成に成功した場合、yaml の image: も .png を指すように更新されます
 ```
@@ -227,27 +227,24 @@ bash /scripts/create_2d_map_from_bag.sh \
 
 ```bash
 bash /scripts/create_2d_map_from_bag.sh \
-  --scan-topic /scan_filtered \
-  /workspaces/bags/<bag_dir> \
-  /workspaces/maps/<map_name>
+  --record-root /workspaces/bags \
+  --scan-topic /scan_filtered
 ```
 
 VSLAM の odom を使う場合:
 
 ```bash
 bash /scripts/create_2d_map_from_bag.sh \
-  --use-vslam-odom \
-  /workspaces/bags/<bag_dir> \
-  /workspaces/maps/<map_name>
+  --record-root /workspaces/bags \
+  --use-vslam-odom
 ```
 
 または odom topic を明示指定:
 
 ```bash
 bash /scripts/create_2d_map_from_bag.sh \
-  --odom-topic /visual_slam/tracking/odometry \
-  /workspaces/bags/<bag_dir> \
-  /workspaces/maps/<map_name>
+  --record-root /workspaces/bags \
+  --odom-topic /visual_slam/tracking/odometry
 ```
 
 ---
