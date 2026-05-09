@@ -28,7 +28,7 @@ private:
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg,
       const std::string &source_name);
   bool is_amcl_pose_accepted(
-      const geometry_msgs::msg::PoseWithCovarianceStamped &msg) const;
+      const geometry_msgs::msg::PoseWithCovarianceStamped &msg);
   void publish_initial_pose(
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg);
   void publish_localization_tf();

@@ -299,7 +299,7 @@ void LocalizationManagerNode::update_localization_tf(
 }
 
 bool LocalizationManagerNode::is_amcl_pose_accepted(
-    const geometry_msgs::msg::PoseWithCovarianceStamped &msg) const {
+    const geometry_msgs::msg::PoseWithCovarianceStamped &msg) {
   const double x_variance = msg.pose.covariance[0];
   const double y_variance = msg.pose.covariance[7];
   const double yaw_variance = msg.pose.covariance[35];
