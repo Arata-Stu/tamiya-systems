@@ -1,6 +1,7 @@
 <launch>
     <!-- Boolean toggles -->
     <arg name="record" default="false" description="run rosbag2 record node"/>
+    <arg name="use_vehicle" default="true" description="run vehicle driver node"/>
     <arg name="vslam" default="false" description="run vslam node"/>
     <arg name="localization" default="false" description="run localization node"/>
     <arg name="use_lidar" default="false" description="use lidar"/>
@@ -92,10 +93,12 @@
     <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
 
     <!-- Jetracer Driver Node -->
-    <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
-        <arg name="jetracer_param" value="$(var vehicle_param)"/>
-        <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
-    </include>
+    <group if="$(var use_vehicle)">
+        <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
+            <arg name="jetracer_param" value="$(var vehicle_param)"/>
+            <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
+        </include>
+    </group>
 
     <!-- Teleop Manager Node -->
     <include file="$(find-pkg-share teleop_manager)/launch/teleop_manager.launch.xml">

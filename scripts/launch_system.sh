@@ -10,6 +10,7 @@ source "$SCRIPT_DIR/common/tui.sh"
 
 BOOL_KEYS=(
   record
+  use_vehicle
   vslam
   localization
   use_lidar
@@ -31,6 +32,7 @@ BOOL_KEYS=(
 )
 
 ARG_record="false"
+ARG_use_vehicle="true"
 ARG_vslam="false"
 ARG_localization="false"
 ARG_use_lidar="false"
@@ -134,7 +136,7 @@ set_arg() {
   fi
 
   case "$key" in
-    record|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_amcl|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
+    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_amcl|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
       value="$(normalize_bool "$value")"
       var_name="ARG_${key}"
       printf -v "$var_name" '%s' "$value"
@@ -157,6 +159,7 @@ apply_mode() {
   case "$1" in
     base)
       ARG_record="false"
+      ARG_use_vehicle="true"
       ARG_vslam="true"
       ARG_localization="false"
       ARG_use_lidar="true"
@@ -179,6 +182,7 @@ apply_mode() {
       ;;
     mapping)
       ARG_record="true"
+      ARG_use_vehicle="true"
       ARG_vslam="true"
       ARG_localization="false"
       ARG_use_lidar="true"
@@ -494,6 +498,7 @@ fi
 source_setup_if_available
 exec ros2 launch system_launch system.launch.xml \
   "record:=${ARG_record}" \
+  "use_vehicle:=${ARG_use_vehicle}" \
   "vslam:=${ARG_vslam}" \
   "localization:=${ARG_localization}" \
   "use_lidar:=${ARG_use_lidar}" \
