@@ -529,7 +529,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-topic", default="/realsense2_camera/color/image_raw")
     parser.add_argument("--compressed-image", action="store_true")
     parser.add_argument("--particles-topic", default="/particle_cloud")
-    parser.add_argument("--path-topic", default="")
+    parser.add_argument("--path-topic", default="/visual_slam/tracking/slam_path")
     parser.add_argument("--section-markers-topic", default="/localization/section_markers")
     parser.add_argument("--current-section-marker-topic", default="/localization/current_section_marker")
     parser.add_argument("--current-section-topic", default="/localization/current_section")
