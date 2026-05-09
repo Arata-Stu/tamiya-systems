@@ -31,3 +31,5 @@
       - /localization/current_section_marker
       - /localization/section_markers
       - /localization_result
+      - /amcl_pose
+      - /initialpose

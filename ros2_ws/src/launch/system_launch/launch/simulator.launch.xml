@@ -31,6 +31,13 @@
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
     <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
+    <arg name="use_amcl" default="false" />
+    <arg name="amcl_param" default="$(find-pkg-share system_launch)/config/localization/amcl.param.yaml" />
+    <arg name="amcl_pose_topic" default="/amcl_pose" />
+    <arg name="amcl_initial_pose_topic" default="/initialpose" />
+    <arg name="amcl_pose_max_xy_variance" default="-1.0" />
+    <arg name="amcl_pose_max_yaw_variance" default="-1.0" />
+    <arg name="publish_initialpose_to_amcl" default="$(var use_amcl)" />
     <arg name="use_localization_manager" default="true" />
     <arg name="localization_manager_param" default="$(find-pkg-share localization_manager)/config/localization_manager.param.yaml" />
     <arg name="publish_localization_tf" default="false" />
@@ -132,6 +139,13 @@
             <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
             <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
+            <arg name="use_amcl" value="$(var use_amcl)"/>
+            <arg name="amcl_param" value="$(var amcl_param)"/>
+            <arg name="amcl_pose_topic" value="$(var amcl_pose_topic)"/>
+            <arg name="amcl_initial_pose_topic" value="$(var amcl_initial_pose_topic)"/>
+            <arg name="amcl_pose_max_xy_variance" value="$(var amcl_pose_max_xy_variance)"/>
+            <arg name="amcl_pose_max_yaw_variance" value="$(var amcl_pose_max_yaw_variance)"/>
+            <arg name="publish_initialpose_to_amcl" value="$(var publish_initialpose_to_amcl)"/>
             <arg name="use_localization_manager" value="$(var use_localization_manager)"/>
             <arg name="localization_manager_param" value="$(var localization_manager_param)"/>
             <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>

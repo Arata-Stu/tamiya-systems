@@ -4,6 +4,13 @@
     localization_trigger_service: "/trigger_grid_search_localization"
     localization_result_topic: "/localization_result"
     localization_feedback_timeout_sec: 0.0
+    use_amcl_pose: false
+    amcl_pose_topic: "/amcl_pose"
+    # Negative thresholds disable AMCL covariance rejection.
+    amcl_pose_max_xy_variance: -1.0
+    amcl_pose_max_yaw_variance: -1.0
+    publish_initialpose_to_amcl: false
+    initial_pose_topic: "/initialpose"
 
     # TF bridge settings
     publish_localization_tf: true

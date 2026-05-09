@@ -59,6 +59,13 @@
     <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
     <arg name="localization_result_topic" default="/localization_result" />
+    <arg name="use_amcl" default="false" />
+    <arg name="amcl_param" default="$(find-pkg-share system_launch)/config/localization/amcl.param.yaml" />
+    <arg name="amcl_pose_topic" default="/amcl_pose" />
+    <arg name="amcl_initial_pose_topic" default="/initialpose" />
+    <arg name="amcl_pose_max_xy_variance" default="-1.0" />
+    <arg name="amcl_pose_max_yaw_variance" default="-1.0" />
+    <arg name="publish_initialpose_to_amcl" default="$(var use_amcl)" />
     <arg name="map_topic" default="/map" />
     <arg name="map_frame" default="map" />
     <arg name="localization_manager_param" default="$(find-pkg-share system_launch)/config/localization/localization_manager.param.yaml" />
@@ -196,6 +203,13 @@
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
             <arg name="use_sim_time" value="$(var use_sim_time)"/>
             <arg name="localization_result_topic" value="$(var localization_result_topic)"/>
+            <arg name="use_amcl" value="$(var use_amcl)"/>
+            <arg name="amcl_param" value="$(var amcl_param)"/>
+            <arg name="amcl_pose_topic" value="$(var amcl_pose_topic)"/>
+            <arg name="amcl_initial_pose_topic" value="$(var amcl_initial_pose_topic)"/>
+            <arg name="amcl_pose_max_xy_variance" value="$(var amcl_pose_max_xy_variance)"/>
+            <arg name="amcl_pose_max_yaw_variance" value="$(var amcl_pose_max_yaw_variance)"/>
+            <arg name="publish_initialpose_to_amcl" value="$(var publish_initialpose_to_amcl)"/>
             <arg name="publish_map" value="$(var publish_map)"/>
             <arg name="map_topic" value="$(var map_topic)"/>
             <arg name="map_frame" value="$(var map_frame)"/>

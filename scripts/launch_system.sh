@@ -24,6 +24,7 @@ BOOL_KEYS=(
   map_server_use_sim_time
   use_localization_manager
   publish_localization_tf
+  use_amcl
   use_section_localizer
   section_localizer_debug_mode
   enable_localization_and_mapping
@@ -44,6 +45,7 @@ ARG_publish_map="false"
 ARG_map_server_use_sim_time="false"
 ARG_use_localization_manager="false"
 ARG_publish_localization_tf="false"
+ARG_use_amcl="false"
 ARG_use_section_localizer="false"
 ARG_section_localizer_debug_mode="false"
 ARG_enable_localization_and_mapping="false"
@@ -132,7 +134,7 @@ set_arg() {
   fi
 
   case "$key" in
-    record|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
+    record|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_amcl|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
       value="$(normalize_bool "$value")"
       var_name="ARG_${key}"
       printf -v "$var_name" '%s' "$value"
@@ -169,6 +171,7 @@ apply_mode() {
       ARG_map_server_use_sim_time="false"
       ARG_use_localization_manager="true"
       ARG_publish_localization_tf="true"
+      ARG_use_amcl="false"
       ARG_use_section_localizer="false"
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="true"
@@ -190,6 +193,7 @@ apply_mode() {
       ARG_map_server_use_sim_time="false"
       ARG_use_localization_manager="true"
       ARG_publish_localization_tf="true"
+      ARG_use_amcl="false"
       ARG_use_section_localizer="false"
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="true"
@@ -504,6 +508,7 @@ exec ros2 launch system_launch system.launch.xml \
   "map_server_use_sim_time:=${ARG_map_server_use_sim_time}" \
   "use_localization_manager:=${ARG_use_localization_manager}" \
   "publish_localization_tf:=${ARG_publish_localization_tf}" \
+  "use_amcl:=${ARG_use_amcl}" \
   "use_section_localizer:=${ARG_use_section_localizer}" \
   "section_localizer_debug_mode:=${ARG_section_localizer_debug_mode}" \
   "enable_localization_and_mapping:=${ARG_enable_localization_and_mapping}" \

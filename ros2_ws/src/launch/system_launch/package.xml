@@ -8,6 +8,7 @@
   <license>Apache-2.0</license>
 
   <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
 
   <export>

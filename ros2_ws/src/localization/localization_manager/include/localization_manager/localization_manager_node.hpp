@@ -20,15 +20,26 @@ private:
   void trigger_callback(const std_msgs::msg::Bool::SharedPtr msg);
   void localization_result_callback(
       const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
+  void amcl_pose_callback(
+      const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg);
   void timer_callback();
   void request_localization();
   void update_localization_tf(
+      const geometry_msgs::msg::PoseWithCovarianceStamped &msg,
+      const std::string &source_name);
+  bool is_amcl_pose_accepted(
+      const geometry_msgs::msg::PoseWithCovarianceStamped &msg) const;
+  void publish_initial_pose(
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg);
   void publish_localization_tf();
 
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr trigger_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
       localization_result_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+      amcl_pose_sub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr
+      initial_pose_pub_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr localization_trigger_client_;
   rclcpp::TimerBase::SharedPtr timer_;
 
@@ -39,6 +50,12 @@ private:
   std::string localization_trigger_topic_ = "/localization/trigger";
   std::string localization_trigger_service_ = "/trigger_grid_search_localization";
   std::string localization_result_topic_ = "/localization_result";
+  bool use_amcl_pose_ = false;
+  std::string amcl_pose_topic_ = "/amcl_pose";
+  double amcl_pose_max_xy_variance_ = -1.0;
+  double amcl_pose_max_yaw_variance_ = -1.0;
+  bool publish_initialpose_to_amcl_ = false;
+  std::string initial_pose_topic_ = "/initialpose";
 
   double localization_feedback_timeout_sec_ = 0.0;
   bool waiting_localization_result_ = false;

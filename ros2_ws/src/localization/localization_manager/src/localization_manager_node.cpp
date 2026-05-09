@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Transform.h"
@@ -18,6 +19,22 @@ LocalizationManagerNode::LocalizationManagerNode()
       "localization_trigger_service", localization_trigger_service_);
   localization_result_topic_ = this->declare_parameter<std::string>(
       "localization_result_topic", localization_result_topic_);
+  use_amcl_pose_ =
+      this->declare_parameter("use_amcl_pose", use_amcl_pose_);
+  amcl_pose_topic_ =
+      this->declare_parameter<std::string>("amcl_pose_topic", amcl_pose_topic_);
+  amcl_pose_max_xy_variance_ =
+      this->declare_parameter("amcl_pose_max_xy_variance",
+                              amcl_pose_max_xy_variance_);
+  amcl_pose_max_yaw_variance_ =
+      this->declare_parameter("amcl_pose_max_yaw_variance",
+                              amcl_pose_max_yaw_variance_);
+  publish_initialpose_to_amcl_ =
+      this->declare_parameter("publish_initialpose_to_amcl",
+                              publish_initialpose_to_amcl_);
+  initial_pose_topic_ =
+      this->declare_parameter<std::string>("initial_pose_topic",
+                                           initial_pose_topic_);
   localization_feedback_timeout_sec_ = std::max(
       0.0, this->declare_parameter("localization_feedback_timeout_sec", 0.0));
 
@@ -61,6 +78,35 @@ LocalizationManagerNode::LocalizationManagerNode()
   localization_trigger_client_ =
       this->create_client<std_srvs::srv::Empty>(localization_trigger_service_);
 
+  if (use_amcl_pose_) {
+    amcl_pose_sub_ =
+        this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            amcl_pose_topic_, rclcpp::QoS(10),
+            std::bind(&LocalizationManagerNode::amcl_pose_callback, this, _1));
+  }
+
+  const auto strip_leading_slashes = [](std::string topic) {
+    topic.erase(topic.begin(),
+                std::find_if(topic.begin(), topic.end(),
+                             [](const char c) { return c != '/'; }));
+    return topic;
+  };
+  if (publish_initialpose_to_amcl_ &&
+      strip_leading_slashes(localization_result_topic_) ==
+          strip_leading_slashes(initial_pose_topic_)) {
+    RCLCPP_WARN(this->get_logger(),
+                "AMCL initialpose forwarding disabled because "
+                "localization_result_topic and initial_pose_topic are both %s.",
+                initial_pose_topic_.c_str());
+    publish_initialpose_to_amcl_ = false;
+  }
+
+  if (publish_initialpose_to_amcl_) {
+    initial_pose_pub_ =
+        this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
+            initial_pose_topic_, rclcpp::QoS(1));
+  }
+
   if (publish_localization_tf_) {
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -81,6 +127,13 @@ LocalizationManagerNode::LocalizationManagerNode()
               localization_trigger_topic_.c_str(),
               localization_trigger_service_.c_str(),
               localization_result_topic_.c_str());
+  RCLCPP_INFO(this->get_logger(),
+              "AMCL pose input: %s (topic=%s, max_xy_var=%.3f, "
+              "max_yaw_var=%.3f, initialpose_forward=%s -> %s)",
+              use_amcl_pose_ ? "enabled" : "disabled", amcl_pose_topic_.c_str(),
+              amcl_pose_max_xy_variance_, amcl_pose_max_yaw_variance_,
+              publish_initialpose_to_amcl_ ? "enabled" : "disabled",
+              initial_pose_topic_.c_str());
   RCLCPP_INFO(this->get_logger(),
               "Localization TF bridge: %s (mode=%s, map=%s, odom=%s, base=%s, "
               "publish_rate=%.2f Hz)",
@@ -126,7 +179,8 @@ void LocalizationManagerNode::localization_result_callback(
     const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
   const double elapsed_sec =
       (this->now() - last_localization_trigger_time_).seconds();
-  update_localization_tf(*msg);
+  update_localization_tf(*msg, "global localization");
+  publish_initial_pose(*msg);
 
   if (waiting_localization_result_) {
     waiting_localization_result_ = false;
@@ -157,8 +211,25 @@ void LocalizationManagerNode::localization_result_callback(
       msg->pose.pose.position.x, msg->pose.pose.position.y);
 }
 
+void LocalizationManagerNode::amcl_pose_callback(
+    const geometry_msgs::msg::PoseWithCovarianceStamped::SharedPtr msg) {
+  if (!is_amcl_pose_accepted(*msg)) {
+    return;
+  }
+
+  update_localization_tf(*msg, "AMCL");
+  RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "AMCL pose accepted on %s: frame=%s pos=(%.3f, %.3f) cov=(%.4f, %.4f, %.4f)",
+      amcl_pose_topic_.c_str(), msg->header.frame_id.c_str(),
+      msg->pose.pose.position.x, msg->pose.pose.position.y,
+      msg->pose.covariance[0], msg->pose.covariance[7],
+      msg->pose.covariance[35]);
+}
+
 void LocalizationManagerNode::update_localization_tf(
-    const geometry_msgs::msg::PoseWithCovarianceStamped &msg) {
+    const geometry_msgs::msg::PoseWithCovarianceStamped &msg,
+    const std::string &source_name) {
   if (!publish_localization_tf_ || !tf_broadcaster_) {
     return;
   }
@@ -198,9 +269,9 @@ void LocalizationManagerNode::update_localization_tf(
     } catch (const tf2::TransformException &ex) {
       RCLCPP_WARN_THROTTLE(
           this->get_logger(), *this->get_clock(), 1000,
-          "Localization TF skipped: lookup %s <- %s (odom<-base) failed: %s",
-          localization_tf_odom_frame_.c_str(), localization_tf_base_frame_.c_str(),
-          ex.what());
+          "%s TF skipped: lookup %s <- %s (odom<-base) failed: %s",
+          source_name.c_str(), localization_tf_odom_frame_.c_str(),
+          localization_tf_base_frame_.c_str(), ex.what());
       return;
     }
 
@@ -221,9 +292,59 @@ void LocalizationManagerNode::update_localization_tf(
   last_localization_tf_ = output_tf;
   has_localization_tf_ = true;
   publish_localization_tf();
-  RCLCPP_INFO(this->get_logger(), "Updated localization TF %s -> %s",
-              output_tf.header.frame_id.c_str(),
-              output_tf.child_frame_id.c_str());
+  RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 1000,
+      "Updated localization TF from %s: %s -> %s", source_name.c_str(),
+      output_tf.header.frame_id.c_str(), output_tf.child_frame_id.c_str());
+}
+
+bool LocalizationManagerNode::is_amcl_pose_accepted(
+    const geometry_msgs::msg::PoseWithCovarianceStamped &msg) const {
+  const double x_variance = msg.pose.covariance[0];
+  const double y_variance = msg.pose.covariance[7];
+  const double yaw_variance = msg.pose.covariance[35];
+
+  if (amcl_pose_max_xy_variance_ >= 0.0) {
+    if (!std::isfinite(x_variance) || !std::isfinite(y_variance) ||
+        x_variance > amcl_pose_max_xy_variance_ ||
+        y_variance > amcl_pose_max_xy_variance_) {
+      RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 1000,
+          "AMCL pose rejected by xy covariance: x=%.4f y=%.4f max=%.4f",
+          x_variance, y_variance, amcl_pose_max_xy_variance_);
+      return false;
+    }
+  }
+
+  if (amcl_pose_max_yaw_variance_ >= 0.0) {
+    if (!std::isfinite(yaw_variance) ||
+        yaw_variance > amcl_pose_max_yaw_variance_) {
+      RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 1000,
+          "AMCL pose rejected by yaw covariance: yaw=%.4f max=%.4f",
+          yaw_variance, amcl_pose_max_yaw_variance_);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+void LocalizationManagerNode::publish_initial_pose(
+    const geometry_msgs::msg::PoseWithCovarianceStamped &msg) {
+  if (!initial_pose_pub_) {
+    return;
+  }
+
+  auto initial_pose = msg;
+  if (initial_pose.header.frame_id.empty()) {
+    initial_pose.header.frame_id = localization_tf_map_frame_;
+  }
+  initial_pose.header.stamp = this->now();
+  initial_pose_pub_->publish(initial_pose);
+  RCLCPP_INFO(this->get_logger(),
+              "Forwarded localization result to AMCL initial pose: %s",
+              initial_pose_topic_.c_str());
 }
 
 void LocalizationManagerNode::publish_localization_tf() {
