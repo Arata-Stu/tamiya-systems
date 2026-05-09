@@ -57,6 +57,14 @@ def read_map_grayscale(map_path: str) -> np.ndarray:
     return np.flipud(gray.astype(np.float32))
 
 
+def gray_to_black(gray: np.ndarray, white_threshold: float) -> np.ndarray:
+    if white_threshold <= 0.0:
+        return gray
+    out = gray.copy()
+    out[out < white_threshold] = 0.0
+    return out
+
+
 def ellipse_kernel(radius: int) -> np.ndarray:
     if radius <= 0:
         return np.ones((1, 1), dtype=np.uint8)
@@ -560,6 +568,7 @@ def save_debug_images(
 
 def run(args: argparse.Namespace) -> None:
     gray = read_map_grayscale(args.map)
+    gray = gray_to_black(gray, args.gray_to_black_white_threshold)
 
     free_mask, thr = choose_free_space_mask(
         gray=gray,
@@ -654,6 +663,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
 
     p.add_argument("--min-free-intensity", type=float, default=210.0)
+    p.add_argument(
+        "--gray-to-black-white-threshold",
+        type=float,
+        default=250.0,
+        help=(
+            "Before centerline extraction, convert pixels below this intensity to black. "
+            "Set <=0 to disable."
+        ),
+    )
     p.add_argument("--gaussian-sigma", type=float, default=1.0)
     p.add_argument("--close-radius", type=int, default=2)
     p.add_argument("--open-radius", type=int, default=1)
