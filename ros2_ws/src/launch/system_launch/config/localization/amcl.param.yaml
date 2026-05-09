@@ -29,7 +29,7 @@ amcl:
 
     laser_model_type: "likelihood_field"
     laser_likelihood_max_dist: 2.0
-    laser_max_range: 100.0
+    laser_max_range: 120.0
     laser_min_range: -1.0
     z_hit: 0.5
     z_short: 0.05

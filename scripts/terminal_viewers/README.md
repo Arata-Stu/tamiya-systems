@@ -16,6 +16,8 @@ Run the dashboard on the SSH destination where ROS 2 topics are visible:
 python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py \
   --map-topic /map \
   --localization-topic /localization_result \
+  --amcl-pose-topic /amcl_pose \
+  --initial-pose-topic /initialpose \
   --scan-topic /scan \
   --image-topic /camera/image_raw \
   --best-effort
@@ -37,6 +39,8 @@ Keyboard controls:
 
 - `m`: map
 - `l`: localization result
+- `a`: AMCL pose
+- `u`: AMCL initial pose
 - `s`: scan
 - `i`: image
 - `c`: sections

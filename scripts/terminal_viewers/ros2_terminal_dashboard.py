@@ -43,6 +43,8 @@ Color = tuple[int, int, int]
 class DashboardState:
     map_state: Optional[MapState] = None
     localization: Optional[Pose2D] = None
+    amcl_pose: Optional[Pose2D] = None
+    initial_pose: Optional[Pose2D] = None
     scan: Optional[LaserScan] = None
     image_rgb: Optional[np.ndarray] = None
     particles: Optional[PoseArray] = None
@@ -64,6 +66,8 @@ class TerminalDashboard(Node):
         self.toggles = {
             "map": True,
             "localization": True,
+            "amcl": True,
+            "initialpose": True,
             "scan": True,
             "image": bool(args.image_topic),
             "sections": True,
@@ -110,6 +114,10 @@ class TerminalDashboard(Node):
             self.create_subscription(OccupancyGrid, args.map_topic, self.on_map, volatile_map_qos)
         if args.localization_topic:
             self.create_subscription(PoseWithCovarianceStamped, args.localization_topic, self.on_localization, reliable_qos)
+        if args.amcl_pose_topic:
+            self.create_subscription(PoseWithCovarianceStamped, args.amcl_pose_topic, self.on_amcl_pose, reliable_qos)
+        if args.initial_pose_topic:
+            self.create_subscription(PoseWithCovarianceStamped, args.initial_pose_topic, self.on_initial_pose, reliable_qos)
         if args.scan_topic:
             self.create_subscription(LaserScan, args.scan_topic, self.on_scan, sensor_qos)
         if args.image_topic:
@@ -147,8 +155,17 @@ class TerminalDashboard(Node):
         )
 
     def on_localization(self, msg: PoseWithCovarianceStamped) -> None:
+        self.state.localization = self.pose_from_cov_msg(msg)
+
+    def on_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
+        self.state.amcl_pose = self.pose_from_cov_msg(msg)
+
+    def on_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
+        self.state.initial_pose = self.pose_from_cov_msg(msg)
+
+    def pose_from_cov_msg(self, msg: PoseWithCovarianceStamped) -> Pose2D:
         pose = msg.pose.pose
-        self.state.localization = Pose2D(
+        return Pose2D(
             x=float(pose.position.x),
             y=float(pose.position.y),
             yaw=yaw_from_quat(pose.orientation),
@@ -288,9 +305,17 @@ class TerminalDashboard(Node):
         if self.toggles["localization"]:
             pose = self.pose_in_map(self.state.localization)
             if pose is not None:
-                self.draw_pose(canvas, pose, scale, ox, oy, (30, 30, 245))
+                self.draw_pose(canvas, pose, scale, ox, oy, (45, 70, 245), "GL")
+        if self.toggles["amcl"]:
+            pose = self.pose_in_map(self.state.amcl_pose)
+            if pose is not None:
+                self.draw_pose(canvas, pose, scale, ox, oy, (65, 205, 80), "AMCL")
+        if self.toggles["initialpose"]:
+            pose = self.pose_in_map(self.state.initial_pose)
+            if pose is not None:
+                self.draw_pose(canvas, pose, scale, ox, oy, (40, 220, 235), "INIT")
 
-    def draw_pose(self, canvas: np.ndarray, pose: Pose2D, scale: float, ox: int, oy: int, color: Color) -> None:
+    def draw_pose(self, canvas: np.ndarray, pose: Pose2D, scale: float, ox: int, oy: int, color: Color, label: str) -> None:
         map_state = self.state.map_state
         assert map_state is not None
         px, py = self.world_to_view_px(pose.x, pose.y, scale, ox, oy)
@@ -299,6 +324,8 @@ class TerminalDashboard(Node):
         cv2.arrowedLine(canvas, (px, py), end, color, max(2, int(4 * scale)), cv2.LINE_AA, tipLength=0.35)
         cv2.circle(canvas, (px, py), max(5, int(7 * scale)), (255, 255, 255), -1, cv2.LINE_AA)
         cv2.circle(canvas, (px, py), max(3, int(4 * scale)), color, -1, cv2.LINE_AA)
+        cv2.putText(canvas, label, (px + 8, py - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (20, 20, 20), 3, cv2.LINE_AA)
+        cv2.putText(canvas, label, (px + 8, py - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1, cv2.LINE_AA)
 
     def draw_scan_on_map(self, canvas: np.ndarray, scale: float, ox: int, oy: int) -> None:
         scan = self.state.scan
@@ -441,6 +468,8 @@ class TerminalDashboard(Node):
         mapping = {
             "m": "map",
             "l": "localization",
+            "a": "amcl",
+            "u": "initialpose",
             "s": "scan",
             "i": "image",
             "c": "sections",
@@ -494,14 +523,23 @@ class TerminalDashboard(Node):
     def draw_header(self, canvas: np.ndarray) -> None:
         cv2.rectangle(canvas, (0, 0), (self.args.width, 34), (14, 15, 18), -1)
         loc = self.state.localization.frame_id if self.state.localization is not None else "-"
+        amcl = self.pose_status(self.state.amcl_pose)
+        init = self.pose_status(self.state.initial_pose)
         scan = self.state.scan.header.frame_id if self.state.scan is not None else "-"
         image = "yes" if self.state.image_rgb is not None else "-"
         flags = " ".join(f"{k[0]}:{'1' if v else '0'}" for k, v in self.toggles.items())
         text = (
-            f"frame={self.state.frames} loc={loc} scan={scan} image={image} section={self.state.current_section} "
-            f"{flags} keys: m/l/s/i/c/g/p/t toggle, space pause, q quit {self.last_key_status}"
+            f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} image={image} "
+            f"section={self.state.current_section} {flags} keys: m/l/a/u/s/i/c/g/p/t, space, q {self.last_key_status}"
         )
         cv2.putText(canvas, text[:210], (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (235, 235, 235), 1, cv2.LINE_AA)
+
+    def pose_status(self, pose: Optional[Pose2D]) -> str:
+        if pose is None:
+            return "-"
+        if pose.covariance is None or len(pose.covariance) < 36:
+            return pose.frame_id
+        return f"{pose.frame_id}:{pose.covariance[0]:.2g}/{pose.covariance[7]:.2g}/{pose.covariance[35]:.2g}"
 
 
 class RawTerminal:
@@ -525,6 +563,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map-topic", default="/map")
     parser.add_argument("--localization-topic", default="/localization_result")
+    parser.add_argument("--amcl-pose-topic", default="/amcl_pose")
+    parser.add_argument("--initial-pose-topic", default="/initialpose")
     parser.add_argument("--scan-topic", default="/scan")
     parser.add_argument("--image-topic", default="/realsense2_camera/color/image_raw")
     parser.add_argument("--compressed-image", action="store_true")
