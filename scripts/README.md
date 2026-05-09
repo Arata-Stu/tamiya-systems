@@ -21,7 +21,13 @@ The terminal image/ROS viewers live in `terminal_viewers/`:
 python3 /scripts/terminal_viewers/ros2_terminal_map_viewer.py
 python3 /scripts/terminal_viewers/ros2_terminal_image_viewer.py
 python3 /scripts/terminal_viewers/ros2_terminal_scan_viewer.py
+python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py
 ```
+
+`ros2_terminal_dashboard.py` is the custom rviz-like entrypoint for SSH
+debugging. It keeps topic names as command-line options, then lets you toggle
+map, localization, scan, image, sections, gates, particles, and path from the
+keyboard.
 
 ## Shared helpers
 
