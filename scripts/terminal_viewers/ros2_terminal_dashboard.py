@@ -526,7 +526,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--map-topic", default="/map")
     parser.add_argument("--localization-topic", default="/localization_result")
     parser.add_argument("--scan-topic", default="/scan")
-    parser.add_argument("--image-topic", default="")
+    parser.add_argument("--image-topic", default="/realsense2_camera/color/image_raw")
     parser.add_argument("--compressed-image", action="store_true")
     parser.add_argument("--particles-topic", default="/particle_cloud")
     parser.add_argument("--path-topic", default="")
