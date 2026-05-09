@@ -131,11 +131,10 @@ python data_analysis/evaluate_global_localization_sweep.py \
 - bag 内に `/joy` や画像などの高頻度トピックが多い場合、`play_next` 1回で `/scan` が1件進むとは限りません。`--scan-stride 50` でも数千回の `play_next` が必要になることがあるため、`--max-play-next-calls-per-trigger 0` を推奨します。
 - `reference-topic` は擬似GTとして使う自己位置（vSLAM等）に合わせて変更してください。
 - `reference-topic` が取れない場合でも評価は継続されます。その場合の `status` は `ok_no_reference` になり、誤差列は空欄のまま、位置プロットと密度ヒートマップだけ生成されます。
-- `reference-type` は `pose_stamped` / `pose_cov` / `odom` から選べます。
+- `reference-type` は `pose_stamped` / `pose_cov` から選べます。
 - 典型的な組み合わせ:
   - `--reference-type pose_stamped --reference-topic /visual_slam/tracking/vo_pose`
   - `--reference-type pose_cov --reference-topic /visual_slam/tracking/vo_pose_covariance`
-  - `--reference-type odom --reference-topic /visual_slam/tracking/odometry`
 - 出力画像パスを固定したい場合は `--quality-points-output` / `--quality-rate-output` で指定できます。
 
 既存CSVから再描画だけしたい場合:

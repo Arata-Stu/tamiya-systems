@@ -23,7 +23,6 @@ from typing import Optional
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
-from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rosbag2_interfaces.srv import Pause, PlayNext
@@ -124,9 +123,7 @@ class LocalizationSweepEvaluator(Node):
                 20,
             )
         else:
-            self.reference_sub = self.create_subscription(
-                Odometry, args.reference_topic, self._reference_odom_cb, 20
-            )
+            raise ValueError(f"unsupported reference_type: {self.reference_type}")
 
         player_prefix = args.player_prefix.rstrip("/")
         self.pause_client = self.create_client(Pause, f"{player_prefix}/pause")
@@ -169,16 +166,6 @@ class LocalizationSweepEvaluator(Node):
         )
 
     def _reference_pose_cov_cb(self, msg: PoseWithCovarianceStamped) -> None:
-        q = msg.pose.pose.orientation
-        self.latest_reference = Pose2DStamped(
-            stamp_ns=int(msg.header.stamp.sec) * 1_000_000_000
-            + int(msg.header.stamp.nanosec),
-            x=float(msg.pose.pose.position.x),
-            y=float(msg.pose.pose.position.y),
-            yaw=yaw_from_quaternion(q.x, q.y, q.z, q.w),
-        )
-
-    def _reference_odom_cb(self, msg: Odometry) -> None:
         q = msg.pose.pose.orientation
         self.latest_reference = Pose2DStamped(
             stamp_ns=int(msg.header.stamp.sec) * 1_000_000_000
@@ -468,7 +455,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reference-topic", default="/visual_slam/tracking/vo_pose")
     parser.add_argument(
         "--reference-type",
-        choices=["pose_stamped", "pose_cov", "odom"],
+        choices=["pose_stamped", "pose_cov"],
         default="pose_stamped",
     )
 
