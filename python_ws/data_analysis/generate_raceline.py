@@ -14,6 +14,7 @@ raceline and as a stable CLI boundary for a future optimizer backend.
 from __future__ import annotations
 
 import argparse
+import inspect
 import os
 import sys
 from typing import Tuple
@@ -270,7 +271,7 @@ def build_reftrack_interp_with_retry(
     stepsize_reg: float,
     spline_smoothing: float,
     debug: bool,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     smoothing = max(float(spline_smoothing), 1e-6)
     attempted = []
 
@@ -293,7 +294,7 @@ def build_reftrack_interp_with_retry(
             normvec_normalized=normvec,
             horizon=10,
         ):
-            return reftrack_interp, a_interp, normvec, smoothing
+            return reftrack_interp, a_interp, normvec, coeffs_x, coeffs_y, smoothing
 
         smoothing *= 2.0
 
@@ -302,6 +303,69 @@ def build_reftrack_interp_with_retry(
         "Spline normals cross even after retrying higher --global-opt-spline-smoothing values: "
         f"{attempted_str}. Try a smoother centerline or a larger initial smoothing value."
     )
+
+
+def call_iqp_handler_compat(
+    tph: object,
+    reftrack_interp: np.ndarray,
+    normvec: np.ndarray,
+    a_interp: np.ndarray,
+    coeffs_x: np.ndarray,
+    coeffs_y: np.ndarray,
+    curvature_limit: float,
+    width_opt: float,
+    debug: bool,
+    stepsize_reg: float,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    iqp_handler_fn = tph.iqp_handler.iqp_handler
+    kwargs = dict(
+        reftrack=reftrack_interp,
+        normvectors=normvec,
+        A=a_interp,
+        kappa_bound=curvature_limit,
+        w_veh=width_opt,
+        print_debug=debug,
+        plot_debug=False,
+        stepsize_interp=stepsize_reg,
+        iters_min=3,
+        curv_error_allowed=0.01,
+    )
+
+    param_names = set(inspect.signature(iqp_handler_fn).parameters.keys())
+    if {"spline_len", "psi", "kappa", "dkappa"} & param_names:
+        spline_len = np.asarray(
+            tph.calc_spline_lengths.calc_spline_lengths(coeffs_x=coeffs_x, coeffs_y=coeffs_y),
+            dtype=np.float64,
+        ).reshape(-1)
+        ind_spls = np.arange(len(spline_len), dtype=np.int32)
+        t_spls = np.zeros(len(spline_len), dtype=np.float64)
+        psi, kappa = tph.calc_head_curv_an.calc_head_curv_an(
+            coeffs_x=coeffs_x,
+            coeffs_y=coeffs_y,
+            ind_spls=ind_spls,
+            t_spls=t_spls,
+        )
+        psi = np.asarray(psi, dtype=np.float64).reshape(-1)
+        kappa = np.asarray(kappa, dtype=np.float64).reshape(-1)
+
+        ds_prev = np.roll(spline_len, 1)
+        ds_next = spline_len
+        ds_sum = ds_prev + ds_next
+        dkappa = np.zeros_like(kappa)
+        valid = ds_sum > 1e-9
+        dkappa[valid] = (np.roll(kappa, -1)[valid] - np.roll(kappa, 1)[valid]) / ds_sum[valid]
+
+        extra_kwargs = {
+            "spline_len": spline_len,
+            "psi": psi,
+            "kappa": kappa,
+            "dkappa": dkappa,
+        }
+        for name, value in extra_kwargs.items():
+            if name in param_names:
+                kwargs[name] = value
+
+    return iqp_handler_fn(**kwargs)
 
 
 def generate_global_opt_raceline(
@@ -361,7 +425,7 @@ def generate_global_opt_raceline(
         reftrack[too_narrow, 2] += inflate
         reftrack[too_narrow, 3] += inflate
 
-    reftrack_interp, a_interp, normvec, smoothing_used = build_reftrack_interp_with_retry(
+    reftrack_interp, a_interp, normvec, coeffs_x, coeffs_y, smoothing_used = build_reftrack_interp_with_retry(
         tph=tph,
         reftrack=reftrack,
         stepsize_prep=stepsize_prep,
@@ -394,18 +458,29 @@ def generate_global_opt_raceline(
             plot_debug=False,
         )[0]
     else:
-        alpha, reftrack_interp, normvec = tph.iqp_handler.iqp_handler(
-            reftrack=reftrack_interp,
-            normvectors=normvec,
-            A=a_interp,
-            kappa_bound=curvature_limit,
-            w_veh=width_opt,
-            print_debug=debug,
-            plot_debug=False,
-            stepsize_interp=stepsize_reg,
-            iters_min=3,
-            curv_error_allowed=0.01,
-        )
+        try:
+            alpha, reftrack_interp, normvec = call_iqp_handler_compat(
+                tph=tph,
+                reftrack_interp=reftrack_interp,
+                normvec=normvec,
+                a_interp=a_interp,
+                coeffs_x=coeffs_x,
+                coeffs_y=coeffs_y,
+                curvature_limit=curvature_limit,
+                width_opt=width_opt,
+                debug=debug,
+                stepsize_reg=stepsize_reg,
+            )
+        except TypeError:
+            alpha = tph.opt_min_curv.opt_min_curv(
+                reftrack=reftrack_interp,
+                normvectors=normvec,
+                A=a_interp,
+                kappa_bound=curvature_limit,
+                w_veh=width_opt,
+                print_debug=debug,
+                plot_debug=False,
+            )[0]
 
     (
         raceline_xy,
