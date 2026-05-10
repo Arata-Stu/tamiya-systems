@@ -405,6 +405,12 @@ build_command() {
 }
 
 source_setup_if_available() {
+  local nounset_was_enabled=0
+  if [[ $- == *u* ]]; then
+    nounset_was_enabled=1
+    set +u
+  fi
+
   if [[ -n "${SYSTEM_LAUNCH_SETUP:-}" ]]; then
     # shellcheck source=/dev/null
     source "$SYSTEM_LAUNCH_SETUP"
@@ -414,6 +420,10 @@ source_setup_if_available() {
   elif [[ -f "install/setup.bash" ]]; then
     # shellcheck source=/dev/null
     source "install/setup.bash"
+  fi
+
+  if [[ ${nounset_was_enabled} -eq 1 ]]; then
+    set -u
   fi
 }
 

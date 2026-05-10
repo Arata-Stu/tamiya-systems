@@ -2,16 +2,29 @@
 
 set -euo pipefail
 
+source_setup_script() {
+    local setup_path="$1"
+    local nounset_was_enabled=0
+    if [[ $- == *u* ]]; then
+        nounset_was_enabled=1
+        set +u
+    fi
+
+    # shellcheck source=/dev/null
+    source "${setup_path}"
+
+    if [[ ${nounset_was_enabled} -eq 1 ]]; then
+        set -u
+    fi
+}
+
 source_setup_if_available() {
     if [ -n "${CREATE_2D_MAP_SETUP:-}" ]; then
-        # shellcheck source=/dev/null
-        source "${CREATE_2D_MAP_SETUP}"
+        source_setup_script "${CREATE_2D_MAP_SETUP}"
     elif [ -f "/workspaces/install/setup.bash" ]; then
-        # shellcheck source=/dev/null
-        source "/workspaces/install/setup.bash"
+        source_setup_script "/workspaces/install/setup.bash"
     elif [ -f "install/setup.bash" ]; then
-        # shellcheck source=/dev/null
-        source "install/setup.bash"
+        source_setup_script "install/setup.bash"
     fi
 }
 
