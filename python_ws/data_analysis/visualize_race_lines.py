@@ -197,8 +197,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", required=True, help="Output preview image path")
     p.add_argument("--canvas-size", type=int, default=1200, help="Canvas size when no map image is provided")
     p.add_argument("--padding-px", type=int, default=32)
-    p.add_argument("--centerline-thickness", type=int, default=2)
-    p.add_argument("--raceline-thickness", type=int, default=3)
+    p.add_argument("--centerline-thickness", type=int, default=1)
+    p.add_argument("--raceline-thickness", type=int, default=1)
     p.add_argument("--no-legend", action="store_true")
     return p
 

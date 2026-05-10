@@ -1,0 +1,18 @@
+# Optional global raceline optimizer dependencies for Python 3.10.
+#
+# Keep this separate from requirements.txt so the base ML/ROS environment can be
+# built without the optimizer stack when needed.
+#
+# The legacy upstream requirements pin numpy==1.18/scipy==1.3 for Python 3.7.
+# Those pins do not fit the current ROS Humble / Python 3.10 Docker image.
+
+matplotlib>=3.5,<4
+scipy>=1.8,<2
+trajectory-planning-helpers>=0.79,<0.81
+quadprog>=0.1.11,<0.2
+
+# Only required for the future mintime backend. The current global-opt backend
+# intentionally supports shortest_path/mincurv/mincurv_iqp without importing
+# casadi or scikit-learn.
+# casadi>=3.6,<4
+# scikit-learn>=1.1,<2

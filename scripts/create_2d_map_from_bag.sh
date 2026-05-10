@@ -24,6 +24,12 @@ Options:
                       path to generate_centerline.py (auto-detect by default)
   --raceline-script PATH
                       path to generate_raceline.py (auto-detect by default)
+  --raceline-backend BACKEND
+                      heuristic|global-opt|auto (default: heuristic)
+  --raceline-opt-type TYPE
+                      shortest_path|mincurv|mincurv_iqp for global-opt (default: mincurv_iqp)
+  --optimizer-root DIR
+                      path to global_racetrajectory_optimization checkout
   --line-preview-script PATH
                       path to visualize_race_lines.py (auto-detect by default)
   -h, --help          show this help
@@ -67,6 +73,9 @@ CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
 RACELINE_SCRIPT_PATH=""
+RACELINE_BACKEND="heuristic"
+RACELINE_OPT_TYPE="mincurv_iqp"
+GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
 
@@ -198,6 +207,18 @@ while (($#)); do
             ;;
         --raceline-script)
             RACELINE_SCRIPT_PATH="$2"
+            shift 2
+            ;;
+        --raceline-backend)
+            RACELINE_BACKEND="$2"
+            shift 2
+            ;;
+        --raceline-opt-type)
+            RACELINE_OPT_TYPE="$2"
+            shift 2
+            ;;
+        --optimizer-root)
+            GLOBAL_OPTIMIZER_ROOT="$2"
             shift 2
             ;;
         --line-preview-script)
@@ -597,9 +618,14 @@ generate_raceline() {
 
     raceline_cmd=(
         python3 "${raceline_script_path}"
+        --backend "${RACELINE_BACKEND}"
+        --opt-type "${RACELINE_OPT_TYPE}"
         --centerline "${centerline_path}"
         --output "${RACELINE_OUTPUT_PATH}"
     )
+    if [ -n "${GLOBAL_OPTIMIZER_ROOT}" ]; then
+        raceline_cmd+=(--optimizer-root "${GLOBAL_OPTIMIZER_ROOT}")
+    fi
 
     if ! "${raceline_cmd[@]}"; then
         echo "Warning: raceline generation failed. Skip raceline output." >&2

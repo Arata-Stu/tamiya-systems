@@ -32,6 +32,9 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - map画像に centerline / raceline CSV を重ねた確認用PNGを生成
   - `map.yaml` を指定すると、resolution / origin を使って world座標を画像座標へ変換する
 
+- `check_global_opt_env.py`
+  - optionalなglobal optimizer依存が現在のPython環境でimportできるか確認
+
 ## 使い方（LiDAR）
 
 ```bash
@@ -101,6 +104,20 @@ python data_analysis/generate_raceline.py \
   --centerline /path/to/map_centerline.csv \
   --output /path/to/map_raceline.csv
 
+# Dockerにglobal optimizer依存が入っている場合:
+python data_analysis/generate_raceline.py \
+  --backend global-opt \
+  --optimizer-root /workspaces/tamiya-systems/python_ws/global_racetrajectory_optimization \
+  --opt-type mincurv_iqp \
+  --centerline /path/to/map_centerline.csv \
+  --output /path/to/map_raceline.csv
+
+# 依存がなければglobal-optを試して軽量版へfallback:
+python data_analysis/generate_raceline.py \
+  --backend auto \
+  --centerline /path/to/map_centerline.csv \
+  --output /path/to/map_raceline.csv
+
 python data_analysis/visualize_race_lines.py \
   --yaml /path/to/map.yaml \
   --centerline /path/to/map_centerline.csv \
@@ -109,6 +126,15 @@ python data_analysis/visualize_race_lines.py \
 ```
 
 `scripts/create_2d_map_from_bag.sh` では、centerline / raceline 生成後に preview画像も生成します。スキップしたい場合は `--no-raceline` または `--no-line-preview` を指定してください。
+
+global optimizerを使う場合は `python_ws/requirements_global_opt.txt` の依存をDockerへ入れてください。現在のglobal-opt backendは `shortest_path` / `mincurv` / `mincurv_iqp` を対象にしており、古い `casadi` 依存を避けるため `mintime` はまだ扱いません。
+
+依存確認:
+
+```bash
+python data_analysis/check_global_opt_env.py \
+  --optimizer-root /workspaces/tamiya-systems/python_ws/global_racetrajectory_optimization
+```
 
 ## 使い方（global localization 自動評価）
 
