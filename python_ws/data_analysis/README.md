@@ -28,6 +28,10 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - race_stacks の重いROS/optimizer依存を直接持ち込まず、後で optimizer backend に差し替えやすいCLI境界にしている
   - 出力形式: `s_m; x_m; y_m; psi_rad; kappa_radpm; vx_mps; ax_mps2`
 
+- `visualize_race_lines.py`
+  - map画像に centerline / raceline CSV を重ねた確認用PNGを生成
+  - `map.yaml` を指定すると、resolution / origin を使って world座標を画像座標へ変換する
+
 ## 使い方（LiDAR）
 
 ```bash
@@ -96,9 +100,15 @@ python data_analysis/generate_centerline.py \
 python data_analysis/generate_raceline.py \
   --centerline /path/to/map_centerline.csv \
   --output /path/to/map_raceline.csv
+
+python data_analysis/visualize_race_lines.py \
+  --yaml /path/to/map.yaml \
+  --centerline /path/to/map_centerline.csv \
+  --raceline /path/to/map_raceline.csv \
+  --output /path/to/map_lines.png
 ```
 
-`scripts/create_2d_map_from_bag.sh` では、centerline生成後に raceline も生成するか確認します。スキップしたい場合は `--no-raceline` を指定してください。
+`scripts/create_2d_map_from_bag.sh` では、centerline / raceline 生成後に preview画像も生成します。スキップしたい場合は `--no-raceline` または `--no-line-preview` を指定してください。
 
 ## 使い方（global localization 自動評価）
 
