@@ -2,6 +2,21 @@
 
 set -euo pipefail
 
+source_setup_if_available() {
+    if [ -n "${CREATE_2D_MAP_SETUP:-}" ]; then
+        # shellcheck source=/dev/null
+        source "${CREATE_2D_MAP_SETUP}"
+    elif [ -f "/workspaces/install/setup.bash" ]; then
+        # shellcheck source=/dev/null
+        source "/workspaces/install/setup.bash"
+    elif [ -f "install/setup.bash" ]; then
+        # shellcheck source=/dev/null
+        source "install/setup.bash"
+    fi
+}
+
+source_setup_if_available
+
 usage() {
     cat <<'EOF'
 Usage:
