@@ -312,17 +312,16 @@ def prune_spurs(skel: np.ndarray, iterations: int) -> np.ndarray:
     return out.astype(np.uint8)
 
 
-def select_best_centerline_component(
+def analyze_centerline_components(
     skel: np.ndarray,
     dist: np.ndarray,
     min_pixels: int,
-) -> Optional[Tuple[np.ndarray, float]]:
+) -> List[Tuple[float, np.ndarray, int, int, int, float]]:
     n, labels, stats, _ = cv2.connectedComponentsWithStats(skel.astype(np.uint8), connectivity=8)
     if n <= 1:
-        return None
+        return []
 
-    best = None
-    best_score = -1e18
+    candidates: List[Tuple[float, np.ndarray, int, int, int, float]] = []
     deg = neighbor_count((skel > 0).astype(np.uint8))
 
     for i in range(1, n):
@@ -335,22 +334,17 @@ def select_best_centerline_component(
         endpoints = int(np.sum(comp & (deg == 1)))
         branchpoints = int(np.sum(comp & (deg > 2)))
 
-        score = float(n_pix) + 20.0 * mean_dist
+        score = float(n_pix) + 12.0 * mean_dist
         if endpoints == 0:
             score += 0.30 * n_pix
         elif endpoints > 4:
             score -= 0.15 * n_pix
         if branchpoints > 0:
-            score -= 0.50 * n_pix
             score -= 8.0 * branchpoints
 
-        if score > best_score:
-            best_score = score
-            best = comp
+        candidates.append((score, comp.astype(np.uint8), n_pix, endpoints, branchpoints, mean_dist))
 
-    if best is None:
-        return None
-    return best, best_score
+    return candidates
 
 
 def extract_centerline_skeleton(
@@ -364,7 +358,7 @@ def extract_centerline_skeleton(
     if positive.size == 0:
         raise RuntimeError("Distance transform is empty for selected track mask.")
 
-    candidates: List[Tuple[float, np.ndarray]] = []
+    candidates: List[Tuple[float, np.ndarray, int, int, int, float]] = []
 
     for q in quantiles:
         thr = float(np.quantile(positive, q))
@@ -376,26 +370,33 @@ def extract_centerline_skeleton(
 
         skel = zhang_suen_thinning(centers)
         skel = prune_spurs(skel, prune_iters)
-        best = select_best_centerline_component(skel, dist, min_centerline_pixels)
-        if best is not None:
-            mask, score = best
-            if int(mask.sum()) >= min_centerline_pixels:
-                candidates.append((score, mask.astype(np.uint8)))
+        candidates.extend(analyze_centerline_components(skel, dist, min_centerline_pixels))
 
     # Also evaluate the full track skeleton. Distance-quantile candidates can
     # miss narrow sections when the course width changes a lot.
     skel = zhang_suen_thinning(track_mask)
     skel = prune_spurs(skel, prune_iters * 2)
-    best = select_best_centerline_component(skel, dist, min_centerline_pixels)
-    if best is not None:
-        mask, score = best
-        candidates.append((score, mask.astype(np.uint8)))
+    candidates.extend(analyze_centerline_components(skel, dist, min_centerline_pixels))
 
     if not candidates:
         raise RuntimeError("Unable to extract stable centerline skeleton.")
 
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    return candidates[0][1].astype(np.uint8)
+    max_pixels = max(item[2] for item in candidates)
+    large_candidates = [item for item in candidates if item[2] >= max(min_centerline_pixels, int(0.55 * max_pixels))]
+    if not large_candidates:
+        large_candidates = candidates
+
+    clean_loops = [item for item in large_candidates if item[3] == 0 and item[4] == 0]
+    clean_paths = [item for item in large_candidates if item[4] == 0]
+    if clean_loops:
+        chosen_pool = clean_loops
+    elif clean_paths:
+        chosen_pool = clean_paths
+    else:
+        chosen_pool = large_candidates
+
+    chosen_pool.sort(key=lambda item: (item[0], item[2], item[5]), reverse=True)
+    return chosen_pool[0][1].astype(np.uint8)
 
 
 def adjacency_from_mask(mask: np.ndarray):
