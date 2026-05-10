@@ -17,6 +17,7 @@ import argparse
 import inspect
 import os
 import sys
+import time
 from typing import Tuple
 
 import numpy as np
@@ -151,6 +152,18 @@ def default_optimizer_root() -> str:
     return candidates[0]
 
 
+class ProgressReporter:
+    def __init__(self, enabled: bool) -> None:
+        self.enabled = enabled
+        self.start_time = time.perf_counter()
+
+    def step(self, current: int, total: int, message: str) -> None:
+        if not self.enabled:
+            return
+        elapsed = time.perf_counter() - self.start_time
+        print(f"[{current}/{total}] {message} ({elapsed:.1f}s)", file=sys.stderr, flush=True)
+
+
 def generate_raceline(
     centerline: np.ndarray,
     widths: np.ndarray,
@@ -164,8 +177,13 @@ def generate_raceline(
     lateral_accel_limit: float,
     accel_limit: float,
     decel_limit: float,
+    progress: ProgressReporter | None = None,
 ) -> np.ndarray:
+    if progress is not None:
+        progress.step(1, 4, "Resampling centerline")
     centerline, widths = resample_centerline(centerline, widths, spacing=spacing)
+    if progress is not None:
+        progress.step(2, 4, "Smoothing centerline")
     centerline = smooth_points(centerline, sigma=point_smooth_sigma)
 
     _, center_kappa = heading_and_curvature(centerline)
@@ -198,6 +216,8 @@ def generate_raceline(
         left_limit,
     )[:, None] * normals
 
+    if progress is not None:
+        progress.step(3, 4, "Computing raceline geometry")
     s, total = cumulative_s(points, closed=True)
     psi, kappa = heading_and_curvature(points)
 
@@ -216,6 +236,8 @@ def generate_raceline(
     ax[valid_ds] = (np.roll(vx, -1)[valid_ds] ** 2 - vx[valid_ds] ** 2) / (2.0 * ds[valid_ds])
     ax = np.clip(ax, -decel_limit, accel_limit)
 
+    if progress is not None:
+        progress.step(4, 4, "Assembling output")
     return np.column_stack([s, points[:, 0], points[:, 1], psi, kappa, vx, ax])
 
 
@@ -277,6 +299,12 @@ def build_reftrack_interp_with_retry(
 
     for _ in range(6):
         attempted.append(smoothing)
+        if debug:
+            print(
+                f"[global-opt] spline approximation with smoothing={smoothing:g}",
+                file=sys.stderr,
+                flush=True,
+            )
         reftrack_interp = tph.spline_approximation.spline_approximation(
             track=reftrack,
             k_reg=3,
@@ -386,6 +414,7 @@ def generate_global_opt_raceline(
     accel_limit: float,
     decel_limit: float,
     debug: bool,
+    progress: ProgressReporter | None = None,
 ) -> np.ndarray:
     if opt_type not in {"shortest_path", "mincurv", "mincurv_iqp"}:
         raise RuntimeError("global-opt backend supports shortest_path, mincurv, and mincurv_iqp.")
@@ -425,6 +454,8 @@ def generate_global_opt_raceline(
         reftrack[too_narrow, 2] += inflate
         reftrack[too_narrow, 3] += inflate
 
+    if progress is not None:
+        progress.step(1, 5, "Smoothing reference track")
     reftrack_interp, a_interp, normvec, coeffs_x, coeffs_y, smoothing_used = build_reftrack_interp_with_retry(
         tph=tph,
         reftrack=reftrack,
@@ -441,6 +472,8 @@ def generate_global_opt_raceline(
 
     width_opt = vehicle_width + 2.0 * safety_margin
     if opt_type == "shortest_path":
+        if progress is not None:
+            progress.step(2, 5, "Running shortest-path optimizer")
         alpha = tph.opt_shortest_path.opt_shortest_path(
             reftrack=reftrack_interp,
             normvectors=normvec,
@@ -448,6 +481,8 @@ def generate_global_opt_raceline(
             print_debug=debug,
         )
     elif opt_type == "mincurv":
+        if progress is not None:
+            progress.step(2, 5, "Running minimum-curvature optimizer")
         alpha = tph.opt_min_curv.opt_min_curv(
             reftrack=reftrack_interp,
             normvectors=normvec,
@@ -459,6 +494,8 @@ def generate_global_opt_raceline(
         )[0]
     else:
         try:
+            if progress is not None:
+                progress.step(2, 5, "Running iterative minimum-curvature optimizer")
             alpha, reftrack_interp, normvec = call_iqp_handler_compat(
                 tph=tph,
                 reftrack_interp=reftrack_interp,
@@ -472,6 +509,8 @@ def generate_global_opt_raceline(
                 stepsize_reg=stepsize_reg,
             )
         except TypeError:
+            if progress is not None:
+                progress.step(2, 5, "Falling back to minimum-curvature optimizer")
             alpha = tph.opt_min_curv.opt_min_curv(
                 reftrack=reftrack_interp,
                 normvectors=normvec,
@@ -482,6 +521,8 @@ def generate_global_opt_raceline(
                 plot_debug=False,
             )[0]
 
+    if progress is not None:
+        progress.step(3, 5, "Interpolating optimized raceline")
     (
         raceline_xy,
         _,
@@ -499,6 +540,8 @@ def generate_global_opt_raceline(
         stepsize_interp=stepsize_after_opt,
     )
 
+    if progress is not None:
+        progress.step(4, 5, "Computing curvature and velocity profile")
     psi, kappa = tph.calc_head_curv_an.calc_head_curv_an(
         coeffs_x=coeffs_x_opt,
         coeffs_y=coeffs_y_opt,
@@ -528,12 +571,15 @@ def generate_global_opt_raceline(
         decel_limit=decel_limit,
     )
 
+    if progress is not None:
+        progress.step(5, 5, "Assembling output")
     return np.column_stack([s, raceline_xy[:, 0], raceline_xy[:, 1], psi, kappa, vx, ax])
 
 
 def run(args: argparse.Namespace) -> None:
     centerline, widths = load_centerline(args.centerline)
     backend_used = args.backend
+    progress = ProgressReporter(enabled=args.show_progress)
 
     if args.backend in {"global-opt", "auto"}:
         try:
@@ -555,6 +601,7 @@ def run(args: argparse.Namespace) -> None:
                 accel_limit=args.accel_limit,
                 decel_limit=args.decel_limit,
                 debug=args.global_opt_debug,
+                progress=progress,
             )
             backend_used = "global-opt"
         except Exception as exc:
@@ -575,6 +622,7 @@ def run(args: argparse.Namespace) -> None:
                 lateral_accel_limit=args.lateral_accel_limit,
                 accel_limit=args.accel_limit,
                 decel_limit=args.decel_limit,
+                progress=progress,
             )
     else:
         raceline = generate_raceline(
@@ -590,6 +638,7 @@ def run(args: argparse.Namespace) -> None:
             lateral_accel_limit=args.lateral_accel_limit,
             accel_limit=args.accel_limit,
             decel_limit=args.decel_limit,
+            progress=progress,
         )
 
     out_path = os.path.abspath(args.output)
@@ -610,6 +659,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--centerline", required=True, help="Path to centerline CSV: x,y,w_tr_right,w_tr_left")
     p.add_argument("--output", required=True, help="Path to output raceline CSV")
     p.add_argument("--backend", choices=["heuristic", "global-opt", "auto"], default="heuristic")
+    p.add_argument("--show-progress", action="store_true", help="Print coarse-grained progress updates to stderr")
 
     p.add_argument(
         "--optimizer-root",
