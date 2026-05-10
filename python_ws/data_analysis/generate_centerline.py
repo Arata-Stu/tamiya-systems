@@ -410,16 +410,58 @@ def adjacency_from_mask(mask: np.ndarray):
     return points, adj
 
 
-def order_centerline_points(mask: np.ndarray, dist: np.ndarray) -> np.ndarray:
-    points, adj = adjacency_from_mask(mask)
-    if not points:
-        raise RuntimeError("Centerline mask has no points.")
+def choose_next_neighbor(
+    current: Tuple[int, int],
+    prev: Optional[Tuple[int, int]],
+    neighbors: Sequence[Tuple[int, int]],
+    dist: np.ndarray,
+) -> Tuple[int, int]:
+    if len(neighbors) == 1:
+        return neighbors[0]
 
+    best_nb = neighbors[0]
+    best_score = -1e18
+    for nb in neighbors:
+        score = 0.05 * float(dist[nb[1], nb[0]])
+        if prev is not None:
+            vx, vy = current[0] - prev[0], current[1] - prev[1]
+            wx, wy = nb[0] - current[0], nb[1] - current[1]
+            score += float(vx * wx + vy * wy)
+        if score > best_score:
+            best_score = score
+            best_nb = nb
+    return best_nb
+
+
+def order_closed_centerline(points: List[Tuple[int, int]], adj: dict, dist: np.ndarray) -> np.ndarray:
+    start = max(points, key=lambda p: float(dist[p[1], p[0]]))
+    first_neighbors = adj[start]
+    if not first_neighbors:
+        raise RuntimeError("Closed centerline candidate has no neighbors.")
+
+    first = choose_next_neighbor(start, None, first_neighbors, dist)
+    ordered = [start, first]
+    prev = start
+    current = first
+
+    for _ in range(len(points) + 5):
+        candidates = [nb for nb in adj[current] if nb != prev]
+        if not candidates:
+            break
+        next_p = choose_next_neighbor(current, prev, candidates, dist)
+        if next_p == start:
+            break
+        ordered.append(next_p)
+        prev, current = current, next_p
+
+    if len(ordered) < max(8, len(points) // 3):
+        raise RuntimeError("Failed to trace a stable closed centerline loop.")
+    return np.asarray(ordered, dtype=np.float64)
+
+
+def order_open_centerline(points: List[Tuple[int, int]], adj: dict, dist: np.ndarray) -> np.ndarray:
     endpoints = [p for p in points if len(adj[p]) == 1]
-    if endpoints:
-        start = endpoints[0]
-    else:
-        start = max(points, key=lambda p: float(dist[p[1], p[0]]))
+    start = endpoints[0] if endpoints else max(points, key=lambda p: float(dist[p[1], p[0]]))
 
     visited_edges = set()
     ordered = [start]
@@ -433,43 +475,38 @@ def order_centerline_points(mask: np.ndarray, dist: np.ndarray) -> np.ndarray:
             edge = tuple(sorted((current, nb)))
             if edge in visited_edges:
                 continue
-
-            score = 0.0
-            if prev is not None:
-                vx, vy = current[0] - prev[0], current[1] - prev[1]
-                wx, wy = nb[0] - current[0], nb[1] - current[1]
-                score += float(vx * wx + vy * wy)
-            score += 0.05 * float(dist[nb[1], nb[0]])
-            candidates.append((score, nb, edge))
+            candidates.append((choose_next_neighbor(current, prev, [nb], dist), nb, edge))
 
         if not candidates:
             break
 
-        candidates.sort(key=lambda x: x[0], reverse=True)
-        _, next_p, edge = candidates[0]
+        scored = []
+        for _, nb, edge in candidates:
+            score = 0.05 * float(dist[nb[1], nb[0]])
+            if prev is not None:
+                vx, vy = current[0] - prev[0], current[1] - prev[1]
+                wx, wy = nb[0] - current[0], nb[1] - current[1]
+                score += float(vx * wx + vy * wy)
+            scored.append((score, nb, edge))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        _, next_p, edge = scored[0]
         visited_edges.add(edge)
         prev, current = current, next_p
-
-        if current == start and len(ordered) > 10:
-            break
         ordered.append(current)
 
-    visited = set(ordered)
-    remaining = [p for p in points if p not in visited]
-    while remaining:
-        lx, ly = ordered[-1]
-        best_i = 0
-        best_d2 = 1e18
-        for i, p in enumerate(remaining):
-            dx = p[0] - lx
-            dy = p[1] - ly
-            d2 = float(dx * dx + dy * dy)
-            if d2 < best_d2:
-                best_d2 = d2
-                best_i = i
-        ordered.append(remaining.pop(best_i))
-
     return np.asarray(ordered, dtype=np.float64)
+
+
+def order_centerline_points(mask: np.ndarray, dist: np.ndarray) -> np.ndarray:
+    points, adj = adjacency_from_mask(mask)
+    if not points:
+        raise RuntimeError("Centerline mask has no points.")
+
+    endpoints = [p for p in points if len(adj[p]) == 1]
+    if not endpoints:
+        return order_closed_centerline(points, adj, dist)
+    return order_open_centerline(points, adj, dist)
 
 
 def circular_gaussian_smooth(values: np.ndarray, sigma: float, closed: bool) -> np.ndarray:
