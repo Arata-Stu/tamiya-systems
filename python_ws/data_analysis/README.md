@@ -19,6 +19,15 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
 - `plot_localization_quality_map.py`
   - 既存の評価CSVと `map.yaml` から、良否ポイント図と成功率ヒートマップを生成
 
+- `generate_centerline.py`
+  - PNG / PGM occupancy map から centerline CSV を生成
+  - 出力形式: `x_m,y_m,w_tr_right_m,w_tr_left_m`
+
+- `generate_raceline.py`
+  - centerline CSV から軽量な近似 raceline CSV を生成
+  - race_stacks の重いROS/optimizer依存を直接持ち込まず、後で optimizer backend に差し替えやすいCLI境界にしている
+  - 出力形式: `s_m; x_m; y_m; psi_rad; kappa_radpm; vx_mps; ax_mps2`
+
 ## 使い方（LiDAR）
 
 ```bash
@@ -72,6 +81,24 @@ python data_analysis/visualize_scan_gradient.py \
 
 - 描画には `matplotlib` が必要です。未導入なら `pip install matplotlib` を実行してください。
 - MP4出力には `ffmpeg` が必要です（未導入時はGIF出力を使ってください）。
+
+## 使い方（centerline / raceline 生成）
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+
+python data_analysis/generate_centerline.py \
+  --map /path/to/map.png \
+  --yaml /path/to/map.yaml \
+  --output /path/to/map_centerline.csv \
+  --debug-dir /path/to/map_centerline_debug
+
+python data_analysis/generate_raceline.py \
+  --centerline /path/to/map_centerline.csv \
+  --output /path/to/map_raceline.csv
+```
+
+`scripts/create_2d_map_from_bag.sh` では、centerline生成後に raceline も生成するか確認します。スキップしたい場合は `--no-raceline` を指定してください。
 
 ## 使い方（global localization 自動評価）
 

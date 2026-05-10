@@ -15,11 +15,14 @@ Options:
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --record-root DIR   rosbag探索ルート (default: /record)
   --no-centerline     skip centerline CSV generation
+  --no-raceline       skip raceline CSV generation
   --centerline-debug  save centerline debug images (default: enabled when centerline is generated)
   --centerline-debug-dir DIR
                       set centerline debug image output directory
   --centerline-script PATH
                       path to generate_centerline.py (auto-detect by default)
+  --raceline-script PATH
+                      path to generate_raceline.py (auto-detect by default)
   -h, --help          show this help
 
 Outputs:
@@ -28,6 +31,7 @@ Outputs:
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_raceline.csv (optional; generated unless --no-raceline)
 
 After map creation:
   optionally transfer /map/<bag_name>/<MAP_NAME>/ to remote host by scp
@@ -38,7 +42,8 @@ Interactive flow:
   3) map 名を入力
   4) Cartographer -> PNG変換
   5) centerline 生成の可否を確認（debug はデフォルト有効）
-  6) scp 転送可否を確認
+  6) raceline 生成の可否を確認
+  7) scp 転送可否を確認
 EOF
 }
 
@@ -51,9 +56,11 @@ ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
 PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
+ENABLE_RACELINE=true
 CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
+RACELINE_SCRIPT_PATH=""
 RECORD_ROOT="/record"
 
 DEFAULT_REMOTE_USER="tamiya"
@@ -158,6 +165,11 @@ while (($#)); do
             ;;
         --no-centerline)
             ENABLE_CENTERLINE=false
+            ENABLE_RACELINE=false
+            shift
+            ;;
+        --no-raceline)
+            ENABLE_RACELINE=false
             shift
             ;;
         --centerline-debug)
@@ -171,6 +183,10 @@ while (($#)); do
             ;;
         --centerline-script)
             CENTERLINE_SCRIPT_PATH="$2"
+            shift 2
+            ;;
+        --raceline-script)
+            RACELINE_SCRIPT_PATH="$2"
             shift 2
             ;;
         -h|--help)
@@ -204,6 +220,8 @@ MAP_PNG_PATH=""
 CENTERLINE_OUTPUT_PATH=""
 CENTERLINE_DEBUG_PATH=""
 CENTERLINE_CREATED=false
+RACELINE_OUTPUT_PATH=""
+RACELINE_CREATED=false
 MAP_LOG_PATH=""
 
 discover_rosbag_candidates() {
@@ -300,6 +318,7 @@ MAP_YAML_PATH="${MAP_STEM}.yaml"
 MAP_PGM_PATH="${MAP_STEM}.pgm"
 MAP_PNG_PATH="${MAP_STEM}.png"
 CENTERLINE_OUTPUT_PATH="${MAP_STEM}_centerline.csv"
+RACELINE_OUTPUT_PATH="${MAP_STEM}_raceline.csv"
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
 
 # validate bag
@@ -421,17 +440,43 @@ resolve_centerline_script() {
     return 1
 }
 
+resolve_raceline_script() {
+    local script_dir
+    local candidate
+
+    if [ -n "${RACELINE_SCRIPT_PATH}" ]; then
+        if [ -f "${RACELINE_SCRIPT_PATH}" ]; then
+            echo "${RACELINE_SCRIPT_PATH}"
+            return 0
+        fi
+        return 1
+    fi
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for candidate in \
+        "/python_ws/data_analysis/generate_raceline.py" \
+        "${script_dir}/../python_ws/data_analysis/generate_raceline.py" \
+        "${PWD}/python_ws/data_analysis/generate_raceline.py"; do
+        if [ -f "${candidate}" ]; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 generate_centerline() {
     local input_map_path="$1"
     local centerline_script_path
     local -a centerline_cmd
 
     if [ "${ENABLE_CENTERLINE}" != true ]; then
-        echo "[5/6] Skip centerline generation"
+        echo "[5/7] Skip centerline generation"
         return 0
     fi
 
-    echo "[5/6] Generate centerline"
+    echo "[5/7] Generate centerline"
 
     if ! command -v python3 >/dev/null 2>&1; then
         echo "Warning: python3 not found. Skip centerline generation." >&2
@@ -475,6 +520,52 @@ generate_centerline() {
     fi
 }
 
+generate_raceline() {
+    local centerline_path="$1"
+    local raceline_script_path
+    local -a raceline_cmd
+
+    if [ "${ENABLE_RACELINE}" != true ]; then
+        echo "[6/7] Skip raceline generation"
+        return 0
+    fi
+
+    echo "[6/7] Generate raceline"
+
+    if [ "${CENTERLINE_CREATED}" != true ] || [ ! -f "${centerline_path}" ]; then
+        echo "Warning: centerline CSV not found. Skip raceline generation." >&2
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Warning: python3 not found. Skip raceline generation." >&2
+        return 0
+    fi
+
+    if ! raceline_script_path="$(resolve_raceline_script)"; then
+        if [ -n "${RACELINE_SCRIPT_PATH}" ]; then
+            echo "Warning: raceline script not found: ${RACELINE_SCRIPT_PATH}" >&2
+        else
+            echo "Warning: generate_raceline.py not found. Skip raceline generation." >&2
+        fi
+        return 0
+    fi
+
+    raceline_cmd=(
+        python3 "${raceline_script_path}"
+        --centerline "${centerline_path}"
+        --output "${RACELINE_OUTPUT_PATH}"
+    )
+
+    if ! "${raceline_cmd[@]}"; then
+        echo "Warning: raceline generation failed. Skip raceline output." >&2
+        return 0
+    fi
+
+    RACELINE_CREATED=true
+    echo "  - ${RACELINE_OUTPUT_PATH}"
+}
+
 prompt_centerline_generation() {
     local generate_choice
     local debug_choice
@@ -503,6 +594,22 @@ prompt_centerline_generation() {
     fi
 }
 
+prompt_raceline_generation() {
+    local generate_choice
+
+    if [ "${ENABLE_CENTERLINE}" != true ] || [ "${ENABLE_RACELINE}" != true ]; then
+        return 0
+    fi
+
+    echo ""
+    read -r -p "racelineも生成しますか？ (Y/n, Enterで生成): " generate_choice
+    generate_choice=${generate_choice:-y}
+
+    if [[ ! "${generate_choice}" =~ ^[Yy]$ ]]; then
+        ENABLE_RACELINE=false
+    fi
+}
+
 wait_for_service() {
     local service_name="$1"
     local timeout_sec="$2"
@@ -524,7 +631,7 @@ trap stop_cartographer EXIT INT TERM
 # ==========================================
 # 1. Launch cartographer
 # ==========================================
-echo "[1/6] Launch cartographer (log: ${MAP_LOG_PATH})"
+echo "[1/7] Launch cartographer (log: ${MAP_LOG_PATH})"
 capture_base_cartographer_pids
 
 LAUNCH_ARGS=(
@@ -554,7 +661,7 @@ CARTOGRAPHER_PID=$!
 # ==========================================
 # 2. Wait service
 # ==========================================
-echo "[2/6] Wait for /write_state service"
+echo "[2/7] Wait for /write_state service"
 
 if ! wait_for_service "/write_state" 60; then
     echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
@@ -564,7 +671,7 @@ fi
 # ==========================================
 # 3. Play bag
 # ==========================================
-echo "[3/6] Play rosbag"
+echo "[3/7] Play rosbag"
 
 if [ "${PLAY_ALL_TOPICS}" = true ]; then
     echo "  - mode: all topics"
@@ -583,7 +690,7 @@ fi
 # ==========================================
 # 4. Save map
 # ==========================================
-echo "[4/6] Save trajectory and map"
+echo "[4/7] Save trajectory and map"
 
 if ! ros2 service call /finish_trajectory \
     cartographer_ros_msgs/srv/FinishTrajectory \
@@ -648,7 +755,13 @@ fi
 generate_centerline "${CENTERLINE_INPUT_MAP}"
 
 # ==========================================
-# 6. Transfer by scp
+# 6. Raceline
+# ==========================================
+prompt_raceline_generation
+generate_raceline "${CENTERLINE_OUTPUT_PATH}"
+
+# ==========================================
+# 7. Transfer by scp
 # ==========================================
 echo ""
 read -p "2D mapを作成しました。送信しますか？ (Y/n, Enterで送信): " SEND_CONFIRM
