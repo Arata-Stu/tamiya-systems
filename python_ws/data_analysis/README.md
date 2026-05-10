@@ -129,6 +129,18 @@ python data_analysis/visualize_race_lines.py \
 
 global optimizerを使う場合は `python_ws/requirements_global_opt.txt` の依存をDockerへ入れてください。現在のglobal-opt backendは `shortest_path` / `mincurv` / `mincurv_iqp` を対象にしており、古い `casadi` 依存を避けるため `mintime` はまだ扱いません。
 
+`quadprog` は環境によっては install 後も import 時に `undefined symbol` で失敗することがあります。これは依存解決エラーではなく、ネイティブ拡張の ABI 不整合です。その場合は一度 `quadprog` と `trajectory-planning-helpers` を削除し、`trajectory-planning-helpers` の自動依存解決を使わずに `quadprog==0.1.6` を先に入れてから `trajectory-planning-helpers --no-deps` を入れる回避策を試してください。
+
+また、`trajectory-planning-helpers 0.79` は新しめの `scipy` で `spline_approximation` が落ちることがあります。このリポジトリの `generate_raceline.py` では互換パッチを当てて回避しています。
+
+```bash
+pip uninstall -y trajectory-planning-helpers quadprog
+pip install --no-cache-dir "quadprog==0.1.6"
+pip install --no-cache-dir "trajectory-planning-helpers==0.79" --no-deps
+python data_analysis/check_global_opt_env.py \
+  --optimizer-root /workspaces/tamiya-systems/python_ws/global_racetrajectory_optimization
+```
+
 依存確認:
 
 ```bash

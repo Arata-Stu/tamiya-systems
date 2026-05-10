@@ -19,6 +19,7 @@ import sys
 from typing import Tuple
 
 import numpy as np
+from scipy import interpolate, spatial
 
 
 def circular_gaussian_smooth(values: np.ndarray, sigma: float) -> np.ndarray:
@@ -243,6 +244,25 @@ def velocity_profile_from_curvature(
     return s, vx, ax
 
 
+def patch_tph_spline_approximation_compat(tph: object) -> None:
+    """Patch older trajectory_planning_helpers for newer SciPy behavior.
+
+    trajectory_planning_helpers 0.79 passes the array returned by
+    scipy.optimize.fmin directly into scipy.interpolate.splev(), which can
+    produce a non-1D object that newer scipy.spatial.distance.euclidean rejects.
+    Coercing the optimization variable to a scalar keeps the original intent and
+    matches the older SciPy behavior the upstream code assumed.
+    """
+
+    def dist_to_p_compat(t_glob: np.ndarray, path: list, p: np.ndarray) -> float:
+        t_scalar = float(np.asarray(t_glob).reshape(-1)[0])
+        s = np.asarray(interpolate.splev(t_scalar, path), dtype=np.float64).reshape(-1)
+        p_vec = np.asarray(p, dtype=np.float64).reshape(-1)
+        return float(spatial.distance.euclidean(p_vec, s))
+
+    tph.spline_approximation.dist_to_p = dist_to_p_compat
+
+
 def generate_global_opt_raceline(
     centerline: np.ndarray,
     widths: np.ndarray,
@@ -274,10 +294,20 @@ def generate_global_opt_raceline(
     try:
         import trajectory_planning_helpers as tph
     except ImportError as exc:
-        raise RuntimeError(
+        message = (
             "global-opt backend requires trajectory-planning-helpers and quadprog. "
             "Install the Python 3.10 compatible optimizer dependencies first."
-        ) from exc
+        )
+        if "quadprog" in str(exc) and "undefined symbol" in str(exc):
+            message += (
+                " Detected a broken quadprog native extension at import time "
+                "(undefined symbol). Reinstall quadprog for the current Python/OS image, "
+                "or try the known workaround of using quadprog 0.1.6 with "
+                "trajectory-planning-helpers installed via --no-deps."
+            )
+        raise RuntimeError(message) from exc
+
+    patch_tph_spline_approximation_compat(tph)
 
     reftrack = np.column_stack([centerline, widths]).astype(np.float64)
     reftrack, = remove_duplicate_points(reftrack)

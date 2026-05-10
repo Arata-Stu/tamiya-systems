@@ -9,7 +9,9 @@
 matplotlib>=3.5,<4
 scipy>=1.8,<2
 trajectory-planning-helpers>=0.79,<0.81
-quadprog>=0.1.11,<0.2
+# trajectory-planning-helpers 0.79 pins quadprog==0.1.7.
+# Keep the same version here so pip does not hit a resolver conflict.
+quadprog==0.1.7
 
 # Only required for the future mintime backend. The current global-opt backend
 # intentionally supports shortest_path/mincurv/mincurv_iqp without importing
