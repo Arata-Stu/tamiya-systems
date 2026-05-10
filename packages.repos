@@ -67,3 +67,12 @@ repositories:
     type: git
     url: https://github.com/carbuncle01/f1tenth_gym_ros.git
     version: magp
+
+
+  # Race Line
+  ## global_racetrajectory_optimization
+  python_ws/f1tenth_gym_jax:
+    type: git
+    url: https://github.com/carbuncle01/global_racetrajectory_optimization.git
+    version: magp
+  
