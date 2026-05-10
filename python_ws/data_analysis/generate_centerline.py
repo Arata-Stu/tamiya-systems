@@ -333,12 +333,16 @@ def select_best_centerline_component(
         comp = labels == i
         mean_dist = float(dist[comp].mean()) if n_pix > 0 else 0.0
         endpoints = int(np.sum(comp & (deg == 1)))
+        branchpoints = int(np.sum(comp & (deg > 2)))
 
         score = float(n_pix) + 20.0 * mean_dist
         if endpoints == 0:
             score += 0.30 * n_pix
         elif endpoints > 4:
             score -= 0.15 * n_pix
+        if branchpoints > 0:
+            score -= 0.50 * n_pix
+            score -= 8.0 * branchpoints
 
         if score > best_score:
             best_score = score
@@ -504,7 +508,8 @@ def order_centerline_points(mask: np.ndarray, dist: np.ndarray) -> np.ndarray:
         raise RuntimeError("Centerline mask has no points.")
 
     endpoints = [p for p in points if len(adj[p]) == 1]
-    if not endpoints:
+    branchpoints = [p for p in points if len(adj[p]) > 2]
+    if not endpoints and not branchpoints:
         return order_closed_centerline(points, adj, dist)
     return order_open_centerline(points, adj, dist)
 
