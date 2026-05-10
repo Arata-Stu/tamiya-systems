@@ -263,6 +263,47 @@ def patch_tph_spline_approximation_compat(tph: object) -> None:
     tph.spline_approximation.dist_to_p = dist_to_p_compat
 
 
+def build_reftrack_interp_with_retry(
+    tph: object,
+    reftrack: np.ndarray,
+    stepsize_prep: float,
+    stepsize_reg: float,
+    spline_smoothing: float,
+    debug: bool,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    smoothing = max(float(spline_smoothing), 1e-6)
+    attempted = []
+
+    for _ in range(6):
+        attempted.append(smoothing)
+        reftrack_interp = tph.spline_approximation.spline_approximation(
+            track=reftrack,
+            k_reg=3,
+            s_reg=smoothing,
+            stepsize_prep=stepsize_prep,
+            stepsize_reg=stepsize_reg,
+            debug=debug,
+        )
+
+        refpath_interp_cl = np.vstack((reftrack_interp[:, :2], reftrack_interp[0, :2]))
+        coeffs_x, coeffs_y, a_interp, normvec = tph.calc_splines.calc_splines(path=refpath_interp_cl)
+
+        if not tph.check_normals_crossing.check_normals_crossing(
+            track=reftrack_interp,
+            normvec_normalized=normvec,
+            horizon=10,
+        ):
+            return reftrack_interp, a_interp, normvec, smoothing
+
+        smoothing *= 2.0
+
+    attempted_str = ", ".join(f"{value:g}" for value in attempted)
+    raise RuntimeError(
+        "Spline normals cross even after retrying higher --global-opt-spline-smoothing values: "
+        f"{attempted_str}. Try a smoother centerline or a larger initial smoothing value."
+    )
+
+
 def generate_global_opt_raceline(
     centerline: np.ndarray,
     widths: np.ndarray,
@@ -320,24 +361,19 @@ def generate_global_opt_raceline(
         reftrack[too_narrow, 2] += inflate
         reftrack[too_narrow, 3] += inflate
 
-    reftrack_interp = tph.spline_approximation.spline_approximation(
-        track=reftrack,
-        k_reg=3,
-        s_reg=spline_smoothing,
+    reftrack_interp, a_interp, normvec, smoothing_used = build_reftrack_interp_with_retry(
+        tph=tph,
+        reftrack=reftrack,
         stepsize_prep=stepsize_prep,
         stepsize_reg=stepsize_reg,
+        spline_smoothing=spline_smoothing,
         debug=debug,
     )
-
-    refpath_interp_cl = np.vstack((reftrack_interp[:, :2], reftrack_interp[0, :2]))
-    coeffs_x, coeffs_y, a_interp, normvec = tph.calc_splines.calc_splines(path=refpath_interp_cl)
-
-    if tph.check_normals_crossing.check_normals_crossing(
-        track=reftrack_interp,
-        normvec_normalized=normvec,
-        horizon=10,
-    ):
-        raise RuntimeError("Spline normals cross. Increase --global-opt-spline-smoothing.")
+    if debug and smoothing_used != spline_smoothing:
+        print(
+            "Adjusted global-opt spline smoothing from "
+            f"{spline_smoothing:g} to {smoothing_used:g} to avoid crossing normals."
+        )
 
     width_opt = vehicle_width + 2.0 * safety_margin
     if opt_type == "shortest_path":

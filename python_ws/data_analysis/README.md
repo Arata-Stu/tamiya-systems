@@ -133,6 +133,8 @@ global optimizerを使う場合は `python_ws/requirements_global_opt.txt` の�
 
 また、`trajectory-planning-helpers 0.79` は新しめの `scipy` で `spline_approximation` が落ちることがあります。このリポジトリの `generate_raceline.py` では互換パッチを当てて回避しています。
 
+centerline の形状によっては spline 近似後の法線が交差し、global-opt backend が失敗することがあります。このリポジトリの `generate_raceline.py` では `--global-opt-spline-smoothing` を段階的に引き上げて自動リトライします。まだ失敗する場合は、手動で `--global-opt-spline-smoothing 40` や `80` を指定してください。
+
 ```bash
 pip uninstall -y trajectory-planning-helpers quadprog
 pip install --no-cache-dir "quadprog==0.1.6"
