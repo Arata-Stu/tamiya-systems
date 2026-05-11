@@ -10,8 +10,8 @@ directly.
 - `launch_system.sh`: launch system presets.
 - `tmux.sh`: create tmux layouts for robot, mapping, Python, and simulator work.
 - `monitor.sh`: terminal monitoring dashboard.
-- `create_vslam_map_from_bag.sh`: offline visual-map generation plus lightweight `scan + odom + tf` bag creation.
-- `create_2d_map_from_bag.sh`: offline 2D map generation. `--run-vslam` / `--use-vslam-odom` で VSLAM map 保存と lightweight 2D input bag 作成もまとめて実行できます。
+- `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation.
+- `create_2d_map_from_bag.sh`: 2D map 作成用。`--run-vslam` / `--use-vslam-odom` で VSLAM map 保存と lightweight 2D input bag 作成もまとめて実行できます。
 - `scp_data.sh`: data transfer helper.
 
 ## Terminal viewers
