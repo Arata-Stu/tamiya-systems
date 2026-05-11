@@ -120,6 +120,8 @@ IMAGE_FPS="90.0"
 USE_IMU=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
 VSLAM_MAP_DIR=""
+OFFLINE_TF_PID=""
+OFFLINE_TF_USES_SETSID=false
 
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
@@ -337,6 +339,7 @@ LINE_PREVIEW_OUTPUT_PATH=""
 LINE_PREVIEW_CREATED=false
 MAP_LOG_PATH=""
 VSLAM_LOG_PATH=""
+TF_LOG_PATH=""
 
 discover_rosbag_candidates() {
     local search_root="$1"
@@ -475,6 +478,7 @@ stop_background_process() {
 stop_vslam() {
     stop_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID"
     stop_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID"
+    stop_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID"
 }
 
 launch_background_process() {
@@ -871,6 +875,7 @@ if [ -z "${VSLAM_MAP_DIR}" ]; then
     VSLAM_MAP_DIR="${OUT_DIR}/cuvslam_map"
 fi
 VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
+TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
 
 if [ "${RUN_VSLAM}" = true ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
@@ -911,7 +916,13 @@ fi
 CARTOGRAPHER_PID=$!
 
 if [ "${RUN_VSLAM}" = true ]; then
-    echo "      Launch offline vslam (log: ${VSLAM_LOG_PATH})"
+    echo "      Launch offline TF + vslam (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+        ros2 launch system_launch offline_sensor_tf.launch.xml \
+        > "${TF_LOG_PATH}" 2>&1
+
+    sleep 2
+
     launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
         ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
 

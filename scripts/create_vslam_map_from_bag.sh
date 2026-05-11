@@ -67,6 +67,8 @@ IMAGE_FPS="90.0"
 USE_IMU=false
 PLAY_ALL_TOPICS=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
+OFFLINE_TF_PID=""
+OFFLINE_TF_USES_SETSID=false
 
 CAMERA_CONTAINER_PID=""
 CAMERA_CONTAINER_USES_SETSID=false
@@ -138,6 +140,7 @@ MAP_DIR=""
 VSLAM_MAP_DIR=""
 LIGHTWEIGHT_BAG_DIR=""
 VSLAM_LOG_PATH=""
+TF_LOG_PATH=""
 
 discover_rosbag_candidates() {
     local search_root="$1"
@@ -293,6 +296,7 @@ cleanup_all() {
     stop_background_process "RECORDER_PID" "RECORDER_USES_SETSID"
     stop_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID"
     stop_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID"
+    stop_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID"
 }
 
 trap cleanup_all EXIT INT TERM
@@ -306,6 +310,7 @@ MAP_DIR="${MAP_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}"
 VSLAM_MAP_DIR="${MAP_DIR}/cuvslam_map"
 LIGHTWEIGHT_BAG_DIR="${BAG_ROOT%/}/${BAG_DIR_NAME}__${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
 VSLAM_LOG_PATH="/tmp/offline_vslam_record_$(date +%Y%m%d_%H%M%S).log"
+TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
 
 if [ ! -d "${BAG_PATH}" ] || [ ! -f "${BAG_PATH}/metadata.yaml" ]; then
     echo "Invalid BAG_PATH: ${BAG_PATH}" >&2
@@ -314,7 +319,13 @@ fi
 
 mkdir -p "${MAP_DIR}"
 
-echo "[1/5] Launch offline vslam (log: ${VSLAM_LOG_PATH})"
+echo "[1/5] Launch offline TF + vslam (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+    ros2 launch system_launch offline_sensor_tf.launch.xml \
+    > "${TF_LOG_PATH}" 2>&1
+
+sleep 2
+
 launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
     ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
 
