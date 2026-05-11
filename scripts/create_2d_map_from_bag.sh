@@ -51,6 +51,8 @@ Options:
   --vslam-map-dir DIR visual slam map output directory
   --lightweight-bag-root DIR
                       2D map用 lightweight bag の保存先ルート (default: /record/2d_input)
+  --pipeline-mode MODE
+                      full|fast|auto (default: auto)
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --record-root DIR   rosbag探索ルート (default: /record)
   --no-scp            skip interactive scp transfer step
@@ -121,6 +123,7 @@ GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
 LIGHTWEIGHT_BAG_ROOT="/record/2d_input"
+PIPELINE_MODE="auto"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
@@ -147,6 +150,7 @@ RECORDER_PID=""
 RECORDER_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
+LIGHTWEIGHT_BAG_CANDIDATES=()
 
 list_cartographer_pids() {
     {
@@ -269,6 +273,10 @@ while (($#)); do
             ;;
         --lightweight-bag-root)
             LIGHTWEIGHT_BAG_ROOT="$2"
+            shift 2
+            ;;
+        --pipeline-mode)
+            PIPELINE_MODE="$2"
             shift 2
             ;;
         --play-all-topics)
@@ -394,6 +402,34 @@ discover_rosbag_candidates() {
     [ "${#ROSBAG_CANDIDATES[@]}" -gt 0 ]
 }
 
+discover_lightweight_bag_candidates() {
+    local search_root="$1"
+    local bag_name="$2"
+    local map_name="$3"
+    local metadata_path
+    local dir
+    local expected_prefix="${map_name}_2d_input_"
+
+    LIGHTWEIGHT_BAG_CANDIDATES=()
+    if [ ! -d "${search_root%/}/${bag_name}" ]; then
+        return 1
+    fi
+
+    while IFS= read -r -d '' metadata_path; do
+        dir="$(dirname "${metadata_path}")"
+        if [[ "$(basename "${dir}")" == "${expected_prefix}"* ]]; then
+            LIGHTWEIGHT_BAG_CANDIDATES+=("${dir}")
+        fi
+    done < <(find "${search_root%/}/${bag_name}" -type f -name metadata.yaml -print0 2>/dev/null)
+
+    if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
+        return 1
+    fi
+
+    mapfile -t LIGHTWEIGHT_BAG_CANDIDATES < <(printf '%s\n' "${LIGHTWEIGHT_BAG_CANDIDATES[@]}" | sort -r)
+    [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -gt 0 ]
+}
+
 select_rosbag_path_interactive() {
     local choice
     local i
@@ -446,6 +482,75 @@ prompt_map_name_interactive() {
     done
 }
 
+prompt_pipeline_mode_interactive() {
+    local choice
+
+    if [ "${PIPELINE_MODE}" = "full" ] || [ "${PIPELINE_MODE}" = "fast" ]; then
+        return 0
+    fi
+
+    if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
+        PIPELINE_MODE="full"
+        return 0
+    fi
+
+    echo ""
+    echo "既存の lightweight bag が見つかりました:"
+    printf "  1) full  source bag から VSLAM と 2D map を作り直す\n"
+    printf "  2) fast  既存の lightweight bag を使って 2D map から再開\n"
+    echo "      latest: ${LIGHTWEIGHT_BAG_CANDIDATES[0]}"
+    echo ""
+
+    while :; do
+        read -r -p "実行モードを選択 (1-2, Enterで fast): " choice
+        choice=${choice:-2}
+        case "${choice}" in
+            1)
+                PIPELINE_MODE="full"
+                return 0
+                ;;
+            2)
+                PIPELINE_MODE="fast"
+                return 0
+                ;;
+        esac
+        echo "無効な入力です。1 または 2 を選択してください。"
+    done
+}
+
+select_lightweight_bag_interactive() {
+    local choice
+    local i
+
+    if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
+        echo "No lightweight bag candidates found." >&2
+        return 1
+    fi
+
+    echo ""
+    echo "利用する lightweight bag を選択してください:"
+    for i in "${!LIGHTWEIGHT_BAG_CANDIDATES[@]}"; do
+        if [ "$i" -eq 0 ]; then
+            printf "  %2d) %s (latest, Enterのデフォルト)\n" "$((i + 1))" "${LIGHTWEIGHT_BAG_CANDIDATES[$i]}"
+        else
+            printf "  %2d) %s\n" "$((i + 1))" "${LIGHTWEIGHT_BAG_CANDIDATES[$i]}"
+        fi
+    done
+    echo ""
+
+    while :; do
+        read -r -p "lightweight bag を番号で選択 (1-${#LIGHTWEIGHT_BAG_CANDIDATES[@]}, Enterで1): " choice
+        choice=${choice:-1}
+        if [[ "${choice}" =~ ^[0-9]+$ ]] && \
+           [ "${choice}" -ge 1 ] && \
+           [ "${choice}" -le "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" ]; then
+            LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_CANDIDATES[$((choice - 1))]}"
+            return 0
+        fi
+        echo "無効な入力です。番号で選択してください。"
+    done
+}
+
 if [ -z "${BAG_PATH}" ]; then
     select_rosbag_path_interactive
 fi
@@ -457,6 +562,17 @@ fi
 # bag dir name
 BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
+SOURCE_BAG_PATH="${BAG_PATH}"
+
+if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
+    discover_lightweight_bag_candidates "${LIGHTWEIGHT_BAG_ROOT}" "${BAG_DIR_NAME}" "${MAP_NAME}" || true
+    prompt_pipeline_mode_interactive
+    if [ "${PIPELINE_MODE}" = "fast" ]; then
+        select_lightweight_bag_interactive
+        RUN_VSLAM=false
+        BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
+    fi
+fi
 
 # output paths
 BAG_OUT_DIR="/map/${BAG_DIR_NAME}"
@@ -471,9 +587,15 @@ RACELINE_OUTPUT_PATH="${MAP_STEM}_raceline.csv"
 LINE_PREVIEW_OUTPUT_PATH="${MAP_STEM}_lines.png"
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
 
-# validate bag
+# validate input bags
+if [ ! -d "${SOURCE_BAG_PATH}" ] || [ ! -f "${SOURCE_BAG_PATH}/metadata.yaml" ]; then
+    echo "Invalid source BAG_PATH: ${SOURCE_BAG_PATH}" >&2
+    echo "metadata.yaml not found." >&2
+    exit 1
+fi
+
 if [ ! -d "$BAG_PATH" ] || [ ! -f "$BAG_PATH/metadata.yaml" ]; then
-    echo "Invalid BAG_PATH: $BAG_PATH" >&2
+    echo "Invalid active BAG_PATH: $BAG_PATH" >&2
     echo "metadata.yaml not found." >&2
     exit 1
 fi
@@ -927,9 +1049,87 @@ if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odom
 fi
 
 # ==========================================
-# 1. Launch cartographer
+# 1. Generate VSLAM odom + lightweight bag
 # ==========================================
-echo "[1/8] Launch cartographer (log: ${MAP_LOG_PATH})"
+if [ "${RUN_VSLAM}" = true ]; then
+    echo "[1/8] Launch offline TF + vslam (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+        ros2 launch system_launch offline_sensor_tf.launch.xml \
+        > "${TF_LOG_PATH}" 2>&1
+
+    sleep 2
+
+    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
+        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
+
+    sleep 2
+
+    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
+        ros2 launch system_launch vslam.launch.xml \
+        "image_width:=${IMAGE_WIDTH}" \
+        "image_height:=${IMAGE_HEIGHT}" \
+        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
+        "enable_localization_and_mapping:=true" \
+        "save_map_path:=${VSLAM_MAP_DIR}" \
+        > "${VSLAM_LOG_PATH}" 2>&1
+
+    echo "[2/8] Wait for /visual_slam/save_map service"
+    if ! wait_for_service "/visual_slam/save_map" 60; then
+        echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
+        exit 1
+    fi
+
+    echo "[3/8] Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
+    launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
+        ros2 bag record \
+        -o "${LIGHTWEIGHT_BAG_DIR}" \
+        /visual_slam/tracking/odometry \
+        /scan \
+        /tf \
+        /tf_static
+
+    sleep 2
+
+    echo "[4/8] Play source rosbag for offline VSLAM"
+    if [ "${PLAY_ALL_TOPICS}" = true ]; then
+        echo "  - mode: all topics"
+        ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}"
+    else
+        PLAY_TOPICS=(
+            "${SCAN_TOPIC}"
+            "/tf"
+            "/tf_static"
+            "/camera/left/image_raw"
+            "/camera/left/camera_info"
+            "/camera/right/image_raw"
+            "/camera/right/camera_info"
+        )
+        if [ "${USE_IMU}" = true ]; then
+            PLAY_TOPICS+=("/camera/imu")
+        fi
+
+        echo "  - mode: filtered topics"
+        echo "  - topics: ${PLAY_TOPICS[*]}"
+        ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --topics "${PLAY_TOPICS[@]}"
+    fi
+
+    echo "[5/8] Save VSLAM map and stop VSLAM-side processes"
+    sleep 2
+    ros2 service call /visual_slam/save_map \
+        isaac_ros_visual_slam_interfaces/srv/FilePath \
+        "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
+
+    stop_recorder
+    stop_vslam
+    BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
+else
+    echo "[1/8] Skip offline VSLAM"
+fi
+
+# ==========================================
+# 6. Launch cartographer with finalized odom bag
+# ==========================================
+echo "[6/8] Launch cartographer (log: ${MAP_LOG_PATH})"
 capture_base_cartographer_pids
 
 LAUNCH_ARGS=(
@@ -956,81 +1156,22 @@ fi
 
 CARTOGRAPHER_PID=$!
 
-if [ "${RUN_VSLAM}" = true ]; then
-    echo "      Launch offline TF + vslam (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
-    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        ros2 launch system_launch offline_sensor_tf.launch.xml \
-        > "${TF_LOG_PATH}" 2>&1
-
-    sleep 2
-
-    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-
-    sleep 2
-
-    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-        ros2 launch system_launch vslam.launch.xml \
-        "image_width:=${IMAGE_WIDTH}" \
-        "image_height:=${IMAGE_HEIGHT}" \
-        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-        "enable_localization_and_mapping:=true" \
-        "save_map_path:=${VSLAM_MAP_DIR}" \
-        > "${VSLAM_LOG_PATH}" 2>&1
-fi
-
-# ==========================================
-# 2. Wait service
-# ==========================================
-echo "[2/8] Wait for /write_state service"
-
+echo "[7/8] Wait for /write_state service"
 if ! wait_for_service "/write_state" 60; then
     echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
     exit 1
 fi
 
+echo "[8/8] Play bag for Cartographer and save 2D map"
 if [ "${RUN_VSLAM}" = true ]; then
-    if ! wait_for_service "/visual_slam/save_map" 60; then
-        echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
-        exit 1
-    fi
-fi
-
-if [ "${RUN_VSLAM}" = true ]; then
-    echo "      Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
-    launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
-        ros2 bag record \
-        -o "${LIGHTWEIGHT_BAG_DIR}" \
-        /visual_slam/tracking/odometry \
-        /scan \
-        /tf \
-        /tf_static
-
-    sleep 2
-fi
-
-# ==========================================
-# 3. Play bag
-# ==========================================
-echo "[3/8] Play rosbag"
-
-if [ "${PLAY_ALL_TOPICS}" = true ]; then
+    echo "  - using lightweight bag: ${BAG_PATH}"
+    ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
+elif [ "${PLAY_ALL_TOPICS}" = true ]; then
     echo "  - mode: all topics"
     ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
 else
     PLAY_TOPICS=("${SCAN_TOPIC}" "/tf_static")
-    if [ "${RUN_VSLAM}" = true ]; then
-        PLAY_TOPICS+=(
-            "/tf"
-            "/camera/left/image_raw"
-            "/camera/left/camera_info"
-            "/camera/right/image_raw"
-            "/camera/right/camera_info"
-        )
-        if [ "${USE_IMU}" = true ]; then
-            PLAY_TOPICS+=("/camera/imu")
-        fi
-    elif [ -n "${ODOM_TOPIC}" ]; then
+    if [ -n "${ODOM_TOPIC}" ]; then
         PLAY_TOPICS+=("${ODOM_TOPIC}")
     fi
 
@@ -1038,11 +1179,6 @@ else
     echo "  - topics: ${PLAY_TOPICS[*]}"
     ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}" --topics "${PLAY_TOPICS[@]}"
 fi
-
-# ==========================================
-# 4. Save map
-# ==========================================
-echo "[4/8] Save trajectory and map"
 
 if ! ros2 service call /finish_trajectory \
     cartographer_ros_msgs/srv/FinishTrajectory \
@@ -1056,16 +1192,7 @@ ros2 service call /write_state \
     cartographer_ros_msgs/srv/WriteState \
     "${WRITE_STATE_REQUEST}" > /dev/null
 
-if [ "${RUN_VSLAM}" = true ]; then
-    sleep 2
-    ros2 service call /visual_slam/save_map \
-        isaac_ros_visual_slam_interfaces/srv/FilePath \
-        "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
-fi
-
-stop_recorder
 stop_cartographer
-stop_vslam
 
 # convert map
 if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
