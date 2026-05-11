@@ -36,10 +36,14 @@ Usage:
   create_vslam_map_from_bag.sh [OPTIONS]
 
 Options:
+  --bag-path DIR      input rosbag2 directory (skip interactive selection)
+  --map-name NAME     output map name (skip interactive prompt)
   --rate RATE         ros2 bag play rate (default: 1.0)
   --record-root DIR   input rosbag search root (default: /record)
   --map-root DIR      output visual map root (default: /map)
-  --bag-root DIR      output lightweight bag root (default: /record)
+  --bag-root DIR      output lightweight bag root (default: /record/2d_input)
+  --lightweight-bag-dir DIR
+                     explicit output directory for the lightweight 2D input bag
   --image-width PX    camera width for offline vslam launch (default: 424)
   --image-height PX   camera height for offline vslam launch (default: 240)
   --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
@@ -49,7 +53,7 @@ Options:
 
 Outputs:
   /map/<source_bag>/<MAP_NAME>/cuvslam_map/
-  /record/<source_bag>__<MAP_NAME>_2d_input_<timestamp>/
+  /record/2d_input/<source_bag>/<MAP_NAME>_2d_input_<timestamp>/
     - /visual_slam/tracking/odometry
     - /scan
     - /tf
@@ -60,7 +64,7 @@ EOF
 PLAY_RATE="1.0"
 RECORD_ROOT="/record"
 MAP_ROOT="/map"
-BAG_ROOT="/record"
+BAG_ROOT="/record/2d_input"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
@@ -80,6 +84,14 @@ ROSBAG_CANDIDATES=()
 
 while (($#)); do
     case "$1" in
+        --bag-path)
+            BAG_PATH="$2"
+            shift 2
+            ;;
+        --map-name)
+            MAP_NAME="$2"
+            shift 2
+            ;;
         --rate)
             PLAY_RATE="$2"
             shift 2
@@ -94,6 +106,10 @@ while (($#)); do
             ;;
         --bag-root)
             BAG_ROOT="$2"
+            shift 2
+            ;;
+        --lightweight-bag-dir)
+            EXPLICIT_LIGHTWEIGHT_BAG_DIR="$2"
             shift 2
             ;;
         --image-width)
@@ -139,6 +155,7 @@ BAG_DIR_NAME=""
 MAP_DIR=""
 VSLAM_MAP_DIR=""
 LIGHTWEIGHT_BAG_DIR=""
+EXPLICIT_LIGHTWEIGHT_BAG_DIR=""
 VSLAM_LOG_PATH=""
 TF_LOG_PATH=""
 
@@ -301,14 +318,23 @@ cleanup_all() {
 
 trap cleanup_all EXIT INT TERM
 
-select_rosbag_path_interactive
-prompt_map_name_interactive
+if [ -z "${BAG_PATH}" ]; then
+    select_rosbag_path_interactive
+fi
+
+if [ -z "${MAP_NAME}" ]; then
+    prompt_map_name_interactive
+fi
 
 BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 MAP_DIR="${MAP_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}"
 VSLAM_MAP_DIR="${MAP_DIR}/cuvslam_map"
-LIGHTWEIGHT_BAG_DIR="${BAG_ROOT%/}/${BAG_DIR_NAME}__${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
+if [ -n "${EXPLICIT_LIGHTWEIGHT_BAG_DIR}" ]; then
+    LIGHTWEIGHT_BAG_DIR="${EXPLICIT_LIGHTWEIGHT_BAG_DIR%/}"
+else
+    LIGHTWEIGHT_BAG_DIR="${BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
+fi
 VSLAM_LOG_PATH="/tmp/offline_vslam_record_$(date +%Y%m%d_%H%M%S).log"
 TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
 
@@ -318,6 +344,7 @@ if [ ! -d "${BAG_PATH}" ] || [ ! -f "${BAG_PATH}/metadata.yaml" ]; then
 fi
 
 mkdir -p "${MAP_DIR}"
+mkdir -p "$(dirname "${LIGHTWEIGHT_BAG_DIR}")"
 
 echo "[1/5] Launch offline TF + vslam (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
 launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \

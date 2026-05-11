@@ -36,6 +36,8 @@ Usage:
   create_2d_map_from_bag.sh [OPTIONS]
 
 Options:
+  --bag-path DIR      input rosbag2 directory (skip interactive selection)
+  --map-name NAME     output map name (skip interactive prompt)
   --scan-topic TOPIC  scan topic for cartographer (default: /scan)
   --rate RATE         ros2 bag play rate (default: 1.0)
   --odom-topic TOPIC  use odometry topic and enable odometry in cartographer
@@ -47,8 +49,11 @@ Options:
   --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
   --with-imu          replay /camera/imu as well (default: disabled)
   --vslam-map-dir DIR visual slam map output directory
+  --lightweight-bag-root DIR
+                      2D map用 lightweight bag の保存先ルート (default: /record/2d_input)
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --record-root DIR   rosbag探索ルート (default: /record)
+  --no-scp            skip interactive scp transfer step
   --no-centerline     skip centerline CSV generation
   --no-raceline       skip raceline CSV generation
   --no-line-preview   skip centerline/raceline preview image generation
@@ -74,6 +79,7 @@ Outputs:
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.yaml
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
+  /record/2d_input/<bag_name>/<MAP_NAME>_2d_input_<timestamp>/ (when --run-vslam or --use-vslam-odom)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_raceline.csv (optional; generated unless --no-raceline)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_lines.png (optional; generated unless --no-line-preview)
@@ -114,14 +120,17 @@ RACELINE_OPT_TYPE="mincurv_iqp"
 GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
+LIGHTWEIGHT_BAG_ROOT="/record/2d_input"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
 USE_IMU=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
 VSLAM_MAP_DIR=""
+LIGHTWEIGHT_BAG_DIR=""
 OFFLINE_TF_PID=""
 OFFLINE_TF_USES_SETSID=false
+ENABLE_SCP=true
 
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
@@ -134,6 +143,8 @@ CAMERA_CONTAINER_PID=""
 CAMERA_CONTAINER_USES_SETSID=false
 VSLAM_LAUNCH_PID=""
 VSLAM_LAUNCH_USES_SETSID=false
+RECORDER_PID=""
+RECORDER_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 
@@ -201,6 +212,14 @@ cleanup_new_cartographer_processes() {
 
 while (($#)); do
     case "$1" in
+        --bag-path)
+            BAG_PATH="$2"
+            shift 2
+            ;;
+        --map-name)
+            MAP_NAME="$2"
+            shift 2
+            ;;
         --scan-topic)
             SCAN_TOPIC="$2"
             shift 2
@@ -248,6 +267,10 @@ while (($#)); do
             VSLAM_MAP_DIR="$2"
             shift 2
             ;;
+        --lightweight-bag-root)
+            LIGHTWEIGHT_BAG_ROOT="$2"
+            shift 2
+            ;;
         --play-all-topics)
             PLAY_ALL_TOPICS=true
             shift
@@ -255,6 +278,10 @@ while (($#)); do
         --record-root)
             RECORD_ROOT="$2"
             shift 2
+            ;;
+        --no-scp)
+            ENABLE_SCP=false
+            shift
             ;;
         --no-centerline)
             ENABLE_CENTERLINE=false
@@ -419,8 +446,13 @@ prompt_map_name_interactive() {
     done
 }
 
-select_rosbag_path_interactive
-prompt_map_name_interactive
+if [ -z "${BAG_PATH}" ]; then
+    select_rosbag_path_interactive
+fi
+
+if [ -z "${MAP_NAME}" ]; then
+    prompt_map_name_interactive
+fi
 
 # bag dir name
 BAG_PATH_CLEAN="${BAG_PATH%/}"
@@ -479,6 +511,10 @@ stop_vslam() {
     stop_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID"
     stop_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID"
     stop_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID"
+}
+
+stop_recorder() {
+    stop_background_process "RECORDER_PID" "RECORDER_USES_SETSID"
 }
 
 launch_background_process() {
@@ -865,6 +901,7 @@ wait_for_service() {
 }
 
 cleanup_all() {
+    stop_recorder
     stop_vslam
     stop_cartographer
 }
@@ -874,11 +911,15 @@ trap cleanup_all EXIT INT TERM
 if [ -z "${VSLAM_MAP_DIR}" ]; then
     VSLAM_MAP_DIR="${OUT_DIR}/cuvslam_map"
 fi
+if [ -z "${LIGHTWEIGHT_BAG_DIR}" ]; then
+    LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
+fi
 VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
 TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
 
 if [ "${RUN_VSLAM}" = true ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
+    mkdir -p "$(dirname "${LIGHTWEIGHT_BAG_DIR}")"
 fi
 
 if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odometry" ]; then
@@ -955,6 +996,19 @@ if [ "${RUN_VSLAM}" = true ]; then
     fi
 fi
 
+if [ "${RUN_VSLAM}" = true ]; then
+    echo "      Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
+    launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
+        ros2 bag record \
+        -o "${LIGHTWEIGHT_BAG_DIR}" \
+        /visual_slam/tracking/odometry \
+        /scan \
+        /tf \
+        /tf_static
+
+    sleep 2
+fi
+
 # ==========================================
 # 3. Play bag
 # ==========================================
@@ -1009,6 +1063,7 @@ if [ "${RUN_VSLAM}" = true ]; then
         "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
 fi
 
+stop_recorder
 stop_cartographer
 stop_vslam
 
@@ -1043,6 +1098,10 @@ if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \
         echo "  - ${MAP_PNG_PATH}"
     fi
     echo "  - ${PBSTREAM_PATH}"
+    if [ "${RUN_VSLAM}" = true ]; then
+        echo "  - ${VSLAM_MAP_DIR}/"
+        echo "  - ${LIGHTWEIGHT_BAG_DIR}"
+    fi
 
 else
     echo "pbstream generated: ${PBSTREAM_PATH}" >&2
@@ -1075,6 +1134,11 @@ generate_line_preview "${CENTERLINE_INPUT_MAP}"
 # 8. Transfer by scp
 # ==========================================
 echo ""
+if [ "${ENABLE_SCP}" != true ]; then
+    echo "scp転送をスキップしました。"
+    exit 0
+fi
+
 read -p "2D mapを作成しました。送信しますか？ (Y/n, Enterで送信): " SEND_CONFIRM
 SEND_CONFIRM=${SEND_CONFIRM:-y}
 
