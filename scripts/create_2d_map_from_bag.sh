@@ -40,6 +40,13 @@ Options:
   --rate RATE         ros2 bag play rate (default: 1.0)
   --odom-topic TOPIC  use odometry topic and enable odometry in cartographer
   --use-vslam-odom    shorthand of --odom-topic /visual_slam/tracking/odometry
+  --run-vslam         replay stereo/imu topics and generate /visual_slam/tracking/odometry offline
+  --no-vslam          do not launch offline vslam even if --use-vslam-odom is specified
+  --image-width PX    camera width for offline vslam launch (default: 424)
+  --image-height PX   camera height for offline vslam launch (default: 240)
+  --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
+  --with-imu          replay /camera/imu as well (default: disabled)
+  --vslam-map-dir DIR visual slam map output directory
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --record-root DIR   rosbag探索ルート (default: /record)
   --no-centerline     skip centerline CSV generation
@@ -93,6 +100,7 @@ SCAN_TOPIC="/scan"
 PLAY_RATE="1.0"
 ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
+RUN_VSLAM=false
 PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
 ENABLE_RACELINE=true
@@ -106,6 +114,12 @@ RACELINE_OPT_TYPE="mincurv_iqp"
 GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
+IMAGE_WIDTH="424"
+IMAGE_HEIGHT="240"
+IMAGE_FPS="90.0"
+USE_IMU=false
+CAMERA_CONTAINER_NAME="offline_camera_container_$$"
+VSLAM_MAP_DIR=""
 
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
@@ -114,6 +128,10 @@ DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/map/"
 
 CARTOGRAPHER_PID=""
 CARTOGRAPHER_USES_SETSID=false
+CAMERA_CONTAINER_PID=""
+CAMERA_CONTAINER_USES_SETSID=false
+VSLAM_LAUNCH_PID=""
+VSLAM_LAUNCH_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 
@@ -197,7 +215,36 @@ while (($#)); do
         --use-vslam-odom)
             ODOM_TOPIC="/visual_slam/tracking/odometry"
             CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+            RUN_VSLAM=true
             shift
+            ;;
+        --run-vslam)
+            RUN_VSLAM=true
+            shift
+            ;;
+        --no-vslam)
+            RUN_VSLAM=false
+            shift
+            ;;
+        --image-width)
+            IMAGE_WIDTH="$2"
+            shift 2
+            ;;
+        --image-height)
+            IMAGE_HEIGHT="$2"
+            shift 2
+            ;;
+        --image-fps)
+            IMAGE_FPS="$2"
+            shift 2
+            ;;
+        --with-imu)
+            USE_IMU=true
+            shift
+            ;;
+        --vslam-map-dir)
+            VSLAM_MAP_DIR="$2"
+            shift 2
             ;;
         --play-all-topics)
             PLAY_ALL_TOPICS=true
@@ -289,6 +336,7 @@ RACELINE_CREATED=false
 LINE_PREVIEW_OUTPUT_PATH=""
 LINE_PREVIEW_CREATED=false
 MAP_LOG_PATH=""
+VSLAM_LOG_PATH=""
 
 discover_rosbag_candidates() {
     local search_root="$1"
@@ -408,6 +456,41 @@ stop_cartographer() {
     # Safety net:
     # Kill only cartographer processes that appeared after this script started.
     cleanup_new_cartographer_processes
+}
+
+stop_background_process() {
+    local pid_var_name="$1"
+    local setsid_var_name="$2"
+    local pid="${!pid_var_name:-}"
+    local use_setsid="${!setsid_var_name:-false}"
+
+    if [ -n "${pid}" ]; then
+        kill_pid_gracefully "${pid}" "${use_setsid}"
+        wait "${pid}" 2>/dev/null || true
+        printf -v "${pid_var_name}" '%s' ""
+        printf -v "${setsid_var_name}" '%s' false
+    fi
+}
+
+stop_vslam() {
+    stop_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID"
+    stop_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID"
+}
+
+launch_background_process() {
+    local pid_var_name="$1"
+    local setsid_var_name="$2"
+    shift 2
+
+    if command -v setsid >/dev/null 2>&1; then
+        printf -v "${setsid_var_name}" '%s' true
+        setsid "$@" &
+    else
+        printf -v "${setsid_var_name}" '%s' false
+        "$@" &
+    fi
+
+    printf -v "${pid_var_name}" '%s' "$!"
 }
 
 convert_pgm_to_png() {
@@ -777,7 +860,25 @@ wait_for_service() {
     return 1
 }
 
-trap stop_cartographer EXIT INT TERM
+cleanup_all() {
+    stop_vslam
+    stop_cartographer
+}
+
+trap cleanup_all EXIT INT TERM
+
+if [ -z "${VSLAM_MAP_DIR}" ]; then
+    VSLAM_MAP_DIR="${OUT_DIR}/cuvslam_map"
+fi
+VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
+
+if [ "${RUN_VSLAM}" = true ]; then
+    mkdir -p "${VSLAM_MAP_DIR}"
+fi
+
+if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odometry" ]; then
+    echo "Warning: --run-vslam is enabled but odom topic is '${ODOM_TOPIC}'. Cartographer may not consume vslam odometry." >&2
+fi
 
 # ==========================================
 # 1. Launch cartographer
@@ -809,6 +910,23 @@ fi
 
 CARTOGRAPHER_PID=$!
 
+if [ "${RUN_VSLAM}" = true ]; then
+    echo "      Launch offline vslam (log: ${VSLAM_LOG_PATH})"
+    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
+        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
+
+    sleep 2
+
+    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
+        ros2 launch system_launch vslam.launch.xml \
+        "image_width:=${IMAGE_WIDTH}" \
+        "image_height:=${IMAGE_HEIGHT}" \
+        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
+        "enable_localization_and_mapping:=true" \
+        "save_map_path:=${VSLAM_MAP_DIR}" \
+        > "${VSLAM_LOG_PATH}" 2>&1
+fi
+
 # ==========================================
 # 2. Wait service
 # ==========================================
@@ -817,6 +935,13 @@ echo "[2/8] Wait for /write_state service"
 if ! wait_for_service "/write_state" 60; then
     echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
     exit 1
+fi
+
+if [ "${RUN_VSLAM}" = true ]; then
+    if ! wait_for_service "/visual_slam/save_map" 60; then
+        echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
+        exit 1
+    fi
 fi
 
 # ==========================================
@@ -829,7 +954,18 @@ if [ "${PLAY_ALL_TOPICS}" = true ]; then
     ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
 else
     PLAY_TOPICS=("${SCAN_TOPIC}" "/tf_static")
-    if [ -n "${ODOM_TOPIC}" ]; then
+    if [ "${RUN_VSLAM}" = true ]; then
+        PLAY_TOPICS+=(
+            "/tf"
+            "/camera/left/image_raw"
+            "/camera/left/camera_info"
+            "/camera/right/image_raw"
+            "/camera/right/camera_info"
+        )
+        if [ "${USE_IMU}" = true ]; then
+            PLAY_TOPICS+=("/camera/imu")
+        fi
+    elif [ -n "${ODOM_TOPIC}" ]; then
         PLAY_TOPICS+=("${ODOM_TOPIC}")
     fi
 
@@ -855,7 +991,15 @@ ros2 service call /write_state \
     cartographer_ros_msgs/srv/WriteState \
     "${WRITE_STATE_REQUEST}" > /dev/null
 
+if [ "${RUN_VSLAM}" = true ]; then
+    sleep 2
+    ros2 service call /visual_slam/save_map \
+        isaac_ros_visual_slam_interfaces/srv/FilePath \
+        "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
+fi
+
 stop_cartographer
+stop_vslam
 
 # convert map
 if ros2 run cartographer_ros cartographer_pbstream_to_ros_map \

@@ -7,13 +7,6 @@
   <arg name="localization_result_topic" default="/localization_result" />
   <arg name="localization_trigger_topic" default="/localization/trigger" />
   <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
-  <arg name="use_amcl" default="false" />
-  <arg name="amcl_param" default="$(find-pkg-share system_launch)/config/localization/amcl.param.yaml" />
-  <arg name="amcl_pose_topic" default="/amcl_pose" />
-  <arg name="amcl_initial_pose_topic" default="/initialpose" />
-  <arg name="amcl_pose_max_xy_variance" default="-1.0" />
-  <arg name="amcl_pose_max_yaw_variance" default="-1.0" />
-  <arg name="publish_initialpose_to_amcl" default="$(var use_amcl)" />
   <arg name="use_sim_time" default="false" />
   <arg name="publish_map" default="true" />
   <arg name="map_topic" default="/map" />
@@ -84,34 +77,6 @@
     </composable_node>
   </load_composable_node>
 
-  <group if="$(var use_amcl)">
-    <node pkg="nav2_amcl"
-          exec="amcl"
-          name="amcl"
-          output="screen">
-      <param from="$(var amcl_param)" />
-      <param name="use_sim_time" value="$(var use_sim_time)" />
-      <param name="global_frame_id" value="$(var map_frame)" />
-      <param name="odom_frame_id" value="$(var localization_tf_odom_frame)" />
-      <param name="base_frame_id" value="$(var localization_tf_base_frame)" />
-      <param name="scan_topic" value="$(var scan_topic)" />
-      <param name="tf_broadcast" value="false" />
-      <remap from="scan" to="$(var scan_topic)" />
-      <remap from="map" to="$(var map_topic)" />
-      <remap from="amcl_pose" to="$(var amcl_pose_topic)" />
-      <remap from="initialpose" to="$(var amcl_initial_pose_topic)" />
-    </node>
-
-    <node pkg="nav2_lifecycle_manager"
-          exec="lifecycle_manager"
-          name="lifecycle_manager_amcl"
-          output="screen">
-      <param name="use_sim_time" value="$(var use_sim_time)" />
-      <param name="autostart" value="true" />
-      <param name="node_names" value="['amcl']" />
-    </node>
-  </group>
-
   <group if="$(var use_localization_manager)">
     <include file="$(find-pkg-share localization_manager)/launch/localization_manager.launch.xml">
       <arg name="localization_manager_param" value="$(var localization_manager_param)" />
@@ -119,12 +84,6 @@
       <arg name="localization_trigger_service" value="$(var localization_trigger_service)" />
       <arg name="localization_result_topic" value="$(var localization_result_topic)" />
       <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)" />
-      <arg name="use_amcl_pose" value="$(var use_amcl)" />
-      <arg name="amcl_pose_topic" value="$(var amcl_pose_topic)" />
-      <arg name="amcl_pose_max_xy_variance" value="$(var amcl_pose_max_xy_variance)" />
-      <arg name="amcl_pose_max_yaw_variance" value="$(var amcl_pose_max_yaw_variance)" />
-      <arg name="publish_initialpose_to_amcl" value="$(var publish_initialpose_to_amcl)" />
-      <arg name="initial_pose_topic" value="$(var amcl_initial_pose_topic)" />
       <arg name="use_sim_time" value="$(var use_sim_time)" />
       <arg name="publish_localization_tf" value="$(var publish_localization_tf)" />
       <arg name="localization_tf_mode" value="$(var localization_tf_mode)" />

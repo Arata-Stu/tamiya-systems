@@ -72,6 +72,8 @@ DRY_RUN="false"
 EXTRA_ARGS=()
 OVERRIDES=()
 ORIGINAL_ARGC=$#
+MAP_SEARCH_ROOT="/map"
+MAP_CANDIDATES=()
 
 usage() {
   cat <<EOF
@@ -96,7 +98,8 @@ Examples:
   ${SCRIPT_NAME} mapping --bag-manager mapping
   ${SCRIPT_NAME} base --bag-manager e2e
   ${SCRIPT_NAME} mapping --set record=false --dry-run
-  ${SCRIPT_NAME} -i -- map_yaml_path:=/map/course/map.yaml
+  ${SCRIPT_NAME} base --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
 EOF
 }
 
@@ -238,6 +241,147 @@ bag_manager_label() {
   echo "custom"
 }
 
+current_map_dir() {
+  local arg
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    case "$arg" in
+      map_dir:=*|map_dir=*)
+        echo "${arg#*=}"
+        return
+        ;;
+    esac
+  done
+
+  echo ""
+}
+
+set_extra_arg_value() {
+  local key="$1"
+  local value="$2"
+  local idx
+
+  for idx in "${!EXTRA_ARGS[@]}"; do
+    case "${EXTRA_ARGS[$idx]}" in
+      "${key}:="*|"${key}="*)
+        EXTRA_ARGS[$idx]="${key}:=${value}"
+        return
+        ;;
+    esac
+  done
+
+  EXTRA_ARGS+=("${key}:=${value}")
+}
+
+clear_extra_arg_value() {
+  local key="$1"
+  local updated=()
+  local arg
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    case "$arg" in
+      "${key}:="*|"${key}="*)
+        ;;
+      *)
+        updated+=("$arg")
+        ;;
+    esac
+  done
+
+  EXTRA_ARGS=("${updated[@]}")
+}
+
+discover_map_candidates() {
+  local metadata
+  local map_dir
+  local -a discovered=()
+
+  MAP_CANDIDATES=()
+  if [[ ! -d "$MAP_SEARCH_ROOT" ]]; then
+    return 1
+  fi
+
+  while IFS= read -r metadata; do
+    [[ -z "$metadata" ]] && continue
+    map_dir="$(dirname "$metadata")"
+    discovered+=("$map_dir")
+  done < <(find "$MAP_SEARCH_ROOT" -type f -name '*.yaml' ! -path '*/cuvslam_map/*' 2>/dev/null)
+
+  if [[ "${#discovered[@]}" -eq 0 ]]; then
+    return 1
+  fi
+
+  while IFS= read -r map_dir; do
+    [[ -n "$map_dir" ]] && MAP_CANDIDATES+=("$map_dir")
+  done < <(printf '%s\n' "${discovered[@]}" | sort -u)
+
+  [[ "${#MAP_CANDIDATES[@]}" -gt 0 ]]
+}
+
+map_dir_label() {
+  local current
+  current="$(current_map_dir)"
+  if [[ -n "$current" ]]; then
+    echo "$current"
+  else
+    echo "(unset)"
+  fi
+}
+
+choose_map_dir_interactive() {
+  local answer
+  local idx
+  local current
+
+  current="$(current_map_dir)"
+  echo ""
+  echo "Map directory:"
+
+  if discover_map_candidates; then
+    for idx in "${!MAP_CANDIDATES[@]}"; do
+      printf "  %2d) %s\n" "$((idx + 1))" "${MAP_CANDIDATES[$idx]}"
+    done
+    echo "   c) custom path"
+    echo "   x) clear"
+    read -r -p "Select map dir [${current:-none}]: " answer
+
+    [[ -z "$answer" ]] && return
+
+    case "$answer" in
+      c|C)
+        read -r -p "map_dir path: " answer
+        [[ -n "$answer" ]] && set_extra_arg_value "map_dir" "$answer"
+        ;;
+      x|X)
+        clear_extra_arg_value "map_dir"
+        ;;
+      *)
+        if [[ "$answer" =~ ^[0-9]+$ ]] && [ "$answer" -ge 1 ] && [ "$answer" -le "${#MAP_CANDIDATES[@]}" ]; then
+          set_extra_arg_value "map_dir" "${MAP_CANDIDATES[$((answer - 1))]}"
+        else
+          echo "Invalid map dir selection: $answer" >&2
+        fi
+        ;;
+    esac
+    return
+  fi
+
+  echo "  No map candidates found under ${MAP_SEARCH_ROOT}"
+  echo "  c) custom path"
+  echo "  x) clear"
+  read -r -p "Select map dir [${current:-none}]: " answer
+
+  case "$answer" in
+    c|C)
+      read -r -p "map_dir path: " answer
+      [[ -n "$answer" ]] && set_extra_arg_value "map_dir" "$answer"
+      ;;
+    x|X)
+      clear_extra_arg_value "map_dir"
+      ;;
+  esac
+}
+
 choose_bag_manager_interactive() {
   local answer
   local idx
@@ -307,14 +451,20 @@ toggle_interactive_legacy() {
       printf "  %2d) %-32s %s\n" "$((idx + 1))" "$key" "$(get_arg "$key")"
     done
     printf "      %-32s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
+    printf "      %-32s %s\n" "map_dir" "$(map_dir_label)"
     echo ""
-    echo "Enter numbers to toggle, 'b' to choose bag manager yaml, 's KEY=VALUE' to set a value, or Enter to run."
+    echo "Enter numbers to toggle, 'b' for bag manager, 'm' for map dir, 's KEY=VALUE' to set a value, or Enter to run."
     read -r -p "> " answer
 
     [[ -z "$answer" ]] && break
 
     if [[ "$answer" == "b" || "$answer" == "B" ]]; then
       choose_bag_manager_interactive
+      continue
+    fi
+
+    if [[ "$answer" == "m" || "$answer" == "M" ]]; then
+      choose_map_dir_interactive
       continue
     fi
 
@@ -364,6 +514,7 @@ prompt_set_arg_interactive() {
 
 render_launch_extra_interactive() {
   printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
+  printf "   %-38s %s\n" "map_dir" "$(map_dir_label)"
 }
 
 toggle_interactive_checkbox() {
@@ -376,7 +527,9 @@ toggle_interactive_checkbox() {
     choose_bag_manager_interactive \
     prompt_set_arg_interactive \
     "bag manager" \
-    "set value"
+    "set value" \
+    choose_map_dir_interactive \
+    "map"
 }
 
 toggle_interactive() {

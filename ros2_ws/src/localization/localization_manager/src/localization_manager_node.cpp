@@ -23,6 +23,9 @@ LocalizationManagerNode::LocalizationManagerNode()
       this->declare_parameter("use_amcl_pose", use_amcl_pose_);
   amcl_pose_topic_ =
       this->declare_parameter<std::string>("amcl_pose_topic", amcl_pose_topic_);
+  amcl_pose_update_mode_ =
+      this->declare_parameter<std::string>("amcl_pose_update_mode",
+                                           amcl_pose_update_mode_);
   amcl_pose_max_xy_variance_ =
       this->declare_parameter("amcl_pose_max_xy_variance",
                               amcl_pose_max_xy_variance_);
@@ -60,12 +63,23 @@ LocalizationManagerNode::LocalizationManagerNode()
   const bool is_map_to_base_mode =
       (localization_tf_mode_ == "map_to_base_link" ||
        localization_tf_mode_ == "map_to_base");
+  const bool is_valid_amcl_update_mode =
+      (amcl_pose_update_mode_ == "continuous" ||
+       amcl_pose_update_mode_ == "once" ||
+       amcl_pose_update_mode_ == "never");
   if (!is_map_to_odom_mode && !is_map_to_base_mode) {
     RCLCPP_WARN(this->get_logger(),
                 "Invalid localization_tf_mode '%s'. Fallback to map_to_odom.",
                 localization_tf_mode_.c_str());
     localization_tf_mode_ = "map_to_odom";
   }
+  if (!is_valid_amcl_update_mode) {
+    RCLCPP_WARN(this->get_logger(),
+                "Invalid amcl_pose_update_mode '%s'. Fallback to once.",
+                amcl_pose_update_mode_.c_str());
+    amcl_pose_update_mode_ = "once";
+  }
+  allow_amcl_pose_tf_update_ = (amcl_pose_update_mode_ != "never");
 
   trigger_sub_ = this->create_subscription<std_msgs::msg::Bool>(
       localization_trigger_topic_, rclcpp::QoS(10),
@@ -128,9 +142,10 @@ LocalizationManagerNode::LocalizationManagerNode()
               localization_trigger_service_.c_str(),
               localization_result_topic_.c_str());
   RCLCPP_INFO(this->get_logger(),
-              "AMCL pose input: %s (topic=%s, max_xy_var=%.3f, "
+              "AMCL pose input: %s (topic=%s, update_mode=%s, max_xy_var=%.3f, "
               "max_yaw_var=%.3f, initialpose_forward=%s -> %s)",
               use_amcl_pose_ ? "enabled" : "disabled", amcl_pose_topic_.c_str(),
+              amcl_pose_update_mode_.c_str(),
               amcl_pose_max_xy_variance_, amcl_pose_max_yaw_variance_,
               publish_initialpose_to_amcl_ ? "enabled" : "disabled",
               initial_pose_topic_.c_str());
@@ -180,6 +195,7 @@ void LocalizationManagerNode::localization_result_callback(
   const double elapsed_sec =
       (this->now() - last_localization_trigger_time_).seconds();
   update_localization_tf(*msg, "global localization");
+  allow_amcl_pose_tf_update_ = (amcl_pose_update_mode_ != "never");
   publish_initial_pose(*msg);
 
   if (waiting_localization_result_) {
@@ -216,8 +232,14 @@ void LocalizationManagerNode::amcl_pose_callback(
   if (!is_amcl_pose_accepted(*msg)) {
     return;
   }
+  if (!should_apply_amcl_pose_update()) {
+    return;
+  }
 
   update_localization_tf(*msg, "AMCL");
+  if (amcl_pose_update_mode_ == "once") {
+    allow_amcl_pose_tf_update_ = false;
+  }
   RCLCPP_INFO_THROTTLE(
       this->get_logger(), *this->get_clock(), 5000,
       "AMCL pose accepted on %s: frame=%s pos=(%.3f, %.3f) cov=(%.4f, %.4f, %.4f)",
@@ -225,6 +247,24 @@ void LocalizationManagerNode::amcl_pose_callback(
       msg->pose.pose.position.x, msg->pose.pose.position.y,
       msg->pose.covariance[0], msg->pose.covariance[7],
       msg->pose.covariance[35]);
+}
+
+bool LocalizationManagerNode::should_apply_amcl_pose_update() {
+  if (amcl_pose_update_mode_ == "never") {
+    RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "AMCL pose accepted but TF update is disabled by amcl_pose_update_mode=never");
+    return false;
+  }
+
+  if (amcl_pose_update_mode_ == "once" && !allow_amcl_pose_tf_update_) {
+    RCLCPP_INFO_THROTTLE(
+        this->get_logger(), *this->get_clock(), 5000,
+        "AMCL pose accepted but one-shot TF update has already been consumed");
+    return false;
+  }
+
+  return true;
 }
 
 void LocalizationManagerNode::update_localization_tf(

@@ -27,6 +27,7 @@ private:
   void update_localization_tf(
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg,
       const std::string &source_name);
+  bool should_apply_amcl_pose_update();
   bool is_amcl_pose_accepted(
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg);
   void publish_initial_pose(
@@ -52,8 +53,10 @@ private:
   std::string localization_result_topic_ = "/localization_result";
   bool use_amcl_pose_ = false;
   std::string amcl_pose_topic_ = "/amcl_pose";
+  std::string amcl_pose_update_mode_ = "once";
   double amcl_pose_max_xy_variance_ = -1.0;
   double amcl_pose_max_yaw_variance_ = -1.0;
+  bool allow_amcl_pose_tf_update_ = true;
   bool publish_initialpose_to_amcl_ = false;
   std::string initial_pose_topic_ = "/initialpose";
 

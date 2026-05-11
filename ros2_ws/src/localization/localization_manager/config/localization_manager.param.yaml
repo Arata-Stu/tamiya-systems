@@ -6,6 +6,9 @@
     localization_feedback_timeout_sec: 0.0
     use_amcl_pose: false
     amcl_pose_topic: "/amcl_pose"
+    # "once", "continuous", or "never".
+    # "once" applies the first accepted AMCL pose after startup or a global localization refresh.
+    amcl_pose_update_mode: "once"
     # Negative thresholds disable AMCL covariance rejection.
     amcl_pose_max_xy_variance: -1.0
     amcl_pose_max_yaw_variance: -1.0

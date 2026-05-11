@@ -60,13 +60,6 @@
     <arg name="localization_trigger_topic" default="/localization/trigger" />
     <arg name="localization_trigger_service" default="/trigger_grid_search_localization" />
     <arg name="localization_result_topic" default="/localization_result" />
-    <arg name="use_amcl" default="false" />
-    <arg name="amcl_param" default="$(find-pkg-share system_launch)/config/localization/amcl.param.yaml" />
-    <arg name="amcl_pose_topic" default="/amcl_pose" />
-    <arg name="amcl_initial_pose_topic" default="/initialpose" />
-    <arg name="amcl_pose_max_xy_variance" default="-1.0" />
-    <arg name="amcl_pose_max_yaw_variance" default="-1.0" />
-    <arg name="publish_initialpose_to_amcl" default="$(var use_amcl)" />
     <arg name="map_topic" default="/map" />
     <arg name="map_frame" default="map" />
     <arg name="localization_manager_param" default="$(find-pkg-share system_launch)/config/localization/localization_manager.param.yaml" />
@@ -86,6 +79,29 @@
     <arg name="section_localizer_marker_topic" default="/localization/section_markers" />
     <arg name="section_localizer_current_marker_topic" default="/localization/current_section_marker" />
     <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
+    <arg name="map_dir" default="" description="directory containing <map_name>.yaml and optional cuvslam_map/" />
+    <arg name="vslam_map_dir" default="" description="explicit cuvslam map directory override" />
+    <arg name="vslam_save_map_dir" default="" description="directory to save/update cuvslam map" />
+
+    <let name="resolved_map_dir"
+         value="$(eval '\'$(var map_dir)\'.rstrip(\'/\')')" />
+    <let name="resolved_map_name"
+         value="$(eval '\'$(var resolved_map_dir)\'.split(\'/\')[-1] if \'$(var resolved_map_dir)\' else \'\'')" />
+    <let name="resolved_map_yaml_path"
+         value="$(var map_yaml_path)"
+         unless="$(eval '\'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_map_yaml_path"
+         value="$(eval '\'$(var resolved_map_dir)/$(var resolved_map_name).yaml\'')"
+         if="$(eval '\'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_vslam_map_dir"
+         value="$(var vslam_map_dir)"
+         if="$(eval '\'$(var vslam_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_vslam_map_dir"
+         value=""
+         unless="$(eval '\'$(var vslam_map_dir)\'.strip() != \'\' or \'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_vslam_map_dir"
+         value="$(eval '\'$(var resolved_map_dir)/cuvslam_map\'')"
+         if="$(eval '\'$(var vslam_map_dir)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
 
     <!-- Param files -->
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
@@ -201,6 +217,8 @@
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="camera_container_name" value="$(var camera_container_name)"/>
             <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
+            <arg name="load_map_path" value="$(var resolved_vslam_map_dir)"/>
+            <arg name="save_map_path" value="$(var vslam_save_map_dir)"/>
         </include>
     </group>
 
@@ -212,13 +230,6 @@
             <arg name="localization_trigger_service" value="$(var localization_trigger_service)"/>
             <arg name="use_sim_time" value="$(var use_sim_time)"/>
             <arg name="localization_result_topic" value="$(var localization_result_topic)"/>
-            <arg name="use_amcl" value="$(var use_amcl)"/>
-            <arg name="amcl_param" value="$(var amcl_param)"/>
-            <arg name="amcl_pose_topic" value="$(var amcl_pose_topic)"/>
-            <arg name="amcl_initial_pose_topic" value="$(var amcl_initial_pose_topic)"/>
-            <arg name="amcl_pose_max_xy_variance" value="$(var amcl_pose_max_xy_variance)"/>
-            <arg name="amcl_pose_max_yaw_variance" value="$(var amcl_pose_max_yaw_variance)"/>
-            <arg name="publish_initialpose_to_amcl" value="$(var publish_initialpose_to_amcl)"/>
             <arg name="publish_map" value="$(var publish_map)"/>
             <arg name="map_topic" value="$(var map_topic)"/>
             <arg name="map_frame" value="$(var map_frame)"/>
@@ -243,7 +254,7 @@
             <arg name="section_localizer_debug_mode" value="$(var section_localizer_debug_mode)"/>
             <arg name="section_localizer_marker_topic" value="$(var section_localizer_marker_topic)"/>
             <arg name="section_localizer_current_marker_topic" value="$(var section_localizer_current_marker_topic)"/>
-            <arg name="map_yaml_path" value="$(var map_yaml_path)"/>
+            <arg name="map_yaml_path" value="$(var resolved_map_yaml_path)"/>
             <arg name="localization_param" value="$(var localization_param)"/>
         </include>
     </group>
