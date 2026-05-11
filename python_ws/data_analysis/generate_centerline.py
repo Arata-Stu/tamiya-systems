@@ -215,6 +215,44 @@ def select_track_component(mask: np.ndarray) -> np.ndarray:
     return (labels == chosen).astype(np.uint8)
 
 
+def filter_binary_track_mask(
+    gray: np.ndarray,
+    min_free_intensity: float,
+    gaussian_sigma: float,
+    morph_close_radius: int,
+    morph_open_radius: int,
+    min_track_area: int,
+    max_small_hole_area: int,
+) -> Tuple[np.ndarray, np.ndarray]:
+    if gaussian_sigma > 0.0:
+        gray_work = cv2.GaussianBlur(gray, (0, 0), sigmaX=gaussian_sigma, sigmaY=gaussian_sigma)
+    else:
+        gray_work = gray
+
+    free_mask = (gray_work >= float(min_free_intensity)).astype(np.uint8)
+
+    if morph_close_radius > 0:
+        free_mask = cv2.morphologyEx(
+            free_mask,
+            cv2.MORPH_CLOSE,
+            ellipse_kernel(morph_close_radius),
+            iterations=1,
+        )
+
+    if morph_open_radius > 0:
+        free_mask = cv2.morphologyEx(
+            free_mask,
+            cv2.MORPH_OPEN,
+            ellipse_kernel(morph_open_radius),
+            iterations=2,
+        )
+
+    free_mask = remove_small_objects(free_mask, min_track_area)
+    free_mask = remove_small_holes(free_mask, max_small_hole_area)
+    track_mask = select_track_component(free_mask)
+    return free_mask, track_mask
+
+
 def distance_transform(mask: np.ndarray) -> np.ndarray:
     # OpenCV expects foreground as non-zero.
     src = (mask > 0).astype(np.uint8) * 255
@@ -312,91 +350,44 @@ def prune_spurs(skel: np.ndarray, iterations: int) -> np.ndarray:
     return out.astype(np.uint8)
 
 
-def analyze_centerline_components(
-    skel: np.ndarray,
-    dist: np.ndarray,
-    min_pixels: int,
-) -> List[Tuple[float, np.ndarray, int, int, int, float]]:
-    n, labels, stats, _ = cv2.connectedComponentsWithStats(skel.astype(np.uint8), connectivity=8)
-    if n <= 1:
-        return []
-
-    candidates: List[Tuple[float, np.ndarray, int, int, int, float]] = []
-    deg = neighbor_count((skel > 0).astype(np.uint8))
-
-    for i in range(1, n):
-        n_pix = int(stats[i, cv2.CC_STAT_AREA])
-        if n_pix < min_pixels:
-            continue
-
-        comp = labels == i
-        mean_dist = float(dist[comp].mean()) if n_pix > 0 else 0.0
-        endpoints = int(np.sum(comp & (deg == 1)))
-        branchpoints = int(np.sum(comp & (deg > 2)))
-
-        score = float(n_pix) + 12.0 * mean_dist
-        if endpoints == 0:
-            score += 0.30 * n_pix
-        elif endpoints > 4:
-            score -= 0.15 * n_pix
-        if branchpoints > 0:
-            score -= 8.0 * branchpoints
-
-        candidates.append((score, comp.astype(np.uint8), n_pix, endpoints, branchpoints, mean_dist))
-
-    return candidates
-
-
-def extract_centerline_skeleton(
-    track_mask: np.ndarray,
-    dist: np.ndarray,
-    quantiles: Sequence[float],
-    prune_iters: int,
-    min_centerline_pixels: int,
+def extract_centerline_contour(
+    skeleton: np.ndarray,
+    resolution: float,
+    expected_length_m: float,
+    allow_any_length: bool,
 ) -> np.ndarray:
-    positive = dist[dist > 0.0]
-    if positive.size == 0:
-        raise RuntimeError("Distance transform is empty for selected track mask.")
+    contours, hierarchy = cv2.findContours(skeleton.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    if hierarchy is None or len(contours) == 0:
+        raise RuntimeError("No contours found in skeleton.")
 
-    candidates: List[Tuple[float, np.ndarray, int, int, int, float]] = []
+    closed_contours = []
+    for i, cont in enumerate(contours):
+        opened = hierarchy[0][i][2] < 0 and hierarchy[0][i][3] < 0
+        if not opened:
+            closed_contours.append(cont)
 
-    for q in quantiles:
-        thr = float(np.quantile(positive, q))
-        centers = ((dist >= thr) & (track_mask > 0)).astype(np.uint8)
+    if not closed_contours:
+        raise RuntimeError("No closed contours found in skeleton.")
 
-        centers = cv2.morphologyEx(centers, cv2.MORPH_OPEN, ellipse_kernel(1))
-        if int(centers.sum()) < min_centerline_pixels:
+    line_lengths = [float("inf")] * len(closed_contours)
+    for i, cont in enumerate(closed_contours):
+        pts = cont.reshape(-1, 2).astype(np.float64)
+        if len(pts) < 4:
             continue
 
-        skel = zhang_suen_thinning(centers)
-        skel = prune_spurs(skel, prune_iters)
-        candidates.extend(analyze_centerline_components(skel, dist, min_centerline_pixels))
+        diffs = pts - np.roll(pts, 1, axis=0)
+        line_length = float(np.linalg.norm(diffs, axis=1).sum()) * resolution
 
-    # Also evaluate the full track skeleton. Distance-quantile candidates can
-    # miss narrow sections when the course width changes a lot.
-    skel = zhang_suen_thinning(track_mask)
-    skel = prune_spurs(skel, prune_iters * 2)
-    candidates.extend(analyze_centerline_components(skel, dist, min_centerline_pixels))
+        if allow_any_length or expected_length_m <= 0.0:
+            line_lengths[i] = line_length
+        elif abs(expected_length_m / line_length - 1.0) < 0.15:
+            line_lengths[i] = line_length
 
-    if not candidates:
-        raise RuntimeError("Unable to extract stable centerline skeleton.")
+    min_length = min(line_lengths)
+    if not np.isfinite(min_length):
+        raise RuntimeError("Closed contours found, but none matched expected centerline length.")
 
-    max_pixels = max(item[2] for item in candidates)
-    large_candidates = [item for item in candidates if item[2] >= max(min_centerline_pixels, int(0.55 * max_pixels))]
-    if not large_candidates:
-        large_candidates = candidates
-
-    clean_loops = [item for item in large_candidates if item[3] == 0 and item[4] == 0]
-    clean_paths = [item for item in large_candidates if item[4] == 0]
-    if clean_loops:
-        chosen_pool = clean_loops
-    elif clean_paths:
-        chosen_pool = clean_paths
-    else:
-        chosen_pool = large_candidates
-
-    chosen_pool.sort(key=lambda item: (item[0], item[2], item[5]), reverse=True)
-    return chosen_pool[0][1].astype(np.uint8)
+    return closed_contours[line_lengths.index(min_length)].reshape(-1, 2).astype(np.float64)
 
 
 def adjacency_from_mask(mask: np.ndarray):
@@ -626,33 +617,42 @@ def run(args: argparse.Namespace) -> None:
     gray = read_map_grayscale(args.map)
     gray = gray_to_black(gray, args.gray_to_black_white_threshold)
 
-    free_mask, thr = choose_free_space_mask(
+    yaml_path = args.yaml
+    if yaml_path == "auto":
+        yaml_path = infer_yaml_path(args.map)
+
+    if yaml_path is not None and os.path.exists(yaml_path):
+        resolution, origin_x, origin_y = read_yaml_metadata(yaml_path)
+        yaml_used = True
+    else:
+        resolution, origin_x, origin_y = 1.0, 0.0, 0.0
+        yaml_used = False
+
+    free_mask, track_mask = filter_binary_track_mask(
         gray=gray,
         min_free_intensity=args.min_free_intensity,
         gaussian_sigma=args.gaussian_sigma,
-    )
-
-    cleaned = clean_mask(
-        mask=free_mask,
-        close_radius=args.close_radius,
-        open_radius=args.open_radius,
-        min_object_area=args.min_track_area,
+        morph_close_radius=args.close_radius,
+        morph_open_radius=args.open_radius,
+        min_track_area=args.min_track_area,
         max_small_hole_area=args.max_small_hole_area,
     )
-
-    track_mask = select_track_component(cleaned)
     dist = distance_transform(track_mask)
 
-    centerline_mask = extract_centerline_skeleton(
-        track_mask=track_mask,
-        dist=dist,
-        quantiles=args.center_quantiles,
-        prune_iters=args.prune_iters,
-        min_centerline_pixels=args.min_centerline_pixels,
-    )
+    skeleton = zhang_suen_thinning(track_mask)
+    skeleton = prune_spurs(skeleton, args.prune_iters)
 
-    points_px = order_centerline_points(centerline_mask, dist)
-    is_closed = np.linalg.norm(points_px[0] - points_px[-1]) < 3.0
+    points_px = extract_centerline_contour(
+        skeleton=skeleton,
+        resolution=resolution,
+        expected_length_m=args.expected_centerline_length_m,
+        allow_any_length=args.allow_any_length or (not yaml_used),
+    )
+    centerline_mask = np.zeros_like(track_mask, dtype=np.uint8)
+    if len(points_px) > 0:
+        cv2.drawContours(centerline_mask, [points_px.astype(np.int32)], 0, 1, 1, cv2.LINE_8)
+
+    is_closed = True
     points_px = smooth_points(points_px, sigma=args.smooth_sigma, closed=is_closed)
     points_px = resample_polyline(points_px, spacing=args.spacing_px, closed=is_closed)
 
@@ -662,22 +662,15 @@ def run(args: argparse.Namespace) -> None:
     sampled = cv2.remap(dist, x_map, y_map, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
     widths_px = sampled.reshape(-1).astype(np.float64)
 
-    yaml_path = args.yaml
-    if yaml_path == "auto":
-        yaml_path = infer_yaml_path(args.map)
-
-    if yaml_path is not None and os.path.exists(yaml_path):
-        resolution, origin_x, origin_y = read_yaml_metadata(yaml_path)
+    if yaml_used:
         points = points_px * resolution + np.array([origin_x, origin_y], dtype=np.float64)
         margin_px = args.track_width_margin_m / resolution if resolution > 0 else 0.0
         widths = np.maximum(widths_px - margin_px, 0.0) * resolution
         header = "x_m,y_m,w_tr_right_m,w_tr_left_m"
-        yaml_used = True
     else:
         points = points_px
         widths = np.maximum(widths_px - args.track_width_margin_px, 0.0)
         header = "x_px,y_px,w_tr_right_px,w_tr_left_px"
-        yaml_used = False
 
     out = np.column_stack([points[:, 0], points[:, 1], widths, widths])
 
@@ -697,8 +690,8 @@ def run(args: argparse.Namespace) -> None:
         )
 
     print(f"Input map: {args.map}")
-    print(f"Chosen intensity threshold: {thr:.2f}")
     print(f"Track pixels: {int(track_mask.sum())}")
+    print(f"Skeleton pixels: {int(skeleton.sum())}")
     print(f"Centerline pixels: {int(centerline_mask.sum())}")
     print(f"Output points: {len(out)}")
     print(f"Wrote centerline CSV: {out_path}")
@@ -733,17 +726,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--open-radius", type=int, default=1)
     p.add_argument("--min-track-area", type=int, default=800)
     p.add_argument("--max-small-hole-area", type=int, default=128)
-
-    p.add_argument(
-        "--center-quantiles",
-        type=parse_quantiles,
-        default=parse_quantiles("0.75,0.65,0.55,0.45,0.35,0.25,0.15"),
-        help="Comma-separated EDT quantiles to try, e.g. 0.75,0.65,0.55,0.45,0.35,0.25,0.15",
-    )
     p.add_argument("--prune-iters", type=int, default=30)
-    p.add_argument("--min-centerline-pixels", type=int, default=120)
     p.add_argument("--smooth-sigma", type=float, default=1.2)
     p.add_argument("--spacing-px", type=float, default=1.5)
+    p.add_argument(
+        "--expected-centerline-length-m",
+        type=float,
+        default=0.0,
+        help="Optional expected lap length in meters. When >0, closed contours are filtered by +/-15%% like race_stack.",
+    )
+    p.add_argument(
+        "--allow-any-length",
+        action="store_true",
+        help="Ignore expected length filtering and choose the shortest closed contour.",
+    )
 
     p.add_argument("--track-width-margin-m", type=float, default=0.0)
     p.add_argument("--track-width-margin-px", type=float, default=0.0)
