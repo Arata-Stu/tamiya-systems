@@ -5,12 +5,10 @@
     height: 240
     fps: 120.0
     pixel_format: "MJPG"
-    frame_id: "camera_link"
+    frame_id: "camera_camera_link"
     left_frame_id: "camera_infra1_optical_frame"
     right_frame_id: "camera_infra2_optical_frame"
-    publish_frame_alias_tf: true
-    left_frame_alias_parent: "camera_link_left_optical_frame"
-    right_frame_alias_parent: "camera_link_right_optical_frame"
+    publish_frame_alias_tf: false
     camera_info_url_left: "package://elp-camera-ros2-driver/config/elp_left.yaml"
     camera_info_url_right: "package://elp-camera-ros2-driver/config/elp_right.yaml"
 

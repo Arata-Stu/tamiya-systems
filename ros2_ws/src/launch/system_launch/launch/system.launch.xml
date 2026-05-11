@@ -104,11 +104,7 @@
          value="$(eval '\'$(var resolved_map_dir)/cuvslam_map\'')"
          if="$(eval '\'$(var vslam_map_dir)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
     <let name="resolved_vehicle_camera_frame"
-         value="$(var camera_mount_frame)"
-         if="$(eval '\'$(var camera_model)\' == \'realsense\'')" />
-    <let name="resolved_vehicle_camera_frame"
-         value="camera_link"
-         unless="$(eval '\'$(var camera_model)\' == \'realsense\'')" />
+         value="$(var camera_mount_frame)" />
     <let name="resolved_publish_camera_stereo_tf"
          value="true"
          if="$(eval '\'$(var camera_model)\' == \'elp\'')" />
@@ -163,7 +159,7 @@
         <arg name="image_height" value="$(var image_height)"/>
         <arg name="image_fps" value="$(var image_fps)"/>
         <arg name="camera_mount_frame" value="$(var resolved_vehicle_camera_frame)"/>
-        <arg name="realsense_base_frame" value="camera_camera_link"/>
+        <arg name="realsense_base_frame" value="$(var resolved_vehicle_camera_frame)"/>
         <arg name="publish_realsense_mount_tf" value="false"/>
     </include>
 

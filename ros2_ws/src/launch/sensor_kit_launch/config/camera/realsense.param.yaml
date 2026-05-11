@@ -4,9 +4,9 @@
     serial_no: ''
     usb_port_id: ''
 
-    # ELP launch との整合を取るため、ベースフレームを固定
+    # ELP launch と同じ camera base frame 契約に揃える
     camera_name: "camera"
-    base_frame_id: "camera_link"
+    base_frame_id: "camera_camera_link"
     tf_prefix: ""
     publish_tf: true
     tf_publish_rate: 0.0

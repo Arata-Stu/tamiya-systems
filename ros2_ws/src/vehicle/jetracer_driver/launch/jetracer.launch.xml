@@ -25,7 +25,7 @@
     <arg name="camera_pitch" default="0.0"/>
     <arg name="camera_yaw" default="0.0"/>
     <arg name="camera_interocular" default="0.05"/>
-    <!-- Offset from camera mount (screw) to stereo lens center (camera_link), unit: [m] -->
+    <!-- Offset from camera mount (screw) to stereo lens center (camera frame), unit: [m] -->
     <arg name="camera_mount_to_lens_x" default="0.0"/>
     <arg name="camera_mount_to_lens_y" default="-0.0075"/>
     <arg name="camera_mount_to_lens_z" default="0.0"/>
