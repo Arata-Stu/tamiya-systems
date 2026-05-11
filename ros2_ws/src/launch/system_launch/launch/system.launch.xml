@@ -80,7 +80,7 @@
     <arg name="section_localizer_marker_topic" default="/localization/section_markers" />
     <arg name="section_localizer_current_marker_topic" default="/localization/current_section_marker" />
     <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
-    <arg name="map_dir" default="" description="directory containing <map_name>.yaml and optional cuvslam_map/" />
+    <arg name="map_dir" default="" description="directory containing map-name.yaml and optional cuvslam_map/" />
     <arg name="vslam_map_dir" default="" description="explicit cuvslam map directory override" />
     <arg name="vslam_save_map_dir" default="" description="directory to save/update cuvslam map" />
 
