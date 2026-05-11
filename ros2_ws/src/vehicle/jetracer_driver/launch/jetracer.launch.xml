@@ -6,7 +6,8 @@
     <arg name="robot_description_xacro" default="$(find-pkg-share jetracer_driver)/urdf/jetracer_sensor_kit.urdf.xacro"/>
     <arg name="base_frame" default="base_link"/>
     <arg name="lidar_frame" default="laser"/>
-    <arg name="camera_frame" default="camera_link"/>
+    <arg name="camera_frame" default="camera_camera_link"/>
+    <arg name="publish_camera_stereo_tf" default="false"/>
 
     <!-- Sensor offsets are defined from rear axle center (base_link), unit: [m] -->
     <arg name="lidar_x" default="0.2725"/>
@@ -31,7 +32,7 @@
 
     <let
       name="robot_description"
-      value="$(command 'xacro $(var robot_description_xacro) base_frame:=$(var base_frame) lidar_frame:=$(var lidar_frame) camera_frame:=$(var camera_frame) lidar_x:=$(var lidar_x) lidar_y:=$(var lidar_y) lidar_z:=$(var lidar_z) lidar_roll:=$(var lidar_roll) lidar_pitch:=$(var lidar_pitch) lidar_yaw:=$(var lidar_yaw) camera_x:=$(var camera_x) camera_y:=$(var camera_y) camera_z:=$(var camera_z) camera_roll:=$(var camera_roll) camera_pitch:=$(var camera_pitch) camera_yaw:=$(var camera_yaw) camera_interocular:=$(var camera_interocular) camera_mount_to_lens_x:=$(var camera_mount_to_lens_x) camera_mount_to_lens_y:=$(var camera_mount_to_lens_y) camera_mount_to_lens_z:=$(var camera_mount_to_lens_z)')"/>
+      value="$(command 'xacro $(var robot_description_xacro) base_frame:=$(var base_frame) lidar_frame:=$(var lidar_frame) camera_frame:=$(var camera_frame) publish_camera_stereo_tf:=$(var publish_camera_stereo_tf) lidar_x:=$(var lidar_x) lidar_y:=$(var lidar_y) lidar_z:=$(var lidar_z) lidar_roll:=$(var lidar_roll) lidar_pitch:=$(var lidar_pitch) lidar_yaw:=$(var lidar_yaw) camera_x:=$(var camera_x) camera_y:=$(var camera_y) camera_z:=$(var camera_z) camera_roll:=$(var camera_roll) camera_pitch:=$(var camera_pitch) camera_yaw:=$(var camera_yaw) camera_interocular:=$(var camera_interocular) camera_mount_to_lens_x:=$(var camera_mount_to_lens_x) camera_mount_to_lens_y:=$(var camera_mount_to_lens_y) camera_mount_to_lens_z:=$(var camera_mount_to_lens_z)')"/>
 
     <node pkg="jetracer_driver"
           exec="jetracer_node.py"

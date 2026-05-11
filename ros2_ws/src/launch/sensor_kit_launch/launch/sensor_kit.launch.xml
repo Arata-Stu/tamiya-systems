@@ -12,6 +12,10 @@
     <arg name="image_width" default="424" />
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="90.0" />
+    <arg name="camera_mount_frame" default="camera_link" />
+    <arg name="realsense_base_frame" default="camera_camera_link" />
+    <arg name="publish_realsense_mount_tf" default="true" />
+    <arg name="publish_vslam_optical_alias_tf" default="false" />
 
     <!-- Lidar Nodes -->
     <group if="$(var use_lidar)">
@@ -32,6 +36,10 @@
             <arg name="image_width" value="$(var image_width)"/>
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="image_fps" value="$(var image_fps)"/>
+            <arg name="camera_mount_frame" value="$(var camera_mount_frame)"/>
+            <arg name="realsense_base_frame" value="$(var realsense_base_frame)"/>
+            <arg name="publish_realsense_mount_tf" value="$(var publish_realsense_mount_tf)"/>
+            <arg name="publish_vslam_optical_alias_tf" value="$(var publish_vslam_optical_alias_tf)"/>
         </include>
     </group>
 </launch>

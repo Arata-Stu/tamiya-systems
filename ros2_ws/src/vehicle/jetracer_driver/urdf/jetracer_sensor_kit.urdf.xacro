@@ -5,7 +5,8 @@
 
   <xacro:arg name="base_frame" default="base_link" />
   <xacro:arg name="lidar_frame" default="laser" />
-  <xacro:arg name="camera_frame" default="camera_link" />
+  <xacro:arg name="camera_frame" default="camera_camera_link" />
+  <xacro:arg name="publish_camera_stereo_tf" default="false" />
 
   <xacro:arg name="lidar_x" default="0.0" />
   <xacro:arg name="lidar_y" default="0.0" />
@@ -39,7 +40,13 @@
     </visual>
   </link>
 
-  <xacro:elp_stereo_camera name="$(arg camera_frame)" interocular="$(arg camera_interocular)" />
+  <xacro:if value="$(arg publish_camera_stereo_tf)">
+    <xacro:elp_stereo_camera name="$(arg camera_frame)" interocular="$(arg camera_interocular)" />
+  </xacro:if>
+
+  <xacro:unless value="$(arg publish_camera_stereo_tf)">
+    <link name="$(arg camera_frame)" />
+  </xacro:unless>
 
   <joint name="$(arg base_frame)_to_$(arg lidar_frame)" type="fixed">
     <parent link="$(arg base_frame)" />

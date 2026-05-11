@@ -35,6 +35,7 @@
     <arg name="image_width" default="424" />
     <arg name="image_height" default="240" />
     <arg name="image_fps" default="90.0" />
+    <arg name="camera_mount_frame" default="camera_camera_link" />
 
     <!-- Control -->
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
@@ -102,6 +103,18 @@
     <let name="resolved_vslam_map_dir"
          value="$(eval '\'$(var resolved_map_dir)/cuvslam_map\'')"
          if="$(eval '\'$(var vslam_map_dir)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_vehicle_camera_frame"
+         value="$(var camera_mount_frame)"
+         if="$(eval '\'$(var camera_model)\' == \'realsense\'')" />
+    <let name="resolved_vehicle_camera_frame"
+         value="camera_link"
+         unless="$(eval '\'$(var camera_model)\' == \'realsense\'')" />
+    <let name="resolved_publish_camera_stereo_tf"
+         value="true"
+         if="$(eval '\'$(var camera_model)\' == \'elp\'')" />
+    <let name="resolved_publish_camera_stereo_tf"
+         value="false"
+         unless="$(eval '\'$(var camera_model)\' == \'elp\'')" />
 
     <!-- Param files -->
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
@@ -117,6 +130,8 @@
         <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
             <arg name="jetracer_param" value="$(var vehicle_param)"/>
             <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
+            <arg name="camera_frame" value="$(var resolved_vehicle_camera_frame)"/>
+            <arg name="publish_camera_stereo_tf" value="$(var resolved_publish_camera_stereo_tf)"/>
         </include>
     </group>
 
@@ -147,6 +162,9 @@
         <arg name="image_width" value="$(var image_width)"/>
         <arg name="image_height" value="$(var image_height)"/>
         <arg name="image_fps" value="$(var image_fps)"/>
+        <arg name="camera_mount_frame" value="$(var resolved_vehicle_camera_frame)"/>
+        <arg name="realsense_base_frame" value="camera_camera_link"/>
+        <arg name="publish_realsense_mount_tf" value="false"/>
     </include>
 
     <!-- FTG Controller (Composable) -->
