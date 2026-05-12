@@ -21,7 +21,7 @@ SETUP_SCRIPT="source /workspaces/install/setup.bash"
 CMD_BASE="bash /scripts/launch_system.sh base"
 CMD_MONITOR="bash /scripts/monitor.sh"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
-CMD_CREATE_VSLAM_MAP="bash /scripts/create_vslam_map_from_bag.sh --rate 1.0"
+CMD_CREATE_VSLAM_MAP="bash /scripts/create_vslam_map_from_bag.sh --mode vslam_map --rate 1.0"
 CMD_CREATE_MAP="bash /scripts/create_2d_map_from_bag.sh --rate 1.0 --use-vslam-odom"
 CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
 CMD_LOCALIZATION_EVAL="bash /scripts/launch_system.sh base --set localization=true --set publish_map=true --set use_lidar=true --set use_camera=true -- map_dir:=<map_dir>"

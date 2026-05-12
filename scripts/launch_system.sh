@@ -80,7 +80,8 @@ Usage:
 
 Modes:
   base       Current simple system launch preset
-  mapping    Mapping/recording preset
+  mapping    Sensor-recording preset for initial mapping runs
+  vslam_map  Recording preset for offline create_vslam_map_from_bag input
 
 Options:
   -i, --interactive       Toggle launch arguments interactively before running
@@ -92,6 +93,7 @@ Options:
 
 Examples:
   ${SCRIPT_NAME} mapping
+  ${SCRIPT_NAME} vslam_map
   ${SCRIPT_NAME} mapping -i
   ${SCRIPT_NAME} mapping --bag-manager mapping
   ${SCRIPT_NAME} base --bag-manager e2e
@@ -183,7 +185,7 @@ apply_mode() {
     mapping)
       ARG_record="true"
       ARG_use_vehicle="true"
-      ARG_vslam="true"
+      ARG_vslam="false"
       ARG_localization="false"
       ARG_use_lidar="true"
       ARG_use_camera="true"
@@ -195,12 +197,42 @@ apply_mode() {
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
-      ARG_use_localization_manager="true"
-      ARG_publish_localization_tf="true"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
       ARG_use_section_localizer="false"
       ARG_section_localizer_debug_mode="false"
-      ARG_enable_localization_and_mapping="true"
+      ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
+      # Initial mapping runs record only lidar + camera sensor data at 1280x720x30.
+      set_extra_arg_value "image_width" "1280"
+      set_extra_arg_value "image_height" "720"
+      set_extra_arg_value "image_fps" "30.0"
+      ;;
+    vslam_map)
+      ARG_record="true"
+      ARG_use_vehicle="true"
+      ARG_vslam="false"
+      ARG_localization="false"
+      ARG_use_lidar="true"
+      ARG_use_camera="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="false"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
+      # Offline VSLAM map creation bags are expected to be recorded at 1280x720x30.
+      set_extra_arg_value "image_width" "1280"
+      set_extra_arg_value "image_height" "720"
+      set_extra_arg_value "image_fps" "30.0"
       ;;
     *)
       echo "Unknown mode: $1" >&2
@@ -418,6 +450,7 @@ choose_mode_interactive() {
   echo "Mode:"
   echo "  1) base"
   echo "  2) mapping"
+  echo "  3) vslam_map"
   read -r -p "Select mode [${MODE}]: " answer
 
   case "${answer:-$MODE}" in
@@ -426,6 +459,9 @@ choose_mode_interactive() {
       ;;
     2|mapping)
       MODE="mapping"
+      ;;
+    3|vslam_map)
+      MODE="vslam_map"
       ;;
     *)
       echo "Invalid mode: $answer" >&2
@@ -616,7 +652,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    base|mapping)
+    base|mapping|vslam_map)
       MODE="$1"
       shift
       ;;

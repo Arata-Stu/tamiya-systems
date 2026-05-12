@@ -36,6 +36,7 @@ Usage:
   create_vslam_map_from_bag.sh [OPTIONS]
 
 Options:
+  --mode NAME         default|vslam_map (default: default)
   --bag-path DIR      input rosbag2 directory (skip interactive selection)
   --map-name NAME     output map name (skip interactive prompt)
   --rate RATE         ros2 bag play rate (default: 1.0)
@@ -62,6 +63,7 @@ EOF
 }
 
 PLAY_RATE="1.0"
+MODE="default"
 RECORD_ROOT="/record"
 MAP_ROOT="/map"
 BAG_ROOT="/record/2d_input"
@@ -82,8 +84,29 @@ RECORDER_PID=""
 RECORDER_USES_SETSID=false
 ROSBAG_CANDIDATES=()
 
+apply_mode() {
+    case "$1" in
+        default)
+            ;;
+        vslam_map)
+            IMAGE_WIDTH="1280"
+            IMAGE_HEIGHT="720"
+            IMAGE_FPS="30.0"
+            ;;
+        *)
+            echo "Unknown mode: $1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+}
+
 while (($#)); do
     case "$1" in
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
         --bag-path)
             BAG_PATH="$2"
             shift 2
@@ -148,6 +171,8 @@ while (($#)); do
             ;;
     esac
 done
+
+apply_mode "${MODE}"
 
 BAG_PATH=""
 MAP_NAME=""
