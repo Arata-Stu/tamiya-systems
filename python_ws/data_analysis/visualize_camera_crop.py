@@ -39,6 +39,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bottom_ratio", type=float, default=0.0, help="Crop ratio from bottom edge [0,1)")
     parser.add_argument("--left_ratio", type=float, default=0.0, help="Crop ratio from left edge [0,1)")
     parser.add_argument("--right_ratio", type=float, default=0.0, help="Crop ratio from right edge [0,1)")
+    parser.add_argument("--top_px", type=int, default=None, help="Crop pixels from top edge. Overrides --top_ratio")
+    parser.add_argument(
+        "--bottom_px",
+        type=int,
+        default=None,
+        help="Crop pixels from bottom edge. Overrides --bottom_ratio",
+    )
+    parser.add_argument("--left_px", type=int, default=None, help="Crop pixels from left edge. Overrides --left_ratio")
+    parser.add_argument(
+        "--right_px",
+        type=int,
+        default=None,
+        help="Crop pixels from right edge. Overrides --right_ratio",
+    )
     parser.add_argument(
         "--shade_alpha",
         type=float,
@@ -219,10 +233,9 @@ def validate_ratios(args: argparse.Namespace) -> None:
     ratios = [args.top_ratio, args.bottom_ratio, args.left_ratio, args.right_ratio]
     if any(r < 0.0 or r >= 1.0 for r in ratios):
         raise ValueError("Each crop ratio must be within [0, 1).")
-    if args.top_ratio + args.bottom_ratio >= 1.0:
-        raise ValueError("top_ratio + bottom_ratio must be < 1.0")
-    if args.left_ratio + args.right_ratio >= 1.0:
-        raise ValueError("left_ratio + right_ratio must be < 1.0")
+    px_values = [args.top_px, args.bottom_px, args.left_px, args.right_px]
+    if any(v is not None and v < 0 for v in px_values):
+        raise ValueError("Pixel crop values must be >= 0")
     if args.video_fps <= 0:
         raise ValueError("--video_fps must be > 0")
     if args.video_start < 0:
@@ -233,12 +246,27 @@ def validate_ratios(args: argparse.Namespace) -> None:
         raise ValueError("--video_step must be >= 1")
 
 
-def build_label(args: argparse.Namespace) -> str:
+def resolve_crop_pixels(image_width: int, image_height: int, args: argparse.Namespace) -> tuple[int, int, int, int]:
+    top_px = args.top_px if args.top_px is not None else int(round(image_height * args.top_ratio))
+    bottom_px = args.bottom_px if args.bottom_px is not None else int(round(image_height * args.bottom_ratio))
+    left_px = args.left_px if args.left_px is not None else int(round(image_width * args.left_ratio))
+    right_px = args.right_px if args.right_px is not None else int(round(image_width * args.right_ratio))
+
+    if top_px + bottom_px >= image_height:
+        raise ValueError("top crop + bottom crop must be smaller than image height")
+    if left_px + right_px >= image_width:
+        raise ValueError("left crop + right crop must be smaller than image width")
+
+    return top_px, bottom_px, left_px, right_px
+
+
+def build_label(args: argparse.Namespace, image_width: int, image_height: int) -> str:
     if args.label:
         return args.label
+    top_px, bottom_px, left_px, right_px = resolve_crop_pixels(image_width, image_height, args)
     return (
-        f"top={args.top_ratio:.3f} bottom={args.bottom_ratio:.3f} "
-        f"left={args.left_ratio:.3f} right={args.right_ratio:.3f}"
+        f"top={top_px}px({top_px / image_height:.3f}) bottom={bottom_px}px({bottom_px / image_height:.3f}) "
+        f"left={left_px}px({left_px / image_width:.3f}) right={right_px}px({right_px / image_width:.3f})"
     )
 
 
@@ -249,10 +277,11 @@ def overlay_crop_region(image_rgb, args: argparse.Namespace, frame_id: int, time
     canvas = image_rgb.copy()
     h, w = canvas.shape[:2]
 
-    x0 = int(round(w * args.left_ratio))
-    x1 = int(round(w * (1.0 - args.right_ratio)))
-    y0 = int(round(h * args.top_ratio))
-    y1 = int(round(h * (1.0 - args.bottom_ratio)))
+    top_px, bottom_px, left_px, right_px = resolve_crop_pixels(w, h, args)
+    x0 = left_px
+    x1 = w - right_px
+    y0 = top_px
+    y1 = h - bottom_px
 
     overlay = canvas.copy()
     shade_color = np_mod.array([255, 80, 80], dtype=np_mod.uint8)
@@ -284,7 +313,7 @@ def overlay_crop_region(image_rgb, args: argparse.Namespace, frame_id: int, time
     )
     cv.putText(
         canvas,
-        build_label(args),
+        build_label(args, w, h),
         (12, 48),
         cv.FONT_HERSHEY_SIMPLEX,
         0.55,
@@ -294,7 +323,7 @@ def overlay_crop_region(image_rgb, args: argparse.Namespace, frame_id: int, time
     )
     cv.putText(
         canvas,
-        f"crop_px: top={y0} bottom={h - y1} left={x0} right={w - x1}",
+        f"crop_px: top={top_px} bottom={bottom_px} left={left_px} right={right_px}",
         (12, 72),
         cv.FONT_HERSHEY_SIMPLEX,
         0.55,

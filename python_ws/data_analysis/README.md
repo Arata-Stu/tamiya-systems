@@ -170,11 +170,24 @@ python data_analysis/visualize_camera_crop.py \
   --top_ratio 0.08 \
   --bottom_ratio 0.20 \
   --shade_alpha 0.40
+
+# 例3: pixel 指定で確認
+python data_analysis/visualize_camera_crop.py \
+  --bag /path/to/rosbag2_dir \
+  --topic /camera/camera/infra1/image_rect_raw \
+  --output /tmp/camera_crop_preview_px.mp4 \
+  --top_px 40 \
+  --bottom_px 72 \
+  --left_px 0 \
+  --right_px 0
 ```
 
 主な引数:
 - `--top_ratio --bottom_ratio --left_ratio --right_ratio`
   - 各辺から何割切るかを指定
+- `--top_px --bottom_px --left_px --right_px`
+  - 各辺から何 pixel 切るかを指定
+  - 指定した辺では ratio より pixel が優先される
 - `--shade_alpha`
   - 切り落とす領域の色の濃さ
 - `--video_start --video_end --video_step`
