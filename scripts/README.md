@@ -7,11 +7,11 @@ directly.
 ## Main entrypoints
 
 - `run_docker.sh`: start the Isaac ROS development container.
-- `launch_system.sh`: launch system presets. Includes `vslam_map` for recording offline VSLAM-map bags at `1280x720x30`.
+- `launch_system.sh`: launch system presets. `sensor_data_recording` is the canonical sensor-bag recording preset, and `vslam_map` records offline VSLAM-map bags at `1280x720x30`.
 - `tmux.sh`: create tmux layouts for robot, mapping, Python, and simulator work.
 - `monitor.sh`: terminal monitoring dashboard.
-- `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam_map` は `launch_system.sh vslam_map` の `1280x720x30` 録画に合わせた preset。
-- `create_2d_map_from_bag.sh`: 2D map 作成用。`--run-vslam` / `--use-vslam-odom` で VSLAM map 保存と lightweight 2D input bag 作成もまとめて実行できます。
+- `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `1280x720x30` 録画に合わせた preset。
+- `create_2d_map_from_bag.sh`: 2D map 作成用。`--mode 2d_slam` で VSLAM map 保存と lightweight 2D input bag 作成もまとめて実行できます。
 - `scp_data.sh`: data transfer helper.
 
 ## Terminal viewers

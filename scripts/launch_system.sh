@@ -63,7 +63,7 @@ BAG_MANAGER_PATHS=(
   '$(find-pkg-share system_launch)/config/tools/bag_manager_e2e.param.yaml'
 )
 
-MODE="base"
+MODE="production"
 INTERACTIVE="false"
 LEGACY_INTERACTIVE="false"
 DRY_RUN="false"
@@ -79,9 +79,11 @@ Usage:
   ${SCRIPT_NAME} [mode] [options] [-- extra_ros2_launch_args...]
 
 Modes:
-  base       Current simple system launch preset
-  mapping    Sensor-recording preset for initial mapping runs
-  vslam_map  Recording preset for offline create_vslam_map_from_bag input
+  production              Full production run with VSLAM + localization + section localizer
+  sensor_data_recording   Sensor-recording preset for initial mapping runs
+  base                    Alias of production
+  mapping                 Alias of sensor_data_recording
+  vslam_map               Alias of sensor_data_recording
 
 Options:
   -i, --interactive       Toggle launch arguments interactively before running
@@ -92,13 +94,12 @@ Options:
   -h, --help              Show this help
 
 Examples:
-  ${SCRIPT_NAME} mapping
-  ${SCRIPT_NAME} vslam_map
-  ${SCRIPT_NAME} mapping -i
-  ${SCRIPT_NAME} mapping --bag-manager mapping
-  ${SCRIPT_NAME} base --bag-manager e2e
-  ${SCRIPT_NAME} mapping --set record=false --dry-run
-  ${SCRIPT_NAME} base --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} production -- map_dir:=/map/mybag/mycourse
+  ${SCRIPT_NAME} sensor_data_recording
+  ${SCRIPT_NAME} sensor_data_recording -i
+  ${SCRIPT_NAME} sensor_data_recording --bag-manager mapping
+  ${SCRIPT_NAME} sensor_data_recording --set record=false --dry-run
+  ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
 EOF
 }
@@ -160,11 +161,11 @@ get_arg() {
 
 apply_mode() {
   case "$1" in
-    base)
+    production|base)
       ARG_record="false"
       ARG_use_vehicle="true"
       ARG_vslam="true"
-      ARG_localization="false"
+      ARG_localization="true"
       ARG_use_lidar="true"
       ARG_use_camera="true"
       ARG_use_ftg="false"
@@ -173,16 +174,16 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_sim_time="false"
-      ARG_publish_map="false"
+      ARG_publish_map="true"
       ARG_map_server_use_sim_time="false"
       ARG_use_localization_manager="true"
       ARG_publish_localization_tf="true"
-      ARG_use_section_localizer="false"
+      ARG_use_section_localizer="true"
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
       ;;
-    mapping)
+    sensor_data_recording|mapping|vslam_map)
       ARG_record="true"
       ARG_use_vehicle="true"
       ARG_vslam="false"
@@ -204,32 +205,6 @@ apply_mode() {
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
       # Initial mapping runs record only lidar + camera sensor data at 1280x720x30.
-      set_extra_arg_value "image_width" "1280"
-      set_extra_arg_value "image_height" "720"
-      set_extra_arg_value "image_fps" "30.0"
-      ;;
-    vslam_map)
-      ARG_record="true"
-      ARG_use_vehicle="true"
-      ARG_vslam="false"
-      ARG_localization="false"
-      ARG_use_lidar="true"
-      ARG_use_camera="true"
-      ARG_use_ftg="false"
-      ARG_use_emergency="false"
-      ARG_use_magp_rl_trajectory="false"
-      ARG_magp_rl_run_pure_pursuit="false"
-      ARG_use_pure_pursuit="false"
-      ARG_use_sim_time="false"
-      ARG_publish_map="false"
-      ARG_map_server_use_sim_time="false"
-      ARG_use_localization_manager="false"
-      ARG_publish_localization_tf="false"
-      ARG_use_section_localizer="false"
-      ARG_section_localizer_debug_mode="false"
-      ARG_enable_localization_and_mapping="false"
-      ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
-      # Offline VSLAM map creation bags are expected to be recorded at 1280x720x30.
       set_extra_arg_value "image_width" "1280"
       set_extra_arg_value "image_height" "720"
       set_extra_arg_value "image_fps" "30.0"
@@ -448,20 +423,16 @@ choose_mode_interactive() {
   local answer
 
   echo "Mode:"
-  echo "  1) base"
-  echo "  2) mapping"
-  echo "  3) vslam_map"
+  echo "  1) production"
+  echo "  2) sensor_data_recording"
   read -r -p "Select mode [${MODE}]: " answer
 
   case "${answer:-$MODE}" in
-    1|base)
-      MODE="base"
+    1|production|base)
+      MODE="production"
       ;;
-    2|mapping)
-      MODE="mapping"
-      ;;
-    3|vslam_map)
-      MODE="vslam_map"
+    2|sensor_data_recording|mapping|vslam_map)
+      MODE="sensor_data_recording"
       ;;
     *)
       echo "Invalid mode: $answer" >&2
@@ -547,6 +518,40 @@ prompt_set_arg_interactive() {
 render_launch_extra_interactive() {
   printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
   printf "   %-38s %s\n" "map_dir" "$(map_dir_label)"
+}
+
+apply_mode_derived_args() {
+  local map_dir
+  local section_csv
+  local gate_csv
+
+  if [[ "$MODE" != "production" && "$MODE" != "base" ]]; then
+    return
+  fi
+
+  map_dir="$(current_map_dir)"
+  if [[ -z "$map_dir" ]]; then
+    return
+  fi
+
+  section_csv="${map_dir%/}/sections_pixels.csv"
+  gate_csv="${map_dir%/}/sections_pixels_gates.csv"
+
+  if [[ -f "$section_csv" ]]; then
+    set_extra_arg_value "section_definition_path" "$section_csv"
+  fi
+
+  if [[ -f "$gate_csv" ]]; then
+    set_extra_arg_value "gate_definition_path" "$gate_csv"
+  fi
+}
+
+warn_if_mode_incomplete() {
+  if [[ "$MODE" == "production" || "$MODE" == "base" ]]; then
+    if [[ -z "$(current_map_dir)" ]]; then
+      echo "Warning: production mode expects map_dir to be set." >&2
+    fi
+  fi
 }
 
 toggle_interactive_checkbox() {
@@ -652,7 +657,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    base|mapping|vslam_map)
+    production|base|sensor_data_recording|mapping|vslam_map)
       MODE="$1"
       shift
       ;;
@@ -668,7 +673,7 @@ if [[ "$ORIGINAL_ARGC" -eq 0 && -t 0 ]]; then
   INTERACTIVE="true"
 fi
 
-if [[ "$INTERACTIVE" == "true" && -t 0 && "$MODE" == "base" ]]; then
+if [[ "$INTERACTIVE" == "true" && -t 0 && "$MODE" == "production" ]]; then
   choose_mode_interactive
 fi
 
@@ -681,6 +686,9 @@ done
 if [[ "$INTERACTIVE" == "true" ]]; then
   toggle_interactive
 fi
+
+apply_mode_derived_args
+warn_if_mode_incomplete
 
 echo "Mode: $MODE"
 echo "Command:"

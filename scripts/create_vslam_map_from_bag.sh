@@ -36,7 +36,7 @@ Usage:
   create_vslam_map_from_bag.sh [OPTIONS]
 
 Options:
-  --mode NAME         default|vslam_map (default: default)
+  --mode NAME         default|vslam|vslam_map (default: default)
   --bag-path DIR      input rosbag2 directory (skip interactive selection)
   --map-name NAME     output map name (skip interactive prompt)
   --rate RATE         ros2 bag play rate (default: 1.0)
@@ -88,7 +88,7 @@ apply_mode() {
     case "$1" in
         default)
             ;;
-        vslam_map)
+        vslam|vslam_map)
             IMAGE_WIDTH="1280"
             IMAGE_HEIGHT="720"
             IMAGE_FPS="30.0"

@@ -36,6 +36,7 @@ Usage:
   create_2d_map_from_bag.sh [OPTIONS]
 
 Options:
+  --mode NAME         default|2d_slam (default: default)
   --bag-path DIR      input rosbag2 directory (skip interactive selection)
   --map-name NAME     output map name (skip interactive prompt)
   --scan-topic TOPIC  scan topic for cartographer (default: /scan)
@@ -108,6 +109,7 @@ SCAN_TOPIC="/scan"
 PLAY_RATE="1.0"
 ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
+MODE="default"
 RUN_VSLAM=false
 PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
@@ -151,6 +153,23 @@ RECORDER_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 LIGHTWEIGHT_BAG_CANDIDATES=()
+
+apply_mode() {
+    case "$1" in
+        default)
+            ;;
+        2d_slam)
+            ODOM_TOPIC="/visual_slam/tracking/odometry"
+            CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+            RUN_VSLAM=true
+            ;;
+        *)
+            echo "Unknown mode: $1" >&2
+            usage
+            exit 1
+            ;;
+    esac
+}
 
 list_cartographer_pids() {
     {
@@ -216,6 +235,10 @@ cleanup_new_cartographer_processes() {
 
 while (($#)); do
     case "$1" in
+        --mode)
+            MODE="$2"
+            shift 2
+            ;;
         --bag-path)
             BAG_PATH="$2"
             shift 2
@@ -354,6 +377,8 @@ while (($#)); do
             ;;
     esac
 done
+
+apply_mode "${MODE}"
 
 BAG_PATH=""
 MAP_NAME=""
