@@ -11,6 +11,19 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - 任意で PNG 保存
   - 任意で時系列動画（MP4 / GIF）保存
 
+- `visualize_camera_crop.py`
+  - rosbag から `sensor_msgs/msg/Image` / `sensor_msgs/msg/CompressedImage` を取得
+  - 指定した crop 比率を画像へ重ねて時系列動画（MP4 / GIF）化
+  - 切り落とす領域を半透明オーバーレイで表示
+  - 目視で `camera_crop` の妥当性を確認したいとき向け
+
+- `analyze_camera_crop.py`
+  - rosbag から `sensor_msgs/msg/Image` / `sensor_msgs/msg/CompressedImage` を取得
+  - 各フレームで特徴点を抽出し、画像内の分布を集計
+  - 上下左右それぞれについて crop 量に対する「特徴点保持率」を CSV 出力
+  - 推奨 crop 比率を算出し、プレビュー画像とヒートマップ付き PNG を生成
+  - `camera_crop` や vSLAM の `img_mask_top/bottom/left/right` を決める判断材料に使える
+
 - `evaluate_global_localization_sweep.py`
   - `rosbag2_player` の `play_next` / `pause` / `resume` サービスを使って再生を自動ステップ実行
   - 一定 scan 間隔ごとに global localization を trigger
@@ -83,6 +96,91 @@ python data_analysis/visualize_scan_gradient.py \
 - `--video_start`: 開始フレーム
 - `--video_end`: 終了フレーム（含む）
 - `--video_step`: 何フレームおきに描画するか
+
+## 使い方（camera crop 解析）
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+
+# 例1: 左右カメラの特徴点分布から推奨 crop を確認
+python data_analysis/analyze_camera_crop.py \
+  --bag /path/to/rosbag2_dir \
+  --topics /camera/camera/infra1/image_rect_raw /camera/camera/infra2/image_rect_raw
+
+# 例2: フレーム数を増やして、95%特徴保持を満たす crop を見る
+python data_analysis/analyze_camera_crop.py \
+  --bag /path/to/rosbag2_dir \
+  --topics /camera/camera/infra1/image_rect_raw /camera/camera/infra2/image_rect_raw \
+  --max_frames_per_topic 1000 \
+  --frame_stride 2 \
+  --retained_feature_ratio 0.95 \
+  --frame_quantile 0.10 \
+  --output_dir /tmp/vslam_crop_check
+
+# 例3: PNG不要でCSVだけ欲しい場合
+python data_analysis/analyze_camera_crop.py \
+  --bag /path/to/rosbag2_dir \
+  --topics /camera/left/image_raw \
+  --no_plots
+```
+
+主な出力:
+- `recommended_crop_summary.csv`
+  - 各トピックごとの推奨 `top/bottom/left/right` crop 比率と pixel 値
+  - その4辺を同時適用したときの特徴点保持率も併記
+- `<topic>_top_retained.csv` など
+  - crop 比率ごとの aggregate 特徴保持率と per-frame 分位点
+- `<topic>_summary.png`
+  - 特徴点ヒートマップ
+  - 推奨 crop 線
+  - crop 比率に対する保持率カーブ
+
+推奨値の意味:
+- 既定では「各フレーム特徴点保持率の 10 パーセンタイルが 95% 以上となる最大 crop 比率」を推奨値にします
+- つまり、厳しめに見ても大半のフレームで特徴点を残せる範囲を返します
+- もっと保守的にしたい場合は `--retained_feature_ratio` を上げるか、`--frame_quantile` を下げてください
+
+注意:
+- このスクリプトは「特徴点が画像のどこに多いか」を見ています。最終的な vSLAM 成功率は視差、露出、モーションブラー、同期精度にも依存します
+- まずこの解析で候補値を決め、その後に短い bag で実際に vSLAM を再生して確認する運用を想定しています
+
+## 使い方（camera crop 可視化）
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+
+# 例1: 左カメラに crop 枠を重ねた MP4 を出力
+python data_analysis/visualize_camera_crop.py \
+  --bag /path/to/rosbag2_dir \
+  --topic /camera/camera/infra1/image_rect_raw \
+  --output /tmp/camera_crop_preview.mp4 \
+  --top_ratio 0.10 \
+  --bottom_ratio 0.15 \
+  --left_ratio 0.00 \
+  --right_ratio 0.00
+
+# 例2: GIF で軽く確認
+python data_analysis/visualize_camera_crop.py \
+  --bag /path/to/rosbag2_dir \
+  --topic /camera/camera/infra1/image_rect_raw \
+  --output /tmp/camera_crop_preview.gif \
+  --video_start 0 \
+  --video_end 300 \
+  --video_step 3 \
+  --top_ratio 0.08 \
+  --bottom_ratio 0.20 \
+  --shade_alpha 0.40
+```
+
+主な引数:
+- `--top_ratio --bottom_ratio --left_ratio --right_ratio`
+  - 各辺から何割切るかを指定
+- `--shade_alpha`
+  - 切り落とす領域の色の濃さ
+- `--video_start --video_end --video_step`
+  - どのフレーム範囲を出力するか
+- `--resize_width`
+  - 出力サイズを軽くしたいときの横幅指定
 
 ## 備考
 
