@@ -1,0 +1,16 @@
+<launch>
+  <arg name="param_file" default="$(find-pkg-share raceline_path_publisher)/config/raceline_path_publisher.param.yaml"/>
+  <arg name="raceline_csv_path" default=""/>
+  <arg name="direction" default="forward"/>
+  <arg name="global_path_topic" default="/planning/global_raceline"/>
+  <arg name="local_path_topic" default="/autonomous/trajectory"/>
+
+  <node pkg="raceline_path_publisher" exec="raceline_path_publisher_node"
+        name="raceline_path_publisher" output="screen">
+    <param from="$(var param_file)"/>
+    <param name="raceline_csv_path" value="$(var raceline_csv_path)"/>
+    <param name="direction" value="$(var direction)"/>
+    <remap from="global_path" to="$(var global_path_topic)"/>
+    <remap from="trajectory" to="$(var local_path_topic)"/>
+  </node>
+</launch>

@@ -65,12 +65,16 @@ Options:
                       set centerline debug image output directory
   --centerline-script PATH
                       path to generate_centerline.py (auto-detect by default)
+  --centerline-direction DIR
+                      forward|reverse|both (default: forward)
   --raceline-script PATH
                       path to generate_raceline.py (auto-detect by default)
   --raceline-backend BACKEND
                       heuristic|global-opt|auto (default: heuristic)
   --raceline-opt-type TYPE
                       shortest_path|mincurv|mincurv_iqp for global-opt (default: mincurv_iqp)
+  --raceline-direction DIR
+                      forward|reverse|both (default: forward)
   --optimizer-root DIR
                       path to global_racetrajectory_optimization checkout
   --line-preview-script PATH
@@ -118,9 +122,11 @@ ENABLE_LINE_PREVIEW=true
 CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
+CENTERLINE_DIRECTION="forward"
 RACELINE_SCRIPT_PATH=""
-RACELINE_BACKEND="heuristic"
+RACELINE_BACKEND="auto"
 RACELINE_OPT_TYPE="mincurv_iqp"
+RACELINE_DIRECTION="forward"
 GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
@@ -340,6 +346,10 @@ while (($#)); do
             CENTERLINE_SCRIPT_PATH="$2"
             shift 2
             ;;
+        --centerline-direction)
+            CENTERLINE_DIRECTION="$2"
+            shift 2
+            ;;
         --raceline-script)
             RACELINE_SCRIPT_PATH="$2"
             shift 2
@@ -350,6 +360,10 @@ while (($#)); do
             ;;
         --raceline-opt-type)
             RACELINE_OPT_TYPE="$2"
+            shift 2
+            ;;
+        --raceline-direction)
+            RACELINE_DIRECTION="$2"
             shift 2
             ;;
         --optimizer-root)
@@ -866,6 +880,7 @@ generate_centerline() {
         --map "${input_map_path}"
         --output "${CENTERLINE_OUTPUT_PATH}"
         --yaml "${MAP_YAML_PATH}"
+        --direction "${CENTERLINE_DIRECTION}"
     )
     if [ -n "${CENTERLINE_DEBUG_PATH}" ]; then
         centerline_cmd+=(--debug-dir "${CENTERLINE_DEBUG_PATH}")
@@ -878,6 +893,9 @@ generate_centerline() {
 
     CENTERLINE_CREATED=true
     echo "  - ${CENTERLINE_OUTPUT_PATH}"
+    if [ "${CENTERLINE_DIRECTION}" = "both" ]; then
+        echo "  - ${CENTERLINE_OUTPUT_PATH%.*}_reverse.${CENTERLINE_OUTPUT_PATH##*.}"
+    fi
     if [ -n "${CENTERLINE_DEBUG_PATH}" ]; then
         echo "  - ${CENTERLINE_DEBUG_PATH}/"
     fi
@@ -920,6 +938,7 @@ generate_raceline() {
         --opt-type "${RACELINE_OPT_TYPE}"
         --centerline "${centerline_path}"
         --output "${RACELINE_OUTPUT_PATH}"
+        --direction "${RACELINE_DIRECTION}"
     )
     if [ -n "${GLOBAL_OPTIMIZER_ROOT}" ]; then
         raceline_cmd+=(--optimizer-root "${GLOBAL_OPTIMIZER_ROOT}")
@@ -932,6 +951,9 @@ generate_raceline() {
 
     RACELINE_CREATED=true
     echo "  - ${RACELINE_OUTPUT_PATH}"
+    if [ "${RACELINE_DIRECTION}" = "both" ]; then
+        echo "  - ${RACELINE_OUTPUT_PATH%.*}_reverse.${RACELINE_OUTPUT_PATH##*.}"
+    fi
 }
 
 generate_line_preview() {

@@ -22,6 +22,9 @@ import numpy as np
 from omegaconf import OmegaConf
 
 
+VALID_DIRECTIONS = ("forward", "reverse", "both")
+
+
 DIR8: Tuple[Tuple[int, int], ...] = (
     (-1, -1),
     (0, -1),
@@ -613,6 +616,22 @@ def save_debug_images(
     )
 
 
+def output_path_for_direction(base_output_path: str, direction: str) -> str:
+    if direction == "forward":
+        return base_output_path
+    root, ext = os.path.splitext(base_output_path)
+    return f"{root}_{direction}{ext}"
+
+
+def reverse_centerline_output(rows: np.ndarray) -> np.ndarray:
+    reversed_rows = rows[::-1].copy()
+    if reversed_rows.shape[1] >= 4:
+        # When the travel direction flips, right/left track widths swap semantics.
+        reversed_rows[:, 2] = rows[::-1, 3]
+        reversed_rows[:, 3] = rows[::-1, 2]
+    return reversed_rows
+
+
 def run(args: argparse.Namespace) -> None:
     gray = read_map_grayscale(args.map)
     gray = gray_to_black(gray, args.gray_to_black_white_threshold)
@@ -676,8 +695,20 @@ def run(args: argparse.Namespace) -> None:
 
     out_path = os.path.abspath(args.output)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "wb") as fh:
-        np.savetxt(fh, out, fmt="%.4f", delimiter=",", header=header)
+
+    write_plan = [("forward", out, out_path)]
+    if args.direction == "reverse":
+        write_plan = [("reverse", reverse_centerline_output(out), out_path)]
+    elif args.direction == "both":
+        write_plan.append(
+            ("reverse", reverse_centerline_output(out), output_path_for_direction(out_path, "reverse"))
+        )
+
+    written_paths = []
+    for direction, rows, direction_out_path in write_plan:
+        with open(direction_out_path, "wb") as fh:
+            np.savetxt(fh, rows, fmt="%.4f", delimiter=",", header=header)
+        written_paths.append((direction, direction_out_path))
 
     if args.debug_dir:
         save_debug_images(
@@ -694,7 +725,8 @@ def run(args: argparse.Namespace) -> None:
     print(f"Skeleton pixels: {int(skeleton.sum())}")
     print(f"Centerline pixels: {int(centerline_mask.sum())}")
     print(f"Output points: {len(out)}")
-    print(f"Wrote centerline CSV: {out_path}")
+    for direction, direction_out_path in written_paths:
+        print(f"Wrote {direction} centerline CSV: {direction_out_path}")
     if yaml_used:
         print(f"Used YAML metadata: {yaml_path}")
     else:
@@ -743,6 +775,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--track-width-margin-m", type=float, default=0.0)
     p.add_argument("--track-width-margin-px", type=float, default=0.0)
+    p.add_argument(
+        "--direction",
+        choices=VALID_DIRECTIONS,
+        default="forward",
+        help="Output travel direction: forward, reverse, or both.",
+    )
     p.add_argument("--debug-dir", default=None, help="Optional directory to save debug images")
 
     return p

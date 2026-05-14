@@ -24,6 +24,9 @@ import numpy as np
 from scipy import interpolate, spatial
 
 
+VALID_DIRECTIONS = ("forward", "reverse", "both")
+
+
 def circular_gaussian_smooth(values: np.ndarray, sigma: float) -> np.ndarray:
     if sigma <= 0.0 or len(values) < 5:
         return values
@@ -137,6 +140,17 @@ def load_centerline(path: str) -> Tuple[np.ndarray, np.ndarray]:
     if len(points) < 8:
         raise RuntimeError("Centerline needs at least 8 points to create a raceline.")
     return points, widths
+
+
+def reverse_centerline(centerline: np.ndarray, widths: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    return centerline[::-1].copy(), widths[::-1][:, [1, 0]].copy()
+
+
+def output_path_for_direction(base_output_path: str, direction: str) -> str:
+    if direction == "forward":
+        return base_output_path
+    root, ext = os.path.splitext(base_output_path)
+    return f"{root}_{direction}{ext}"
 
 
 def default_optimizer_root() -> str:
@@ -576,8 +590,11 @@ def generate_global_opt_raceline(
     return np.column_stack([s, raceline_xy[:, 0], raceline_xy[:, 1], psi, kappa, vx, ax])
 
 
-def run(args: argparse.Namespace) -> None:
-    centerline, widths = load_centerline(args.centerline)
+def generate_with_selected_backend(
+    args: argparse.Namespace,
+    centerline: np.ndarray,
+    widths: np.ndarray,
+) -> Tuple[np.ndarray, str]:
     backend_used = args.backend
     progress = ProgressReporter(enabled=args.show_progress)
 
@@ -641,17 +658,36 @@ def run(args: argparse.Namespace) -> None:
             progress=progress,
         )
 
+    return raceline, backend_used
+
+
+def run(args: argparse.Namespace) -> None:
+    centerline_forward, widths_forward = load_centerline(args.centerline)
     out_path = os.path.abspath(args.output)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     header = "s_m; x_m; y_m; psi_rad; kappa_radpm; vx_mps; ax_mps2"
-    np.savetxt(out_path, raceline, fmt="%.7f", delimiter=";", header=header)
+
+    direction_plan = [("forward", centerline_forward, widths_forward, out_path)]
+    if args.direction == "reverse":
+        centerline_reverse, widths_reverse = reverse_centerline(centerline_forward, widths_forward)
+        direction_plan = [("reverse", centerline_reverse, widths_reverse, out_path)]
+    elif args.direction == "both":
+        centerline_reverse, widths_reverse = reverse_centerline(centerline_forward, widths_forward)
+        direction_plan.append(
+            ("reverse", centerline_reverse, widths_reverse, output_path_for_direction(out_path, "reverse"))
+        )
 
     print(f"Input centerline: {args.centerline}")
-    print(f"Backend: {backend_used}")
-    print(f"Output points: {len(raceline)}")
-    closed_length = raceline[-1, 0] + float(np.linalg.norm(raceline[0, 1:3] - raceline[-1, 1:3]))
-    print(f"Track length: {closed_length:.3f} m")
-    print(f"Wrote raceline CSV: {out_path}")
+    for direction, centerline, widths, direction_out_path in direction_plan:
+        raceline, backend_used = generate_with_selected_backend(args, centerline, widths)
+        np.savetxt(direction_out_path, raceline, fmt="%.7f", delimiter=";", header=header)
+
+        print(f"Direction: {direction}")
+        print(f"Backend: {backend_used}")
+        print(f"Output points: {len(raceline)}")
+        closed_length = raceline[-1, 0] + float(np.linalg.norm(raceline[0, 1:3] - raceline[-1, 1:3]))
+        print(f"Track length: {closed_length:.3f} m")
+        print(f"Wrote raceline CSV: {direction_out_path}")
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -678,6 +714,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--spacing-m", type=float, default=0.10, help="Approximate output waypoint spacing")
     p.add_argument("--track-width-margin-m", type=float, default=0.05)
+    p.add_argument(
+        "--direction",
+        choices=VALID_DIRECTIONS,
+        default="forward",
+        help="Generate raceline for forward, reverse, or both directions.",
+    )
     p.add_argument("--lateral-aggression", type=float, default=0.70)
     p.add_argument("--offset-smooth-sigma", type=float, default=12.0)
     p.add_argument("--point-smooth-sigma", type=float, default=2.0)

@@ -211,9 +211,22 @@ python data_analysis/generate_centerline.py \
   --output /path/to/map_centerline.csv \
   --debug-dir /path/to/map_centerline_debug
 
+# 逆走版も同時に作る:
+python data_analysis/generate_centerline.py \
+  --map /path/to/map.png \
+  --yaml /path/to/map.yaml \
+  --output /path/to/map_centerline.csv \
+  --direction both
+
 python data_analysis/generate_raceline.py \
   --centerline /path/to/map_centerline.csv \
   --output /path/to/map_raceline.csv
+
+# 逆走版も同時に作る:
+python data_analysis/generate_raceline.py \
+  --centerline /path/to/map_centerline.csv \
+  --output /path/to/map_raceline.csv \
+  --direction both
 
 # Dockerにglobal optimizer依存が入っている場合:
 python data_analysis/generate_raceline.py \
