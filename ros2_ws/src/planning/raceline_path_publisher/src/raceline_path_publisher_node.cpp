@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -21,6 +22,14 @@ double ClampPositive(double value, double fallback) {
 
 int ClampPositiveInt(int value, int fallback) {
   return value > 0 ? value : fallback;
+}
+
+builtin_interfaces::msg::Time ToBuiltinTime(const rclcpp::Time &stamp) {
+  builtin_interfaces::msg::Time msg;
+  const auto nanoseconds = stamp.nanoseconds();
+  msg.sec = static_cast<std::int32_t>(nanoseconds / 1000000000LL);
+  msg.nanosec = static_cast<std::uint32_t>(nanoseconds % 1000000000LL);
+  return msg;
 }
 
 } // namespace
@@ -119,7 +128,7 @@ void RacelinePathPublisherNode::TimerCallback() {
 }
 
 void RacelinePathPublisherNode::PublishGlobalPath(const rclcpp::Time &stamp) {
-  global_path_pub_->publish(core_.BuildPath(map_frame_, stamp.to_msg()));
+  global_path_pub_->publish(core_.BuildPath(map_frame_, ToBuiltinTime(stamp)));
 }
 
 void RacelinePathPublisherNode::PublishLocalPath(const rclcpp::Time &stamp) {
@@ -152,7 +161,7 @@ void RacelinePathPublisherNode::PublishLocalPath(const rclcpp::Time &stamp) {
   }
 
   const auto map_path =
-      core_.BuildPathFromIndices(indices, map_frame_, stamp.to_msg());
+      core_.BuildPathFromIndices(indices, map_frame_, ToBuiltinTime(stamp));
 
   nav_msgs::msg::Path local_path;
   local_path.header.frame_id = base_frame_;

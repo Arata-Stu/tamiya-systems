@@ -235,6 +235,7 @@ class SectionEditor:
         self.is_panning = False
         self.pan_start_mouse = (0, 0)
         self.pan_start_offset = (0, 0)
+        self.show_hud = True
         self.gate_output_path = self.output_path.with_name(
             f"{self.output_path.stem}_gates.csv"
         )
@@ -516,7 +517,49 @@ class SectionEditor:
         cv2.addWeighted(overlay, alpha, frame, 1.0 - alpha, 0.0, dst=frame)
         cv2.rectangle(frame, (x0, y0), (x1, y1), (230, 230, 230), 1, cv2.LINE_AA)
 
+    def _point_in_rect(self, x: int, y: int, rect: Tuple[int, int, int, int]) -> bool:
+        rx, ry, rw, rh = rect
+        return rx <= x < rx + rw and ry <= y < ry + rh
+
+    def _hud_toggle_rect(self) -> Tuple[int, int, int, int]:
+        width = 116
+        height = 34
+        margin = 10
+        return (self.window_width - width - margin, margin, width, height)
+
+    def _draw_button(
+        self,
+        frame: np.ndarray,
+        rect: Tuple[int, int, int, int],
+        label: str,
+        active: bool,
+    ) -> None:
+        x, y, w, h = rect
+        fill = (55, 130, 215) if active else (42, 42, 42)
+        border = (235, 235, 235) if active else (185, 185, 185)
+        text_color = (255, 255, 255)
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), fill, -1)
+        cv2.addWeighted(overlay, 0.88, frame, 0.12, 0.0, dst=frame)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), border, 1, cv2.LINE_AA)
+
+        (text_w, text_h), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        text_x = x + max(8, (w - text_w) // 2)
+        text_y = y + max(text_h + 6, (h + text_h) // 2) - baseline
+        self._draw_text_with_outline(frame, label, (text_x, text_y), 0.55, text_color, 2)
+
+    def _draw_controls(self, frame: np.ndarray) -> None:
+        self._draw_button(
+            frame,
+            self._hud_toggle_rect(),
+            f"Help {'ON' if self.show_hud else 'OFF'}",
+            self.show_hud,
+        )
+
     def _draw_hud(self, frame: np.ndarray) -> None:
+        if not self.show_hud:
+            return
+
         mouse_u, mouse_v = self._to_original_pixel(self.last_mouse_x, self.last_mouse_y)
         section_count = self._section_count()
         recent_sections = [self.section_names[sid] for sid in self.section_order[-6:]]
@@ -559,7 +602,7 @@ class SectionEditor:
             frame,
             (
                 "Wheel/+/-:zoom  Right-drag or H/J/K/L/Arrow:pan  0:reset view"
-                f"  o:overlap={self.overlap_mode}  q:quit"
+                f"  o:overlap={self.overlap_mode}  i:help  q:quit"
             ),
             (24, 150),
             0.68,
@@ -651,6 +694,7 @@ class SectionEditor:
         h, w = cropped.shape[:2]
         frame[0:h, 0:w] = cropped
         self._draw_hud(frame)
+        self._draw_controls(frame)
         return frame
 
     def _mouse_callback(self, event: int, x: int, y: int, _flags: int, _userdata: object) -> None:
@@ -683,6 +727,9 @@ class SectionEditor:
             return
 
         if event == cv2.EVENT_LBUTTONDOWN:
+            if self._point_in_rect(x, y, self._hud_toggle_rect()):
+                self.show_hud = not self.show_hud
+                return
             if not self._is_inside_map(x, y):
                 return
             u, v = self._to_original_pixel(x, y)
@@ -794,6 +841,8 @@ class SectionEditor:
         print(f"[INFO] Loaded {len(self.section_order)} sections from {csv_path}")
 
     def run(self) -> None:
+        print("[INFO] Press 'i' or click the Help button to toggle the instruction panel.")
+
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window_name, self.window_width, self.window_height)
         cv2.setMouseCallback(self.window_name, self._mouse_callback)
@@ -808,7 +857,9 @@ class SectionEditor:
             key_ascii = key & 0xFF
             if key in (27,) or key_ascii == ord("q"):
                 break
-            if key_ascii == ord("u") and self.current_points:
+            if key_ascii == ord("i"):
+                self.show_hud = not self.show_hud
+            elif key_ascii == ord("u") and self.current_points:
                 self.current_points.pop()
             elif key_ascii == ord("c"):
                 self.current_points.clear()

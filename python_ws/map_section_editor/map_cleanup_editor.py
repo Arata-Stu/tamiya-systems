@@ -70,6 +70,7 @@ class MapCleanupEditor:
 
         self.mode = "paint_black"
         self.brush_radius = max(1, int(brush_radius))
+        self.show_hud = True
         self.undo_stack: Deque[np.ndarray] = deque(maxlen=max(1, int(undo_depth)))
         self.has_unsaved_changes = False
 
@@ -140,6 +141,43 @@ class MapCleanupEditor:
 
     def _push_undo(self) -> None:
         self.undo_stack.append(self.image.copy())
+
+    def _point_in_rect(self, x: int, y: int, rect: Tuple[int, int, int, int]) -> bool:
+        rx, ry, rw, rh = rect
+        return rx <= x < rx + rw and ry <= y < ry + rh
+
+    def _brush_diameter_px(self) -> int:
+        return self.brush_radius * 2 + 1
+
+    def _change_brush_radius(self, delta: int) -> None:
+        self.brush_radius = max(1, min(512, self.brush_radius + delta))
+
+    def _hud_toggle_rect(self) -> Tuple[int, int, int, int]:
+        width = 116
+        height = 34
+        margin = 10
+        return (self.window_width - width - margin, margin, width, height)
+
+    def _brush_minus_rect(self) -> Tuple[int, int, int, int]:
+        width = 34
+        height = 34
+        margin = 10
+        x = self.window_width - 116 - 34 - 146 - margin - 8
+        return (x, margin, width, height)
+
+    def _brush_value_rect(self) -> Tuple[int, int, int, int]:
+        width = 104
+        height = 34
+        margin = 10
+        x = self.window_width - 116 - 104 - 34 - margin - 4
+        return (x, margin, width, height)
+
+    def _brush_plus_rect(self) -> Tuple[int, int, int, int]:
+        width = 34
+        height = 34
+        margin = 10
+        x = self.window_width - 116 - 34 - margin
+        return (x, margin, width, height)
 
     def _brush_value(self) -> int:
         return 0 if self.mode == "paint_black" else 255
@@ -223,7 +261,41 @@ class MapCleanupEditor:
         cv2.addWeighted(overlay, alpha, frame, 1.0 - alpha, 0.0, dst=frame)
         cv2.rectangle(frame, (x0, y0), (x1, y1), (230, 230, 230), 1, cv2.LINE_AA)
 
+    def _draw_button(
+        self,
+        frame: np.ndarray,
+        rect: Tuple[int, int, int, int],
+        label: str,
+        active: bool = False,
+    ) -> None:
+        x, y, w, h = rect
+        fill = (55, 130, 215) if active else (42, 42, 42)
+        border = (235, 235, 235) if active else (185, 185, 185)
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), fill, -1)
+        cv2.addWeighted(overlay, 0.88, frame, 0.12, 0.0, dst=frame)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), border, 1, cv2.LINE_AA)
+
+        (text_w, text_h), baseline = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        text_x = x + max(8, (w - text_w) // 2)
+        text_y = y + max(text_h + 6, (h + text_h) // 2) - baseline
+        self._draw_text_with_outline(frame, label, (text_x, text_y), 0.55, (255, 255, 255), 2)
+
+    def _draw_controls(self, frame: np.ndarray) -> None:
+        self._draw_button(frame, self._brush_minus_rect(), "-", False)
+        self._draw_button(frame, self._brush_value_rect(), f"{self._brush_diameter_px()} px", False)
+        self._draw_button(frame, self._brush_plus_rect(), "+", False)
+        self._draw_button(
+            frame,
+            self._hud_toggle_rect(),
+            f"Help {'ON' if self.show_hud else 'OFF'}",
+            self.show_hud,
+        )
+
     def _draw_hud(self, frame: np.ndarray) -> None:
+        if not self.show_hud:
+            return
+
         mode_text = "black" if self.mode == "paint_black" else "white"
         source_text = "saved output" if self.loaded_saved_output else "raw input"
         dirty_text = "yes" if self.has_unsaved_changes else "no"
@@ -242,7 +314,7 @@ class MapCleanupEditor:
         self._draw_text_with_outline(
             frame,
             (
-                f"Mode: {mode_text}   Brush: {self.brush_radius}px   Zoom: {self.scale:.2f}x"
+                f"Mode: {mode_text}   Brush: {self._brush_diameter_px()}px   Zoom: {self.scale:.2f}x"
                 f"   Cursor: ({cursor_u}, {cursor_v})   Unsaved: {dirty_text}"
             ),
             (24, 78),
@@ -260,7 +332,7 @@ class MapCleanupEditor:
         )
         self._draw_text_with_outline(
             frame,
-            "Left-drag:paint  Right-drag or H/J/K/L/Arrow:pan  Wheel/+/-:zoom  [:smaller ]:larger",
+            "Left-drag:paint  Right-drag or H/J/K/L/Arrow:pan  Wheel/+/-:zoom  [/] or ,/.:brush",
             (24, 138),
             0.58,
             (220, 220, 220),
@@ -268,7 +340,7 @@ class MapCleanupEditor:
         )
         self._draw_text_with_outline(
             frame,
-            "b:black  e:white  u:undo  r:revert unsaved  R:reset raw map  s:save  0:reset view  q/Esc:quit",
+            "b:black  e:white  u:undo  r:revert unsaved  R:reset raw map  i:help  s:save  0:reset view  q/Esc:quit",
             (24, 166),
             0.58,
             (220, 220, 220),
@@ -301,6 +373,7 @@ class MapCleanupEditor:
             cv2.circle(frame, (cursor_x, cursor_y), radius, color, 1, cv2.LINE_AA)
 
         self._draw_hud(frame)
+        self._draw_controls(frame)
         return frame
 
     def _mouse_callback(self, event: int, x: int, y: int, flags: int, _userdata: object) -> None:
@@ -333,6 +406,15 @@ class MapCleanupEditor:
             return
 
         if event == cv2.EVENT_LBUTTONDOWN:
+            if self._point_in_rect(x, y, self._hud_toggle_rect()):
+                self.show_hud = not self.show_hud
+                return
+            if self._point_in_rect(x, y, self._brush_minus_rect()):
+                self._change_brush_radius(-1)
+                return
+            if self._point_in_rect(x, y, self._brush_plus_rect()):
+                self._change_brush_radius(1)
+                return
             if not self._is_inside_map(x, y):
                 return
             self._push_undo()
@@ -362,6 +444,8 @@ class MapCleanupEditor:
         print("[INFO] Launching map cleanup editor.")
         print("[INFO] Paint black to remove branches/noise, or white to reopen track areas.")
         print("[INFO] Press 's' to save the cleaned PNG before closing.")
+        print("[INFO] Press 'i' or click the Help button to toggle the instruction panel.")
+        print("[INFO] Use '[' / ']' or ',' / '.' or the +/- buttons to change brush size.")
 
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window_name, self.window_width, self.window_height)
@@ -377,7 +461,9 @@ class MapCleanupEditor:
             key_ascii = key & 0xFF
             if key in (27,) or key_ascii == ord("q"):
                 break
-            if key_ascii == ord("s"):
+            if key_ascii == ord("i"):
+                self.show_hud = not self.show_hud
+            elif key_ascii == ord("s"):
                 self._save()
             elif key_ascii == ord("u"):
                 self._undo()
@@ -395,10 +481,10 @@ class MapCleanupEditor:
                 self._zoom_at(1.0 / 1.15, self.window_width // 2, self.window_height // 2)
             elif key_ascii == ord("0"):
                 self._reset_view()
-            elif key_ascii in (ord("["), ord("{")):
-                self.brush_radius = max(1, self.brush_radius - 1)
-            elif key_ascii in (ord("]"), ord("}")):
-                self.brush_radius = min(512, self.brush_radius + 1)
+            elif key_ascii in (ord("["), ord("{"), ord(","), ord("<")):
+                self._change_brush_radius(-1)
+            elif key_ascii in (ord("]"), ord("}"), ord("."), ord(">")):
+                self._change_brush_radius(1)
             elif key_ascii == ord("h"):
                 self.pan_x -= 80
                 self._clamp_pan()

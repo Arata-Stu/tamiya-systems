@@ -15,7 +15,7 @@ ament_auto_add_executable(raceline_path_publisher_node
   src/raceline_path_publisher_core.cpp
 )
 
-ament_auto_package(INSTALL_TO_SHARE
+ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR INSTALL_TO_SHARE
   config
   launch
 )
