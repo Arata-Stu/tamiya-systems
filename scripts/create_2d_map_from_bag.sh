@@ -145,7 +145,7 @@ ENABLE_SCP=true
 
 DEFAULT_REMOTE_USER="tamiya"
 DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
-DEFAULT_REMOTE_DIR="/home/tamiya/workspace/tamiya-systems/map/"
+DEFAULT_REMOTE_DIR="/home/tamiya/workspaces/tamiya-systems/map/"
 # ==========================================
 
 CARTOGRAPHER_PID=""
