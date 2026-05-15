@@ -4,6 +4,9 @@ set -eo pipefail
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SYSTEM_LAUNCH_SOURCE_SHARE="$REPO_ROOT/ros2_ws/src/launch/system_launch"
+SETUP_SOURCED="false"
 
 # shellcheck source=scripts/common/tui.sh
 source "$SCRIPT_DIR/common/tui.sh"
@@ -49,7 +52,18 @@ ARG_publish_localization_tf="false"
 ARG_use_section_localizer="false"
 ARG_section_localizer_debug_mode="false"
 ARG_enable_localization_and_mapping="false"
-ARG_bag_manager_param='$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml'
+
+if [[ -d "$SYSTEM_LAUNCH_SOURCE_SHARE" ]]; then
+  BAG_MANAGER_DEFAULT_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/tools/bag_manager.param.yaml"
+  BAG_MANAGER_MAPPING_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/tools/bag_manager_mapping.param.yaml"
+  BAG_MANAGER_E2E_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/tools/bag_manager_e2e.param.yaml"
+else
+  BAG_MANAGER_DEFAULT_PATH='$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml'
+  BAG_MANAGER_MAPPING_PATH='$(find-pkg-share system_launch)/config/tools/bag_manager_mapping.param.yaml'
+  BAG_MANAGER_E2E_PATH='$(find-pkg-share system_launch)/config/tools/bag_manager_e2e.param.yaml'
+fi
+
+ARG_bag_manager_param="$BAG_MANAGER_DEFAULT_PATH"
 
 BAG_MANAGER_PRESETS=(
   default
@@ -58,9 +72,9 @@ BAG_MANAGER_PRESETS=(
 )
 
 BAG_MANAGER_PATHS=(
-  '$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml'
-  '$(find-pkg-share system_launch)/config/tools/bag_manager_mapping.param.yaml'
-  '$(find-pkg-share system_launch)/config/tools/bag_manager_e2e.param.yaml'
+  "$BAG_MANAGER_DEFAULT_PATH"
+  "$BAG_MANAGER_MAPPING_PATH"
+  "$BAG_MANAGER_E2E_PATH"
 )
 
 MODE="production"
@@ -595,6 +609,10 @@ build_command() {
 }
 
 source_setup_if_available() {
+  if [[ "$SETUP_SOURCED" == "true" ]]; then
+    return 0
+  fi
+
   local nounset_was_enabled=0
   if [[ $- == *u* ]]; then
     nounset_was_enabled=1
@@ -615,6 +633,95 @@ source_setup_if_available() {
   if [[ ${nounset_was_enabled} -eq 1 ]]; then
     set -u
   fi
+
+  SETUP_SOURCED="true"
+}
+
+resolve_package_share_dir() {
+  local package_name="$1"
+  local share_dir=""
+  local prefix=""
+
+  if [[ "$package_name" == "system_launch" && -d "$SYSTEM_LAUNCH_SOURCE_SHARE" ]]; then
+    printf '%s\n' "$SYSTEM_LAUNCH_SOURCE_SHARE"
+    return 0
+  fi
+
+  source_setup_if_available
+
+  if ! command -v ros2 >/dev/null 2>&1; then
+    return 1
+  fi
+
+  share_dir="$(ros2 pkg prefix --share "$package_name" 2>/dev/null || true)"
+  if [[ -n "$share_dir" ]]; then
+    printf '%s\n' "$share_dir"
+    return 0
+  fi
+
+  prefix="$(ros2 pkg prefix "$package_name" 2>/dev/null || true)"
+  if [[ -n "$prefix" ]]; then
+    printf '%s\n' "${prefix%/}/share/$package_name"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_find_pkg_share_value() {
+  local value="$1"
+  local token
+  local package_name
+  local share_dir
+
+  while [[ "$value" =~ \$\(find-pkg-share[[:space:]]+([[:alnum:]_]+)\) ]]; do
+    token="${BASH_REMATCH[0]}"
+    package_name="${BASH_REMATCH[1]}"
+
+    if ! share_dir="$(resolve_package_share_dir "$package_name")"; then
+      echo "Failed to resolve package share for: $package_name" >&2
+      exit 1
+    fi
+
+    value="${value/$token/$share_dir}"
+  done
+
+  printf '%s\n' "$value"
+}
+
+resolve_launch_arg_assignment() {
+  local arg="$1"
+  local key
+  local value
+
+  case "$arg" in
+    *:=*)
+      key="${arg%%:=*}"
+      value="${arg#*:=}"
+      printf '%s:=%s\n' "$key" "$(resolve_find_pkg_share_value "$value")"
+      ;;
+    *=*)
+      key="${arg%%=*}"
+      value="${arg#*=}"
+      printf '%s=%s\n' "$key" "$(resolve_find_pkg_share_value "$value")"
+      ;;
+    *)
+      printf '%s\n' "$(resolve_find_pkg_share_value "$arg")"
+      ;;
+  esac
+}
+
+resolve_launch_paths() {
+  local resolved_extra_args=()
+  local arg
+
+  ARG_bag_manager_param="$(resolve_find_pkg_share_value "$ARG_bag_manager_param")"
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    resolved_extra_args+=("$(resolve_launch_arg_assignment "$arg")")
+  done
+
+  EXTRA_ARGS=("${resolved_extra_args[@]}")
 }
 
 while [[ $# -gt 0 ]]; do
@@ -689,6 +796,7 @@ fi
 
 apply_mode_derived_args
 warn_if_mode_incomplete
+resolve_launch_paths
 
 echo "Mode: $MODE"
 echo "Command:"

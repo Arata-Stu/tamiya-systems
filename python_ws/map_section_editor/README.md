@@ -1,7 +1,40 @@
 # map_section_editor
 
-2D map (`map.yaml`) 上でセクションをポリゴン分割し、ROS2ノード用の
-セクション定義CSVを作るGUIツールです。
+2D map 向けの GUI ツール置き場です。
+
+- `section_editor.py`: `map.yaml` 上でセクションをポリゴン分割し、ROS2ノード用のセクション定義CSVを作ります。
+- `map_cleanup_editor.py`: centerline 前処理用。PNG/PGM を黒塗り/白戻しして、cleaned PNG を保存します。
+
+## map_cleanup_editor.py
+
+分岐やノイズで centerline がうまく引けない地図を、人手で少し整えてから
+`generate_centerline.py` / `generate_raceline.py` に渡したいときのツールです。
+
+```bash
+cd python_ws
+python3 map_section_editor/map_cleanup_editor.py \
+  --input ../ros2_ws/src/launch/system_launch/config/simulator/levine.png \
+  --output ./map_section_editor/levine_centerline_input.png
+```
+
+操作:
+
+- 左ドラッグ: 現在のブラシ色で描画
+- `b`: 黒で塗る
+- `e`: 白で戻す
+- `u`: undo
+- `r`: 今回開いた状態に戻す
+- `R`: 元の入力画像に戻す
+- `s`: 保存
+- `[` / `]`: ブラシ半径を変更
+- ホイール / `+` / `-`: ズーム
+- 右ドラッグ or `H/J/K/L` or 矢印キー: パン
+- `q` or `Esc`: 終了
+
+`create_2d_map_from_bag.sh` からは `--edit-map` または `--map-edit-mode auto`
+で呼び出せます。section editor は同スクリプトの転送前メニューからも開けます。
+
+## section_editor.py
 
 ## 使い方
 

@@ -60,6 +60,14 @@ Options:
   --no-centerline     skip centerline CSV generation
   --no-raceline       skip raceline CSV generation
   --no-line-preview   skip centerline/raceline preview image generation
+  --edit-map          always launch GUI map cleanup editor before centerline generation
+  --no-edit-map       never launch GUI map cleanup editor
+  --map-edit-mode MODE
+                      auto|always|never (default: auto)
+  --map-edit-script PATH
+                      path to map_cleanup_editor.py (auto-detect by default)
+  --map-edit-output PATH
+                      path to cleaned PNG output (default: <MAP_NAME>_centerline_input.png)
   --centerline-debug  save centerline debug images (default: enabled when centerline is generated)
   --centerline-debug-dir DIR
                       set centerline debug image output directory
@@ -86,6 +94,7 @@ Outputs:
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.yaml
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline_input.png (optional; hand-edited map cleanup result)
   /record/2d_input/<bag_name>/<MAP_NAME>_2d_input_<timestamp>/ (when --run-vslam or --use-vslam-odom)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_raceline.csv (optional; generated unless --no-raceline)
@@ -100,9 +109,10 @@ Interactive flow:
   3) map 名を入力
   4) Cartographer -> PNG変換
   5) centerline 生成の可否を確認（debug はデフォルト有効）
-  6) raceline 生成の可否を確認
-  7) centerline / raceline preview画像を生成
-  8) scp 転送可否を確認
+  6) 必要なら GUI で map PNG/PGM を黒塗り修正して保存
+  7) raceline 生成の可否を確認
+  8) centerline / raceline preview画像を生成
+  9) 転送前メニューで section edit / scp / 終了 を選択
 EOF
 }
 
@@ -119,6 +129,10 @@ PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
 ENABLE_RACELINE=true
 ENABLE_LINE_PREVIEW=true
+MAP_EDIT_MODE="auto"
+MAP_EDIT_ENABLED=false
+MAP_EDIT_SCRIPT_PATH=""
+MAP_EDIT_OUTPUT_PATH=""
 CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
@@ -332,6 +346,26 @@ while (($#)); do
         --no-line-preview)
             ENABLE_LINE_PREVIEW=false
             shift
+            ;;
+        --edit-map)
+            MAP_EDIT_MODE="always"
+            shift
+            ;;
+        --no-edit-map)
+            MAP_EDIT_MODE="never"
+            shift
+            ;;
+        --map-edit-mode)
+            MAP_EDIT_MODE="$2"
+            shift 2
+            ;;
+        --map-edit-script)
+            MAP_EDIT_SCRIPT_PATH="$2"
+            shift 2
+            ;;
+        --map-edit-output)
+            MAP_EDIT_OUTPUT_PATH="$2"
+            shift 2
             ;;
         --centerline-debug)
             CENTERLINE_DEBUG=true
@@ -621,6 +655,8 @@ PBSTREAM_PATH="${MAP_STEM}.pbstream"
 MAP_YAML_PATH="${MAP_STEM}.yaml"
 MAP_PGM_PATH="${MAP_STEM}.pgm"
 MAP_PNG_PATH="${MAP_STEM}.png"
+SECTION_OUTPUT_PATH="${OUT_DIR}/sections_pixels.csv"
+SECTION_GATE_OUTPUT_PATH="${OUT_DIR}/sections_pixels_gates.csv"
 CENTERLINE_OUTPUT_PATH="${MAP_STEM}_centerline.csv"
 RACELINE_OUTPUT_PATH="${MAP_STEM}_raceline.csv"
 LINE_PREVIEW_OUTPUT_PATH="${MAP_STEM}_lines.png"
@@ -841,6 +877,209 @@ resolve_line_preview_script() {
     done
 
     return 1
+}
+
+resolve_map_edit_script() {
+    local script_dir
+    local candidate
+
+    if [ -n "${MAP_EDIT_SCRIPT_PATH}" ]; then
+        if [ -f "${MAP_EDIT_SCRIPT_PATH}" ]; then
+            echo "${MAP_EDIT_SCRIPT_PATH}"
+            return 0
+        fi
+        return 1
+    fi
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for candidate in \
+        "/python_ws/map_section_editor/map_cleanup_editor.py" \
+        "${script_dir}/../python_ws/map_section_editor/map_cleanup_editor.py" \
+        "${PWD}/python_ws/map_section_editor/map_cleanup_editor.py"; do
+        if [ -f "${candidate}" ]; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+resolve_section_editor_script() {
+    local script_dir
+    local candidate
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for candidate in \
+        "/python_ws/map_section_editor/section_editor.py" \
+        "${script_dir}/../python_ws/map_section_editor/section_editor.py" \
+        "${PWD}/python_ws/map_section_editor/section_editor.py"; do
+        if [ -f "${candidate}" ]; then
+            echo "${candidate}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+prompt_map_edit() {
+    local edit_choice
+
+    if [ "${ENABLE_CENTERLINE}" != true ]; then
+        MAP_EDIT_ENABLED=false
+        return 0
+    fi
+
+    case "${MAP_EDIT_MODE}" in
+        always)
+            MAP_EDIT_ENABLED=true
+            ;;
+        never)
+            MAP_EDIT_ENABLED=false
+            ;;
+        auto)
+            MAP_EDIT_ENABLED=false
+            if [ ! -t 0 ]; then
+                return 0
+            fi
+            echo ""
+            read -r -p "centerline前に map を手修正しますか？ (y/N, Enterでスキップ): " edit_choice
+            if [[ "${edit_choice:-n}" =~ ^[Yy]$ ]]; then
+                MAP_EDIT_ENABLED=true
+            fi
+            ;;
+        *)
+            echo "Invalid --map-edit-mode: ${MAP_EDIT_MODE}" >&2
+            exit 1
+            ;;
+    esac
+}
+
+run_map_edit() {
+    local input_map_path="$1"
+    local map_edit_script_path
+    local -a map_edit_cmd
+
+    if [ "${MAP_EDIT_ENABLED}" != true ]; then
+        echo "[prep] Skip GUI map cleanup"
+        return 0
+    fi
+
+    echo "[prep] Launch GUI map cleanup"
+
+    if [ ! -f "${input_map_path}" ]; then
+        echo "Warning: map input not found for cleanup: ${input_map_path}" >&2
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Warning: python3 not found. Skip GUI map cleanup." >&2
+        return 0
+    fi
+
+    if ! map_edit_script_path="$(resolve_map_edit_script)"; then
+        if [ -n "${MAP_EDIT_SCRIPT_PATH}" ]; then
+            echo "Warning: map cleanup editor not found: ${MAP_EDIT_SCRIPT_PATH}" >&2
+        else
+            echo "Warning: map_cleanup_editor.py not found. Skip GUI map cleanup." >&2
+        fi
+        return 0
+    fi
+
+    if [ -z "${MAP_EDIT_OUTPUT_PATH}" ]; then
+        MAP_EDIT_OUTPUT_PATH="${MAP_STEM}_centerline_input.png"
+    fi
+
+    map_edit_cmd=(
+        python3 "${map_edit_script_path}"
+        --input "${input_map_path}"
+        --output "${MAP_EDIT_OUTPUT_PATH}"
+    )
+
+    if ! "${map_edit_cmd[@]}"; then
+        echo "Warning: map cleanup editor failed. Keep original map for centerline." >&2
+        return 0
+    fi
+
+    if [ -f "${MAP_EDIT_OUTPUT_PATH}" ]; then
+        CENTERLINE_INPUT_MAP="${MAP_EDIT_OUTPUT_PATH}"
+        echo "  - cleaned map: ${MAP_EDIT_OUTPUT_PATH}"
+    else
+        echo "Warning: cleaned map was not saved. Keep original map for centerline." >&2
+    fi
+}
+
+run_section_edit() {
+    local section_editor_script_path
+    local -a section_editor_cmd
+
+    echo "[post] Launch section editor"
+
+    if [ ! -f "${MAP_YAML_PATH}" ]; then
+        echo "Warning: map yaml not found for section edit: ${MAP_YAML_PATH}" >&2
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Warning: python3 not found. Skip section edit." >&2
+        return 0
+    fi
+
+    if ! section_editor_script_path="$(resolve_section_editor_script)"; then
+        echo "Warning: section_editor.py not found. Skip section edit." >&2
+        return 0
+    fi
+
+    section_editor_cmd=(
+        python3 "${section_editor_script_path}"
+        --map-yaml "${MAP_YAML_PATH}"
+        --output "${SECTION_OUTPUT_PATH}"
+    )
+
+    if ! "${section_editor_cmd[@]}"; then
+        echo "Warning: section editor failed." >&2
+        return 0
+    fi
+
+    if [ -f "${SECTION_OUTPUT_PATH}" ]; then
+        echo "  - sections: ${SECTION_OUTPUT_PATH}"
+    else
+        echo "Warning: section CSV was not saved." >&2
+    fi
+
+    if [ -f "${SECTION_GATE_OUTPUT_PATH}" ]; then
+        echo "  - gates: ${SECTION_GATE_OUTPUT_PATH}"
+    fi
+}
+
+prompt_pre_transfer_action() {
+    local action_choice
+
+    while true; do
+        echo ""
+        echo "転送前の操作を選んでください:"
+        echo "  1) section edit を開く"
+        echo "  2) scp 転送へ進む"
+        echo "  3) 何もせず終了"
+        read -r -p "選択 [2]: " action_choice
+
+        case "${action_choice:-2}" in
+            1|section|sections|edit|s)
+                run_section_edit
+                ;;
+            2|transfer|scp|t)
+                return 0
+                ;;
+            3|skip|exit|quit|q)
+                echo "転送をスキップしました。"
+                exit 0
+                ;;
+            *)
+                echo "無効な選択です: ${action_choice}" >&2
+                ;;
+        esac
+    done
 }
 
 generate_centerline() {
@@ -1291,6 +1530,8 @@ CENTERLINE_INPUT_MAP="${MAP_PGM_PATH}"
 if [ -f "${MAP_PNG_PATH}" ]; then
     CENTERLINE_INPUT_MAP="${MAP_PNG_PATH}"
 fi
+prompt_map_edit
+run_map_edit "${CENTERLINE_INPUT_MAP}"
 generate_centerline "${CENTERLINE_INPUT_MAP}"
 
 # ==========================================
@@ -1313,13 +1554,7 @@ if [ "${ENABLE_SCP}" != true ]; then
     exit 0
 fi
 
-read -p "2D mapを作成しました。送信しますか？ (Y/n, Enterで送信): " SEND_CONFIRM
-SEND_CONFIRM=${SEND_CONFIRM:-y}
-
-if [[ ! "$SEND_CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "送信をスキップしました。"
-    exit 0
-fi
+prompt_pre_transfer_action
 
 echo ""
 read -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " REMOTE_USER
