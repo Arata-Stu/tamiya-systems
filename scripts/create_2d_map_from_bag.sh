@@ -535,7 +535,7 @@ discover_lightweight_bag_candidates() {
 build_lightweight_record_topics() {
     LIGHTWEIGHT_RECORD_TOPICS=(
         /visual_slam/tracking/odometry
-        /scan
+        "${SCAN_TOPIC}"
         /tf
         /tf_static
     )
@@ -1522,11 +1522,14 @@ fi
 echo "[8/8] Play bag for Cartographer and save 2D map"
 if [ "${USING_LIGHTWEIGHT_BAG}" = true ]; then
     echo "  - using lightweight bag: ${BAG_PATH}"
-    ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
-elif [ "${PLAY_ALL_TOPICS}" = true ]; then
+fi
+
+if [ "${PLAY_ALL_TOPICS}" = true ]; then
     echo "  - mode: all topics"
     ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
 else
+    # Cartographer only needs the scan, odometry topic, and static sensor TFs.
+    # Replaying VSLAM's dynamic /tf here can conflict with Cartographer's own TF output.
     PLAY_TOPICS=("${SCAN_TOPIC}" "/tf_static")
     if [ -n "${ODOM_TOPIC}" ]; then
         PLAY_TOPICS+=("${ODOM_TOPIC}")
