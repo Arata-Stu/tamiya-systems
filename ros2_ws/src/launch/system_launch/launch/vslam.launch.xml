@@ -7,6 +7,10 @@
     <arg name="save_map_path" default="" />
     <arg name="load_map_path" default="" />
     <arg name="enable_localization_and_mapping" default="true" />
+    <arg name="publish_map_to_odom_tf" default="false" />
+    <arg name="enable_slam_visualization" default="false" />
+    <arg name="enable_observations_view" default="false" />
+    <arg name="enable_landmarks_view" default="false" />
 
     <load_composable_node target="$(var camera_container_name)">
         <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::RectifyNode" name="rectify_node_left">
@@ -56,6 +60,10 @@
             <param name="save_map_folder_path" value="$(var save_map_path)"/>
             <param name="load_map_folder_path" value="$(var load_map_path)"/>
             <param name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
+            <param name="publish_map_to_odom_tf" value="$(var publish_map_to_odom_tf)"/>
+            <param name="enable_slam_visualization" value="$(var enable_slam_visualization)"/>
+            <param name="enable_observations_view" value="$(var enable_observations_view)"/>
+            <param name="enable_landmarks_view" value="$(var enable_landmarks_view)"/>
 
             <remap from="/visual_slam/image_0" to="/camera/left/image_rect_mono"/>
             <remap from="/visual_slam/camera_info_0" to="/camera/left/camera_info_rect"/>
