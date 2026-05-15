@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SYSTEM_LAUNCH_SOURCE_SHARE="${REPO_ROOT}/ros2_ws/src/launch/system_launch"
+SYSTEM_LAUNCH_CMD=()
+
 source_setup_script() {
     local setup_path="$1"
     local nounset_was_enabled=0
@@ -30,6 +35,17 @@ source_setup_if_available() {
 
 source_setup_if_available
 
+build_system_launch_cmd() {
+    local launch_file="$1"
+
+    SYSTEM_LAUNCH_CMD=(ros2 launch)
+    if [ -f "${SYSTEM_LAUNCH_SOURCE_SHARE}/launch/${launch_file}" ]; then
+        SYSTEM_LAUNCH_CMD+=("${SYSTEM_LAUNCH_SOURCE_SHARE}/launch/${launch_file}")
+    else
+        SYSTEM_LAUNCH_CMD+=(system_launch "${launch_file}")
+    fi
+}
+
 usage() {
     cat <<'EOF'
 Usage:
@@ -45,6 +61,8 @@ Options:
   --use-vslam-odom    shorthand of --odom-topic /visual_slam/tracking/odometry
   --run-vslam         replay stereo/imu topics and generate /visual_slam/tracking/odometry offline
   --no-vslam          do not launch offline vslam even if --use-vslam-odom is specified
+  --vslam-vis         enable VSLAM visualization topics and record them into the lightweight bag
+  --no-vslam-vis      disable VSLAM visualization topics (default)
   --image-width PX    camera width for offline vslam launch (default: 424)
   --image-height PX   camera height for offline vslam launch (default: 240)
   --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
@@ -125,6 +143,7 @@ ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
 MODE="default"
 RUN_VSLAM=false
+VSLAM_VIS_ENABLED=false
 PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
 ENABLE_RACELINE=true
@@ -153,6 +172,7 @@ USE_IMU=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
 VSLAM_MAP_DIR=""
 LIGHTWEIGHT_BAG_DIR=""
+USING_LIGHTWEIGHT_BAG=false
 OFFLINE_TF_PID=""
 OFFLINE_TF_USES_SETSID=false
 ENABLE_SCP=true
@@ -173,6 +193,7 @@ RECORDER_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 LIGHTWEIGHT_BAG_CANDIDATES=()
+LIGHTWEIGHT_RECORD_TOPICS=()
 
 apply_mode() {
     case "$1" in
@@ -292,6 +313,14 @@ while (($#)); do
             ;;
         --no-vslam)
             RUN_VSLAM=false
+            shift
+            ;;
+        --vslam-vis)
+            VSLAM_VIS_ENABLED=true
+            shift
+            ;;
+        --no-vslam-vis)
+            VSLAM_VIS_ENABLED=false
             shift
             ;;
         --image-width)
@@ -503,6 +532,35 @@ discover_lightweight_bag_candidates() {
     [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -gt 0 ]
 }
 
+build_lightweight_record_topics() {
+    LIGHTWEIGHT_RECORD_TOPICS=(
+        /visual_slam/tracking/odometry
+        /scan
+        /tf
+        /tf_static
+    )
+
+    if [ "${VSLAM_VIS_ENABLED}" = true ]; then
+        LIGHTWEIGHT_RECORD_TOPICS+=(
+            /visual_slam/status
+            /visual_slam/tracking/vo_pose
+            /visual_slam/tracking/vo_path
+            /visual_slam/tracking/slam_path
+            /visual_slam/vis/slam_odometry
+            /visual_slam/vis/velocity
+            /visual_slam/vis/gravity
+            /visual_slam/vis/landmarks_cloud
+            /visual_slam/vis/observations_cloud
+            /visual_slam/vis/loop_closure_cloud
+            /visual_slam/vis/pose_graph_nodes
+            /visual_slam/vis/pose_graph_edges
+            /visual_slam/vis/pose_graph_edges2
+            /visual_slam/vis/localizer
+            /visual_slam/vis/localizer_map_cloud
+        )
+    fi
+}
+
 select_rosbag_path_interactive() {
     local choice
     local i
@@ -643,6 +701,7 @@ if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odome
     if [ "${PIPELINE_MODE}" = "fast" ]; then
         select_lightweight_bag_interactive
         RUN_VSLAM=false
+        USING_LIGHTWEIGHT_BAG=true
         BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
     fi
 fi
@@ -1320,7 +1379,11 @@ if [ -z "${VSLAM_MAP_DIR}" ]; then
     VSLAM_MAP_DIR="${OUT_DIR}/cuvslam_map"
 fi
 if [ -z "${LIGHTWEIGHT_BAG_DIR}" ]; then
-    LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
+    if [ "${VSLAM_VIS_ENABLED}" = true ]; then
+        LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_vis_$(date +%Y%m%d_%H%M%S)"
+    else
+        LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
+    fi
 fi
 VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
 TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
@@ -1339,8 +1402,9 @@ fi
 # ==========================================
 if [ "${RUN_VSLAM}" = true ]; then
     echo "[1/8] Launch offline TF + vslam (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+    build_system_launch_cmd "offline_sensor_tf.launch.xml"
     launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        ros2 launch system_launch offline_sensor_tf.launch.xml \
+        "${SYSTEM_LAUNCH_CMD[@]}" \
         > "${TF_LOG_PATH}" 2>&1
 
     sleep 2
@@ -1350,12 +1414,16 @@ if [ "${RUN_VSLAM}" = true ]; then
 
     sleep 2
 
+    build_system_launch_cmd "vslam.launch.xml"
     launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-        ros2 launch system_launch vslam.launch.xml \
+        "${SYSTEM_LAUNCH_CMD[@]}" \
         "image_width:=${IMAGE_WIDTH}" \
         "image_height:=${IMAGE_HEIGHT}" \
         "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
         "enable_localization_and_mapping:=true" \
+        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
+        "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
+        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
         "save_map_path:=${VSLAM_MAP_DIR}" \
         > "${VSLAM_LOG_PATH}" 2>&1
 
@@ -1366,13 +1434,13 @@ if [ "${RUN_VSLAM}" = true ]; then
     fi
 
     echo "[3/8] Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
+    build_lightweight_record_topics
+    echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
+    echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
     launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
         ros2 bag record \
         -o "${LIGHTWEIGHT_BAG_DIR}" \
-        /visual_slam/tracking/odometry \
-        /scan \
-        /tf \
-        /tf_static
+        "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
 
     sleep 2
 
@@ -1407,6 +1475,7 @@ if [ "${RUN_VSLAM}" = true ]; then
 
     stop_recorder
     stop_vslam
+    USING_LIGHTWEIGHT_BAG=true
     BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
 else
     echo "[1/8] Skip offline VSLAM"
@@ -1429,13 +1498,15 @@ if [ -n "${ODOM_TOPIC}" ]; then
 fi
 
 if command -v setsid >/dev/null 2>&1; then
+    build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
     CARTOGRAPHER_USES_SETSID=true
-    setsid ros2 launch system_launch cartographer_2d_mapping.launch.xml \
+    setsid "${SYSTEM_LAUNCH_CMD[@]}" \
         "${LAUNCH_ARGS[@]}" \
         > "${MAP_LOG_PATH}" 2>&1 &
 else
+    build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
     CARTOGRAPHER_USES_SETSID=false
-    ros2 launch system_launch cartographer_2d_mapping.launch.xml \
+    "${SYSTEM_LAUNCH_CMD[@]}" \
         "${LAUNCH_ARGS[@]}" \
         > "${MAP_LOG_PATH}" 2>&1 &
 fi
@@ -1449,7 +1520,7 @@ if ! wait_for_service "/write_state" 60; then
 fi
 
 echo "[8/8] Play bag for Cartographer and save 2D map"
-if [ "${RUN_VSLAM}" = true ]; then
+if [ "${USING_LIGHTWEIGHT_BAG}" = true ]; then
     echo "  - using lightweight bag: ${BAG_PATH}"
     ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
 elif [ "${PLAY_ALL_TOPICS}" = true ]; then
