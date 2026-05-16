@@ -11,7 +11,7 @@ directly.
 - `tmux.sh`: create tmux layouts for robot, mapping, Python, and simulator work.
 - `monitor.sh`: terminal monitoring dashboard.
 - `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `1280x720x30` 録画に合わせた preset。
-- `create_2d_map_from_bag.sh`: 2D map 作成用。`--mode 2d_slam` では、まず source bag から VSLAM map を作り、その保存済み VSLAM map を使った map-localization の再生で provisional 2D map を作ります。既定ではその後さらに、固定した 2D map の scan global localization 結果を `visual_slam/set_slam_pose` に入れて、VSLAM map だけを source bag から作り直す 3 パス目も試みます。既存の lightweight bag から 2D map 作成だけをやり直したい場合は fast path も使えます。centerline 前に GUI で map を手修正したい場合は `--edit-map`、都度確認したい場合は既定の `--map-edit-mode auto` を使います。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
+- `create_2d_map_from_bag.sh`: 2D map 作成用。`--mode 2d_slam` では、まず source bag から VSLAM map を作り、次にその保存済み VSLAM map を使った map-localization をもう一度 source bag へ流し、既定では先頭 `3` 秒の warmup を捨ててから lightweight `scan + odom + tf` bag を記録します。その post-warmup lightweight bag で provisional 2D map を作り、さらに固定した 2D map の scan global localization 結果を `visual_slam/set_slam_pose` に入れて、VSLAM map だけを source bag から作り直す 3 パス目も試みます。warmup 秒数は `--vslam-warmup-sec` で変更できます。既存の lightweight bag から 2D map 作成だけをやり直したい場合は fast path も使えます。centerline 前に GUI で map を手修正したい場合は `--edit-map`、都度確認したい場合は既定の `--map-edit-mode auto` を使います。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
 - `scp_data.sh`: data transfer helper.
 
 ## Terminal viewers
