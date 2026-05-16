@@ -1441,7 +1441,11 @@ wait_for_topic_message() {
 call_rosbag_player_service() {
     local service_suffix="$1"
     local service_type="$2"
-    local request="${3:-{}}"
+    local request="${3-}"
+
+    if [ -z "${request}" ]; then
+        request='{}'
+    fi
 
     ros2 service call "/rosbag2_player/${service_suffix}" "${service_type}" \
         "${request}" > /dev/null
