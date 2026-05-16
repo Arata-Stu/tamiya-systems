@@ -1016,23 +1016,6 @@ launch_lightweight_recorder_now() {
         "$@"
 }
 
-launch_lightweight_recorder_after_bag_delay() {
-    local output_dir="$1"
-    local bag_delay_sec="$2"
-    local wall_delay_sec=""
-    local record_cmd_quoted=""
-    shift 2
-
-    if ! wall_delay_sec="$(compute_wall_delay_from_bag_delay "${bag_delay_sec}" "${PLAY_RATE}")"; then
-        echo "Failed to compute recorder delay from warmup=${bag_delay_sec}s and rate=${PLAY_RATE}" >&2
-        return 1
-    fi
-
-    printf -v record_cmd_quoted '%q ' ros2 bag record -o "${output_dir}" "$@"
-    launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
-        bash -lc "sleep ${wall_delay_sec}; exec ${record_cmd_quoted}"
-}
-
 launch_background_process() {
     local pid_var_name="$1"
     local setsid_var_name="$2"
@@ -1948,6 +1931,7 @@ VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
 TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LOCALIZATION_LOG_PATH="/tmp/offline_vslam_localization_$(date +%Y%m%d_%H%M%S).log"
 TF_LOCALIZATION_LOG_PATH="/tmp/offline_vslam_localization_tf_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_LOCALIZATION_PLAYER_LOG_PATH="/tmp/offline_vslam_localization_player_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LOCALIZATION_PARAM_PATH="/tmp/offline_vslam_localization_param_$(date +%Y%m%d_%H%M%S).yaml"
 
 if [ "${RUN_VSLAM}" = true ]; then
@@ -2040,10 +2024,16 @@ fi
 # 2. Create a post-warmup lightweight bag from saved VSLAM-map localization
 # ==========================================
 if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
+    WARMUP_WALL_DELAY_SEC="$(compute_wall_delay_from_bag_delay "${VSLAM_WARMUP_SEC}" "${PLAY_RATE}")" || {
+        echo "Failed to compute VSLAM warmup delay from ${VSLAM_WARMUP_SEC}s at rate ${PLAY_RATE}" >&2
+        exit 1
+    }
+
     echo "[6/8] Replay source rosbag with saved VSLAM map localization"
     echo "  - source map: ${VSLAM_MAP_DIR}"
     echo "  - lightweight bag: ${LIGHTWEIGHT_BAG_DIR}"
     echo "  - VSLAM warmup before record: ${VSLAM_WARMUP_SEC}s"
+    echo "  - wall clock warmup: ${WARMUP_WALL_DELAY_SEC}s"
     echo "  - logs: ${TF_LOCALIZATION_LOG_PATH}, ${VSLAM_LOCALIZATION_LOG_PATH}"
 
     if ! build_vslam_localization_param_file "${VSLAM_LOCALIZATION_PARAM_PATH}"; then
@@ -2082,28 +2072,51 @@ if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
         exit 1
     fi
 
-    build_lightweight_record_topics
-    echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
-    echo "  - record starts after warmup"
-    echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
-    if ! launch_lightweight_recorder_after_bag_delay "${LIGHTWEIGHT_BAG_DIR}" "${VSLAM_WARMUP_SEC}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"; then
-        echo "Failed to launch delayed lightweight recorder." >&2
-        exit 1
-    fi
-    sleep 1
-
-    echo "[7/8] Play source rosbag for VSLAM localization replay"
+    echo "[7/8] Start paused rosbag player for VSLAM warmup"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
-        echo "  - mode: all topics"
-        ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}"
+        launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
+            ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused \
+            > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
     else
         build_source_play_topics
         PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
-
-        echo "  - mode: filtered topics"
-        echo "  - topics: ${PLAY_TOPICS[*]}"
-        ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --topics "${PLAY_TOPICS[@]}"
+        launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
+            ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused --topics "${PLAY_TOPICS[@]}" \
+            > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
     fi
+
+    if ! wait_for_service "/rosbag2_player/resume" 30 || \
+       ! wait_for_service "/rosbag2_player/pause" 30; then
+        echo "rosbag2 player services were not ready. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
+        exit 1
+    fi
+
+    echo "  - warm up VSLAM before recording"
+    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+        echo "Failed to resume paused player for VSLAM warmup." >&2
+        exit 1
+    fi
+    sleep "${WARMUP_WALL_DELAY_SEC}"
+    if ! call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}"; then
+        echo "Failed to pause player after VSLAM warmup. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
+        exit 1
+    fi
+
+    build_lightweight_record_topics
+    echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
+    echo "  - record starts after warmup pause"
+    echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
+    launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
+    sleep 2
+
+    echo "  - resume player and record post-warmup bag"
+    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+        echo "Failed to resume player for post-warmup recording." >&2
+        exit 1
+    fi
+    wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
+    ROSBAG_PLAYER_PID=""
+    ROSBAG_PLAYER_USES_SETSID=false
 
     stop_recorder
     stop_vslam
