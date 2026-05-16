@@ -695,7 +695,19 @@ except Exception as exc:
     raise SystemExit(f"PyYAML not available: {exc}")
 
 with open(sys.argv[1], "r", encoding="utf-8") as f:
-    msg = yaml.safe_load(f) or {}
+    docs = [doc for doc in yaml.safe_load_all(f) if doc]
+
+if not docs:
+    raise SystemExit("No YAML documents found in localization result")
+
+msg = None
+for doc in reversed(docs):
+    if isinstance(doc, dict) and ((doc.get("pose") or {}).get("pose")):
+        msg = doc
+        break
+
+if msg is None:
+    raise SystemExit("No pose-bearing YAML document found in localization result")
 
 pose = ((msg.get("pose") or {}).get("pose") or {})
 position = pose.get("position") or {}
