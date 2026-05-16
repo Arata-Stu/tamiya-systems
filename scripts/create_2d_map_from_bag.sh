@@ -4,8 +4,89 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SYSTEM_LAUNCH_SOURCE_SHARE="${REPO_ROOT}/ros2_ws/src/launch/system_launch"
+SYSTEM_LAUNCH_SOURCE_SHARE=""
 SYSTEM_LAUNCH_CMD=()
+
+resolve_system_launch_source_share() {
+    local candidate
+
+    for candidate in \
+        "${CREATE_2D_MAP_SYSTEM_LAUNCH_SOURCE_SHARE:-}" \
+        "/workspaces/src/launch/system_launch" \
+        "${REPO_ROOT}/ros2_ws/src/launch/system_launch" \
+        "${REPO_ROOT}" \
+        "${PWD}/ros2_ws/src/launch/system_launch" \
+        "${PWD}"; do
+        [ -n "${candidate}" ] || continue
+        if [ -d "${candidate}/launch" ] && [ -d "${candidate}/config" ]; then
+            (cd "${candidate}" && pwd)
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+resolve_system_launch_config_file() {
+    local relative_path="$1"
+    local pkg_prefix=""
+
+    if [ -n "${SYSTEM_LAUNCH_SOURCE_SHARE}" ] && \
+       [ -f "${SYSTEM_LAUNCH_SOURCE_SHARE}/config/${relative_path}" ]; then
+        echo "${SYSTEM_LAUNCH_SOURCE_SHARE}/config/${relative_path}"
+        return 0
+    fi
+
+    if command -v ros2 >/dev/null 2>&1; then
+        pkg_prefix="$(ros2 pkg prefix system_launch 2>/dev/null || true)"
+        if [ -n "${pkg_prefix}" ] && \
+           [ -f "${pkg_prefix}/share/system_launch/config/${relative_path}" ]; then
+            echo "${pkg_prefix}/share/system_launch/config/${relative_path}"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+resolve_repo_file() {
+    local relative_path="$1"
+    local candidate_root
+
+    for candidate_root in \
+        "${CREATE_2D_MAP_PROJECT_ROOT:-}" \
+        "/workspaces/src/launch/system_launch" \
+        "${REPO_ROOT}" \
+        "${SYSTEM_LAUNCH_SOURCE_SHARE}" \
+        "${PWD}"; do
+        [ -n "${candidate_root}" ] || continue
+        if [ -f "${candidate_root}/${relative_path}" ]; then
+            echo "${candidate_root}/${relative_path}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+resolve_python_ws_file() {
+    local relative_path="$1"
+    local candidate_root
+
+    for candidate_root in \
+        "${CREATE_2D_MAP_PYTHON_WS_ROOT:-}" \
+        "/python_ws" \
+        "${REPO_ROOT}/python_ws" \
+        "${PWD}/python_ws"; do
+        [ -n "${candidate_root}" ] || continue
+        if [ -f "${candidate_root}/${relative_path}" ]; then
+            echo "${candidate_root}/${relative_path}"
+            return 0
+        fi
+    done
+
+    return 1
+}
 
 source_setup_script() {
     local setup_path="$1"
@@ -34,6 +115,8 @@ source_setup_if_available() {
 }
 
 source_setup_if_available
+
+SYSTEM_LAUNCH_SOURCE_SHARE="$(resolve_system_launch_source_share || true)"
 
 build_system_launch_cmd() {
     local launch_file="$1"
@@ -642,7 +725,12 @@ PY
 
 build_vslam_localization_param_file() {
     local output_path="$1"
-    local base_param_path="${SYSTEM_LAUNCH_SOURCE_SHARE}/config/localization/vslam.param.yaml"
+    local base_param_path=""
+
+    if ! base_param_path="$(resolve_system_launch_config_file "localization/vslam.param.yaml")"; then
+        echo "Unable to locate system_launch/config/localization/vslam.param.yaml" >&2
+        return 1
+    fi
 
     python3 - "${base_param_path}" "${output_path}" <<'PY'
 import sys
@@ -970,9 +1058,6 @@ update_yaml_image_path() {
 }
 
 resolve_centerline_script() {
-    local script_dir
-    local candidate
-
     if [ -n "${CENTERLINE_SCRIPT_PATH}" ]; then
         if [ -f "${CENTERLINE_SCRIPT_PATH}" ]; then
             echo "${CENTERLINE_SCRIPT_PATH}"
@@ -981,24 +1066,10 @@ resolve_centerline_script() {
         return 1
     fi
 
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    for candidate in \
-        "/python_ws/data_analysis/generate_centerline.py" \
-        "${script_dir}/../python_ws/data_analysis/generate_centerline.py" \
-        "${PWD}/python_ws/data_analysis/generate_centerline.py"; do
-        if [ -f "${candidate}" ]; then
-            echo "${candidate}"
-            return 0
-        fi
-    done
-
-    return 1
+    resolve_python_ws_file "data_analysis/generate_centerline.py"
 }
 
 resolve_raceline_script() {
-    local script_dir
-    local candidate
-
     if [ -n "${RACELINE_SCRIPT_PATH}" ]; then
         if [ -f "${RACELINE_SCRIPT_PATH}" ]; then
             echo "${RACELINE_SCRIPT_PATH}"
@@ -1007,24 +1078,10 @@ resolve_raceline_script() {
         return 1
     fi
 
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    for candidate in \
-        "/python_ws/data_analysis/generate_raceline.py" \
-        "${script_dir}/../python_ws/data_analysis/generate_raceline.py" \
-        "${PWD}/python_ws/data_analysis/generate_raceline.py"; do
-        if [ -f "${candidate}" ]; then
-            echo "${candidate}"
-            return 0
-        fi
-    done
-
-    return 1
+    resolve_python_ws_file "data_analysis/generate_raceline.py"
 }
 
 resolve_line_preview_script() {
-    local script_dir
-    local candidate
-
     if [ -n "${LINE_PREVIEW_SCRIPT_PATH}" ]; then
         if [ -f "${LINE_PREVIEW_SCRIPT_PATH}" ]; then
             echo "${LINE_PREVIEW_SCRIPT_PATH}"
@@ -1033,24 +1090,10 @@ resolve_line_preview_script() {
         return 1
     fi
 
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    for candidate in \
-        "/python_ws/data_analysis/visualize_race_lines.py" \
-        "${script_dir}/../python_ws/data_analysis/visualize_race_lines.py" \
-        "${PWD}/python_ws/data_analysis/visualize_race_lines.py"; do
-        if [ -f "${candidate}" ]; then
-            echo "${candidate}"
-            return 0
-        fi
-    done
-
-    return 1
+    resolve_python_ws_file "data_analysis/visualize_race_lines.py"
 }
 
 resolve_map_edit_script() {
-    local script_dir
-    local candidate
-
     if [ -n "${MAP_EDIT_SCRIPT_PATH}" ]; then
         if [ -f "${MAP_EDIT_SCRIPT_PATH}" ]; then
             echo "${MAP_EDIT_SCRIPT_PATH}"
@@ -1059,36 +1102,11 @@ resolve_map_edit_script() {
         return 1
     fi
 
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    for candidate in \
-        "/python_ws/map_section_editor/map_cleanup_editor.py" \
-        "${script_dir}/../python_ws/map_section_editor/map_cleanup_editor.py" \
-        "${PWD}/python_ws/map_section_editor/map_cleanup_editor.py"; do
-        if [ -f "${candidate}" ]; then
-            echo "${candidate}"
-            return 0
-        fi
-    done
-
-    return 1
+    resolve_python_ws_file "map_section_editor/map_cleanup_editor.py"
 }
 
 resolve_section_editor_script() {
-    local script_dir
-    local candidate
-
-    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    for candidate in \
-        "/python_ws/map_section_editor/section_editor.py" \
-        "${script_dir}/../python_ws/map_section_editor/section_editor.py" \
-        "${PWD}/python_ws/map_section_editor/section_editor.py"; do
-        if [ -f "${candidate}" ]; then
-            echo "${candidate}"
-            return 0
-        fi
-    done
-
-    return 1
+    resolve_python_ws_file "map_section_editor/section_editor.py"
 }
 
 prompt_map_edit() {
