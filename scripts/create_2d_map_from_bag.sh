@@ -745,7 +745,6 @@ with open(sys.argv[1], "r", encoding="utf-8") as f:
 
 params = data.setdefault("/**", {}).setdefault("ros__parameters", {})
 params["localize_on_startup"] = True
-params["enable_localization_n_mapping"] = False
 
 with open(sys.argv[2], "w", encoding="utf-8") as f:
     yaml.safe_dump(data, f, sort_keys=False)
@@ -1605,7 +1604,9 @@ run_vslam_hint_remap_pass() {
     local vslam_log_path="/tmp/offline_vslam_hint_vslam_$(date +%Y%m%d_%H%M%S).log"
     local tf_log_path="/tmp/offline_vslam_hint_tf_$(date +%Y%m%d_%H%M%S).log"
     local localization_result_log="/tmp/offline_vslam_hint_localization_result_$(date +%Y%m%d_%H%M%S).log"
+    local post_trigger_flatscan_log="/tmp/offline_vslam_hint_post_trigger_flatscan_$(date +%Y%m%d_%H%M%S).log"
     local localization_wait_pid=""
+    local flatscan_wait_pid=""
     local set_slam_pose_request=""
     local set_slam_pose_output=""
 
@@ -1691,14 +1692,27 @@ run_vslam_hint_remap_pass() {
     sleep 2
     call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
+    echo "[hint-remap] Rewind to the bag start so the next scan arrives after trigger"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "{time: {sec: 0, nanosec: 0}}"; then
+        echo "Warning: failed to rewind rosbag player before scan global localization." >&2
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        return 0
+    fi
+
     echo "[hint-remap] Trigger scan global localization and wait for /localization_result"
     wait_for_topic_message "/localization_result" 45 "${localization_result_log}" &
     localization_wait_pid="$!"
+    wait_for_topic_message "/flatscan" 15 "${post_trigger_flatscan_log}" &
+    flatscan_wait_pid="$!"
 
     if ! ros2 service call /trigger_grid_search_localization std_srvs/srv/Empty "{}" > /dev/null; then
         echo "Warning: failed to trigger scan global localization for hint remap." >&2
         kill "${localization_wait_pid}" 2>/dev/null || true
         wait "${localization_wait_pid}" 2>/dev/null || true
+        kill "${flatscan_wait_pid}" 2>/dev/null || true
+        wait "${flatscan_wait_pid}" 2>/dev/null || true
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -1709,6 +1723,19 @@ run_vslam_hint_remap_pass() {
         echo "Warning: failed to resume rosbag player after arming scan global localization." >&2
         kill "${localization_wait_pid}" 2>/dev/null || true
         wait "${localization_wait_pid}" 2>/dev/null || true
+        kill "${flatscan_wait_pid}" 2>/dev/null || true
+        wait "${flatscan_wait_pid}" 2>/dev/null || true
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        return 0
+    fi
+
+    if ! wait "${flatscan_wait_pid}"; then
+        echo "Warning: did not observe a post-trigger /flatscan during hint remap." >&2
+        kill "${localization_wait_pid}" 2>/dev/null || true
+        wait "${localization_wait_pid}" 2>/dev/null || true
+        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -1988,7 +2015,7 @@ fi
 
 echo "[8/8] Build the provisional 2D map"
 if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
-    echo "  - replay source bag with localization-only VSLAM against: ${VSLAM_MAP_DIR}"
+    echo "  - replay source bag with VSLAM map localization against: ${VSLAM_MAP_DIR}"
     echo "  - logs: ${TF_LOCALIZATION_LOG_PATH}, ${VSLAM_LOCALIZATION_LOG_PATH}"
 
     if ! build_vslam_localization_param_file "${VSLAM_LOCALIZATION_PARAM_PATH}"; then
@@ -2015,7 +2042,7 @@ if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
         "image_height:=${IMAGE_HEIGHT}" \
         "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
         "vslam_param:=${VSLAM_LOCALIZATION_PARAM_PATH}" \
-        "enable_localization_and_mapping:=false" \
+        "enable_localization_and_mapping:=true" \
         "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
         "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
         "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
