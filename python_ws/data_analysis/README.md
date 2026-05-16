@@ -17,6 +17,12 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - 切り落とす領域を半透明オーバーレイで表示
   - 目視で `camera_crop` の妥当性を確認したいとき向け
 
+- `visualize_lidar_camera_projection.py`
+  - rosbag から `sensor_msgs/msg/Image` / `CameraInfo` / `LaserScan` を取得
+  - LiDAR の `/scan` を camera image へ投影して PNG / MP4 を生成
+  - `/tf_static` が bag にあればそれを優先し、足りない場合は repo の sensor mount 既定値へフォールバック
+  - LiDAR 向き補正や camera-LiDAR 外部パラメータ、scan/image の整合を目視確認したいとき向け
+
 - `analyze_camera_crop.py`
   - rosbag から `sensor_msgs/msg/Image` / `sensor_msgs/msg/CompressedImage` を取得
   - 各フレームで特徴点を抽出し、画像内の分布を集計
@@ -107,6 +113,28 @@ python data_analysis/analyze_scan_odom_timing.py \
   --rolling-window-sec 2.0 \
   --stability-threshold-ms 20.0 \
   --plot /tmp/scan_odom_timing_stability.png
+
+# 例7: camera image へ LiDAR を1フレーム投影
+python data_analysis/visualize_lidar_camera_projection.py \
+  --bag /path/to/rosbag2_dir \
+  --image-topic /camera/left/image_raw \
+  --camera-info-topic /camera/left/camera_info \
+  --scan-topic /scan \
+  --frame 100 \
+  --output /tmp/lidar_camera_projection.png \
+  --no-show
+
+# 例8: 0〜300フレームを投影して MP4 出力
+python data_analysis/visualize_lidar_camera_projection.py \
+  --bag /path/to/rosbag2_dir \
+  --image-topic /camera/left/image_raw \
+  --camera-info-topic /camera/left/camera_info \
+  --scan-topic /scan \
+  --video-output /tmp/lidar_camera_projection.mp4 \
+  --video-start 0 \
+  --video-end 300 \
+  --video-step 3 \
+  --video-fps 10
 ```
 
 `--bag` は以下を受け付けます。
@@ -120,6 +148,18 @@ python data_analysis/analyze_scan_odom_timing.py \
 - `--video_start`: 開始フレーム
 - `--video_end`: 終了フレーム（含む）
 - `--video_step`: 何フレームおきに描画するか
+
+`visualize_lidar_camera_projection.py` の主な引数:
+- `--image-topic --camera-info-topic --scan-topic`
+  - 投影元の image / camera_info / scan topic
+- `--tf-static-topic`
+  - bag 内の static TF topic。既定は `/tf_static`
+- `--camera-side`
+  - bag の TF が camera optical frame まで持っていないときの fallback 用。`auto|left|right`
+- `--lidar-* --camera-*`
+  - `/tf_static` が足りないときの fallback 外部パラメータ
+- `--use-recorded-timestamp`
+  - scan と image の最近傍対応を `header.stamp` ではなく bag 記録時刻で取りたいときに使う
 
 `analyze_scan_odom_timing.py` の主な出力:
 - `nearest_abs_delta_ms`
