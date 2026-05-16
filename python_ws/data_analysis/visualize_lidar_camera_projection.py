@@ -82,6 +82,17 @@ def parse_args() -> argparse.Namespace:
         help="Color projected points by range/depth or by LaserScan beam index.",
     )
     parser.add_argument(
+        "--print-index-colors",
+        action="store_true",
+        help="Print start/mid/end beam indices and their colors in index mode.",
+    )
+    parser.add_argument(
+        "--highlight-index",
+        action="append",
+        default=[],
+        help="Highlight a beam index in index mode. Accepts integers or start/mid/end. Repeatable.",
+    )
+    parser.add_argument(
         "--max-range",
         type=float,
         default=12.0,
@@ -697,13 +708,60 @@ def index_colors_bgr(indices: np.ndarray, total_beams: int) -> np.ndarray:
         return np_mod.empty((0, 3), dtype=np_mod.uint8)
 
     denom = max(int(total_beams) - 1, 1)
-    norm = np_mod.clip(indices.astype(np_mod.float32) / float(denom), 0.0, 1.0)
-    hsv = np_mod.zeros((indices.shape[0], 1, 3), dtype=np_mod.uint8)
-    hsv[:, 0, 0] = (norm * 179.0).astype(np_mod.uint8)
-    hsv[:, 0, 1] = 255
-    hsv[:, 0, 2] = 255
-    bgr = cv.cvtColor(hsv, cv.COLOR_HSV2BGR)
+    norm_u8 = np_mod.clip(
+        np_mod.round(indices.astype(np_mod.float32) / float(denom) * 255.0),
+        0.0,
+        255.0,
+    ).astype(np_mod.uint8)
+    grayscale = norm_u8.reshape(-1, 1)
+    colormap = getattr(cv, "COLORMAP_TURBO", cv.COLORMAP_JET)
+    bgr = cv.applyColorMap(grayscale, colormap)
     return bgr[:, 0, :]
+
+
+def special_index_map(total_beams: int) -> dict[str, int]:
+    last_index = max(int(total_beams) - 1, 0)
+    return {
+        "start": 0,
+        "mid": last_index // 2,
+        "end": last_index,
+    }
+
+
+def describe_index_color(index_value: int, total_beams: int) -> tuple[int, int, int]:
+    color_bgr = index_colors_bgr(np.asarray([index_value], dtype=np.float32), total_beams)[0]
+    return int(color_bgr[2]), int(color_bgr[1]), int(color_bgr[0])
+
+
+def resolve_highlight_requests(highlight_args: list[str], total_beams: int) -> list[tuple[str, int]]:
+    resolved: list[tuple[str, int]] = []
+    seen_indices: set[int] = set()
+    named = special_index_map(total_beams)
+
+    for item in highlight_args:
+        key = str(item).strip().lower()
+        if not key:
+            continue
+        if key in named:
+            index_value = named[key]
+            label = f"{key}:{index_value}"
+        else:
+            try:
+                index_value = int(key)
+            except ValueError as exc:
+                raise ValueError(f"Invalid --highlight-index value: {item}") from exc
+            if index_value < 0 or index_value >= total_beams:
+                raise ValueError(
+                    f"--highlight-index out of range: {index_value} (total_beams={total_beams})"
+                )
+            label = f"idx:{index_value}"
+
+        if index_value in seen_indices:
+            continue
+        seen_indices.add(index_value)
+        resolved.append((label, index_value))
+
+    return resolved
 
 
 def draw_projection_overlay(
@@ -711,11 +769,13 @@ def draw_projection_overlay(
     pixels: np.ndarray,
     depths: np.ndarray,
     point_colors_bgr: np.ndarray,
+    point_indices: np.ndarray,
     scan_sample: HeaderStampedMessage,
     camera_info_sample: HeaderStampedMessage,
     image_sample: HeaderStampedMessage,
     color_mode: str,
     point_radius: int,
+    highlight_requests: list[tuple[str, int]],
 ) -> np.ndarray:
     cv = require_cv2()
     np_mod = require_numpy()
@@ -738,6 +798,34 @@ def draw_projection_overlay(
             -1,
             lineType=cv.LINE_AA,
         )
+
+    if highlight_requests and point_indices.size > 0:
+        for label, target_index in highlight_requests:
+            nearest_idx = int(np_mod.argmin(np_mod.abs(point_indices - float(target_index))))
+            if not inside[nearest_idx]:
+                continue
+            u, v = pixels[nearest_idx]
+            center = (int(round(float(u))), int(round(float(v))))
+            color = tuple(int(c) for c in point_colors_bgr[nearest_idx])
+            cv.circle(
+                canvas,
+                center,
+                max(4, point_radius + 3),
+                (255, 255, 255),
+                2,
+                lineType=cv.LINE_AA,
+            )
+            cv.circle(
+                canvas,
+                center,
+                max(2, point_radius + 1),
+                color,
+                2,
+                lineType=cv.LINE_AA,
+            )
+            text_origin = (center[0] + 8, max(20, center[1] - 8))
+            cv.putText(canvas, label, text_origin, cv.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3, cv.LINE_AA)
+            cv.putText(canvas, label, text_origin, cv.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv.LINE_AA)
 
     info_lines = [
         f"image frame={image_sample.frame_index} topic ts={image_sample.header_stamp_ns}",
@@ -778,21 +866,26 @@ def build_single_projection_frame(
     pixels, depths, positive_depth = project_points_to_image(
         points_lidar, transform_camera_from_lidar, camera_info_sample.msg
     )
+    visible_point_indices = point_indices[positive_depth]
     if args.color_mode == "index":
-        point_colors_bgr = index_colors_bgr(point_indices[positive_depth], total_beams)
+        point_colors_bgr = index_colors_bgr(visible_point_indices, total_beams)
+        highlight_requests = resolve_highlight_requests(args.highlight_index, total_beams)
     else:
         point_colors_bgr = range_colors_bgr(depths, args.max_range)
+        highlight_requests = []
 
     return draw_projection_overlay(
         image_sample.msg,
         pixels,
         depths,
         point_colors_bgr,
+        visible_point_indices,
         scan_sample,
         camera_info_sample,
         image_sample,
         args.color_mode,
         args.point_radius,
+        highlight_requests,
     )
 
 
@@ -853,6 +946,12 @@ def main() -> None:
         tf_static_topic=args.tf_static_topic,
         args=args,
     )
+
+    if args.color_mode == "index" and args.print_index_colors:
+        total_beams = len(scans[0].msg.ranges)
+        for name, index_value in special_index_map(total_beams).items():
+            rgb = describe_index_color(index_value, total_beams)
+            print(f"[INFO] index_color {name} index={index_value} rgb={rgb}")
 
     if args.video_output:
         frames_bgr = [

@@ -122,6 +122,8 @@ python data_analysis/visualize_lidar_camera_projection.py \
   --scan-topic /scan \
   --frame 100 \
   --color-mode index \
+  --print-index-colors \
+  --highlight-index mid \
   --output /tmp/lidar_camera_projection.png \
   --no-show
 
@@ -155,6 +157,11 @@ python data_analysis/visualize_lidar_camera_projection.py \
   - 投影元の image / camera_info / scan topic
 - `--color-mode`
   - `range` は距離色、`index` は LaserScan の beam index 色
+- `--print-index-colors`
+  - `index` mode で `start / mid / end` の beam index と RGB 色を標準出力へ表示
+- `--highlight-index`
+  - `index` mode で特定 beam を画像上で縁取り表示
+  - `start` / `mid` / `end` または整数 index を指定可能
 - `--tf-static-topic`
   - bag 内の static TF topic。既定は `/tf_static`
 - `--camera-side`
