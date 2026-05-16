@@ -5,7 +5,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SYSTEM_LAUNCH_SOURCE_SHARE="${REPO_ROOT}/ros2_ws/src/launch/system_launch"
-LOCALIZATION_MANAGER_SOURCE_SHARE="${REPO_ROOT}/ros2_ws/src/localization/localization_manager"
 SYSTEM_LAUNCH_CMD=()
 
 source_setup_script() {
@@ -75,8 +74,8 @@ Options:
                       full|fast|auto (default: auto)
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --vslam-hint-remap  after the provisional 2D map, replay the source bag once more,
-                      feed scan global-localization result into /visual_slam/initial_pose,
-                      then rewind the same rosbag player and rebuild the map (default)
+                      use scan global localization from the fixed 2D map as the initial
+                      SLAM pose, then rebuild only the VSLAM map (default)
   --no-vslam-hint-remap
                       skip the hinted VSLAM remap pass
   --record-root DIR   rosbag探索ルート (default: /record)
@@ -200,8 +199,6 @@ VSLAM_LAUNCH_PID=""
 VSLAM_LAUNCH_USES_SETSID=false
 LOCALIZATION_LAUNCH_PID=""
 LOCALIZATION_LAUNCH_USES_SETSID=false
-LOCALIZATION_MANAGER_PID=""
-LOCALIZATION_MANAGER_USES_SETSID=false
 RECORDER_PID=""
 RECORDER_USES_SETSID=false
 ROSBAG_PLAYER_PID=""
@@ -600,6 +597,46 @@ build_source_play_topics() {
     if [ "${USE_IMU}" = true ]; then
         SOURCE_PLAY_TOPICS+=("/camera/imu")
     fi
+}
+
+build_vslam_set_pose_request_from_pose_cov_file() {
+    local pose_cov_path="$1"
+
+    python3 - "${pose_cov_path}" <<'PY'
+import sys
+
+try:
+    import yaml
+except Exception as exc:
+    raise SystemExit(f"PyYAML not available: {exc}")
+
+with open(sys.argv[1], "r", encoding="utf-8") as f:
+    msg = yaml.safe_load(f) or {}
+
+pose = ((msg.get("pose") or {}).get("pose") or {})
+position = pose.get("position") or {}
+orientation = pose.get("orientation") or {}
+
+for key in ("x", "y", "z"):
+    if key not in position:
+        raise SystemExit(f"Missing pose.position.{key} in localization result")
+for key in ("x", "y", "z", "w"):
+    if key not in orientation:
+        raise SystemExit(f"Missing pose.orientation.{key} in localization result")
+
+print(
+    "{pose: {position: {x: %r, y: %r, z: %r}, orientation: {x: %r, y: %r, z: %r, w: %r}}}"
+    % (
+        position["x"],
+        position["y"],
+        position["z"],
+        orientation["x"],
+        orientation["y"],
+        orientation["z"],
+        orientation["w"],
+    )
+)
+PY
 }
 
 select_rosbag_path_interactive() {
@@ -1500,13 +1537,12 @@ convert_pbstream_to_map() {
 run_vslam_hint_remap_pass() {
     local player_log_path="/tmp/offline_vslam_hint_player_$(date +%Y%m%d_%H%M%S).log"
     local localization_log_path="/tmp/offline_vslam_hint_localization_$(date +%Y%m%d_%H%M%S).log"
-    local localization_manager_log_path="/tmp/offline_vslam_hint_localization_manager_$(date +%Y%m%d_%H%M%S).log"
     local vslam_log_path="/tmp/offline_vslam_hint_vslam_$(date +%Y%m%d_%H%M%S).log"
     local tf_log_path="/tmp/offline_vslam_hint_tf_$(date +%Y%m%d_%H%M%S).log"
-    local map_log_path="/tmp/offline_vslam_hint_cartographer_$(date +%Y%m%d_%H%M%S).log"
-    local initial_pose_wait_log="/tmp/offline_vslam_hint_initial_pose_$(date +%Y%m%d_%H%M%S).log"
-    local localization_manager_launch
-    local hint_wait_pid=""
+    local localization_result_log="/tmp/offline_vslam_hint_localization_result_$(date +%Y%m%d_%H%M%S).log"
+    local localization_wait_pid=""
+    local set_slam_pose_request=""
+    local set_slam_pose_output=""
 
     if [ "${RUN_VSLAM_HINT_REMAP}" != true ]; then
         return 0
@@ -1517,48 +1553,20 @@ run_vslam_hint_remap_pass() {
         return 0
     fi
 
-    if [ ! -d "${VSLAM_MAP_DIR}" ]; then
-        echo "[hint-remap] Skip: VSLAM map directory not found: ${VSLAM_MAP_DIR}" >&2
-        return 0
-    fi
-
     if [ ! -f "${MAP_YAML_PATH}" ]; then
         echo "[hint-remap] Skip: provisional map yaml not found: ${MAP_YAML_PATH}" >&2
         return 0
     fi
 
-    echo "[hint-remap] Launch VSLAM relocalization + scan global localization"
+    mkdir -p "${VSLAM_MAP_DIR}"
+
+    echo "[hint-remap] Launch 2D map publisher + scan global localization"
 
     build_system_launch_cmd "offline_sensor_tf.launch.xml"
     launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
         "${SYSTEM_LAUNCH_CMD[@]}" \
         > "${tf_log_path}" 2>&1
     sleep 2
-
-    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-    sleep 2
-
-    build_system_launch_cmd "vslam.launch.xml"
-    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        "image_width:=${IMAGE_WIDTH}" \
-        "image_height:=${IMAGE_HEIGHT}" \
-        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-        "enable_localization_and_mapping:=true" \
-        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
-        "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
-        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
-        "load_map_path:=${VSLAM_MAP_DIR}" \
-        "save_map_path:=${VSLAM_MAP_DIR}" \
-        > "${vslam_log_path}" 2>&1
-
-    echo "[hint-remap] Wait for VSLAM services"
-    if ! wait_for_service "/visual_slam/save_map" 60; then
-        echo "Warning: hint remap skipped because VSLAM service was not ready. Check log: ${vslam_log_path}" >&2
-        stop_vslam
-        return 0
-    fi
 
     launch_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID" \
         ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${LOCALIZATION_CONTAINER_NAME}"
@@ -1571,39 +1579,16 @@ run_vslam_hint_remap_pass() {
         "map_yaml_path:=${MAP_YAML_PATH}" \
         "scan_topic:=${SCAN_TOPIC}" \
         "use_sim_time:=true" \
-        "publish_map:=false" \
+        "publish_map:=true" \
         "use_localization_manager:=false" \
         "publish_localization_tf:=false" \
         > "${localization_log_path}" 2>&1
 
-    localization_manager_launch="${LOCALIZATION_MANAGER_SOURCE_SHARE}/launch/localization_manager.launch.xml"
-    if [ -f "${localization_manager_launch}" ]; then
-        launch_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID" \
-            ros2 launch "${localization_manager_launch}" \
-            "use_sim_time:=true" \
-            "publish_localization_tf:=false" \
-            "publish_initialpose_to_amcl:=true" \
-            "initial_pose_topic:=/visual_slam/initial_pose" \
-            "localization_result_topic:=/localization_result" \
-            > "${localization_manager_log_path}" 2>&1
-    else
-        launch_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID" \
-            ros2 launch localization_manager localization_manager.launch.xml \
-            "use_sim_time:=true" \
-            "publish_localization_tf:=false" \
-            "publish_initialpose_to_amcl:=true" \
-            "initial_pose_topic:=/visual_slam/initial_pose" \
-            "localization_result_topic:=/localization_result" \
-            > "${localization_manager_log_path}" 2>&1
-    fi
-
     echo "[hint-remap] Wait for localization and rosbag-player services"
     if ! wait_for_service "/trigger_grid_search_localization" 60; then
         echo "Warning: hint remap skipped because /trigger_grid_search_localization was not ready. Check log: ${localization_log_path}" >&2
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
         return 0
     fi
 
@@ -1624,108 +1609,123 @@ run_vslam_hint_remap_pass() {
        ! wait_for_service "/rosbag2_player/seek" 30; then
         echo "Warning: hint remap skipped because rosbag2 player services were not ready. Check log: ${player_log_path}" >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
         return 0
     fi
 
-    echo "[hint-remap] Resume briefly, trigger scan global localization, and wait for /visual_slam/initial_pose"
-    wait_for_topic_message "/visual_slam/initial_pose" 45 "${initial_pose_wait_log}" &
-    hint_wait_pid="$!"
-
+    echo "[hint-remap] Resume briefly to collect scan data, then pause"
     if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
         echo "Warning: failed to resume paused rosbag player for hint remap." >&2
-        kill "${hint_wait_pid}" 2>/dev/null || true
-        wait "${hint_wait_pid}" 2>/dev/null || true
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
         return 0
     fi
 
-    sleep 1
+    sleep 2
+    call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
+
+    echo "[hint-remap] Trigger scan global localization and wait for /localization_result"
+    wait_for_topic_message "/localization_result" 45 "${localization_result_log}" &
+    localization_wait_pid="$!"
+
     if ! ros2 service call /trigger_grid_search_localization std_srvs/srv/Empty "{}" > /dev/null; then
         echo "Warning: failed to trigger scan global localization for hint remap." >&2
-        kill "${hint_wait_pid}" 2>/dev/null || true
-        wait "${hint_wait_pid}" 2>/dev/null || true
+        kill "${localization_wait_pid}" 2>/dev/null || true
+        wait "${localization_wait_pid}" 2>/dev/null || true
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
         return 0
     fi
 
-    if ! wait "${hint_wait_pid}"; then
-        echo "Warning: did not receive /visual_slam/initial_pose during hint remap. Keeping provisional map." >&2
-        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" 2>/dev/null || true
+    if ! wait "${localization_wait_pid}"; then
+        echo "Warning: did not receive /localization_result during hint remap. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
         return 0
     fi
 
-    call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
+    if ! set_slam_pose_request="$(build_vslam_set_pose_request_from_pose_cov_file "${localization_result_log}")"; then
+        echo "Warning: failed to build VSLAM set_slam_pose request from ${localization_result_log}. Keeping provisional map and original VSLAM map." >&2
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        return 0
+    fi
+
+    # Keep the 2D map server alive for RViz, but stop consuming scan after the
+    # one-shot global localization result has been captured.
+    stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+
+    echo "[hint-remap] Rewind paused rosbag player, then start VSLAM from the 2D global pose"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "{time: {sec: 0, nanosec: 0}}"; then
+        echo "Warning: failed to rewind rosbag player for hint remap. Keeping provisional map and original VSLAM map." >&2
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        return 0
+    fi
+
+    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
+        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
     sleep 2
 
-    echo "[hint-remap] Rewind paused rosbag player to start and rebuild the map"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "{time: {sec: 0, nanosec: 0}}"; then
-        echo "Warning: failed to rewind rosbag player for hint remap. Keeping provisional map." >&2
+    build_system_launch_cmd "vslam.launch.xml"
+    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
+        "${SYSTEM_LAUNCH_CMD[@]}" \
+        "image_width:=${IMAGE_WIDTH}" \
+        "image_height:=${IMAGE_HEIGHT}" \
+        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
+        "enable_localization_and_mapping:=true" \
+        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
+        "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
+        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
+        "save_map_path:=${VSLAM_MAP_DIR}" \
+        > "${vslam_log_path}" 2>&1
+
+    echo "[hint-remap] Wait for VSLAM services"
+    if ! wait_for_service "/visual_slam/set_slam_pose" 60 || \
+       ! wait_for_service "/visual_slam/save_map" 60; then
+        echo "Warning: hint remap skipped because VSLAM services were not ready. Check log: ${vslam_log_path}" >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
         stop_vslam
         return 0
     fi
 
-    capture_base_cartographer_pids
-    if command -v setsid >/dev/null 2>&1; then
-        build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
-        CARTOGRAPHER_USES_SETSID=true
-        setsid "${SYSTEM_LAUNCH_CMD[@]}" \
-            "use_sim_time:=true" \
-            "scan_topic:=${SCAN_TOPIC}" \
-            "configuration_basename:=${CONFIG_BASENAME}" \
-            "odom_topic:=${ODOM_TOPIC}" \
-            > "${map_log_path}" 2>&1 &
-    else
-        build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
-        CARTOGRAPHER_USES_SETSID=false
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-            "use_sim_time:=true" \
-            "scan_topic:=${SCAN_TOPIC}" \
-            "configuration_basename:=${CONFIG_BASENAME}" \
-            "odom_topic:=${ODOM_TOPIC}" \
-            > "${map_log_path}" 2>&1 &
-    fi
-    CARTOGRAPHER_PID=$!
-
-    if ! wait_for_service "/write_state" 60; then
-        echo "Warning: hinted cartographer pass skipped because /write_state was not ready. Check log: ${map_log_path}" >&2
+    if ! set_slam_pose_output="$(
+        ros2 service call /visual_slam/set_slam_pose \
+            isaac_ros_visual_slam_interfaces/srv/SetSlamPose \
+            "${set_slam_pose_request}" 2>&1
+    )"; then
+        echo "Warning: visual_slam/set_slam_pose failed. Keeping provisional map and original VSLAM map." >&2
+        printf '%s\n' "${set_slam_pose_output}" >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
         stop_vslam
-        stop_cartographer
+        return 0
+    fi
+    if ! printf '%s\n' "${set_slam_pose_output}" | grep -Eq 'success:[[:space:]]*true'; then
+        echo "Warning: visual_slam/set_slam_pose returned success=false. Keeping provisional map and original VSLAM map." >&2
+        printf '%s\n' "${set_slam_pose_output}" >&2
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        stop_vslam
         return 0
     fi
 
     if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Warning: failed to resume rewound rosbag player for hinted remap." >&2
+        echo "Warning: failed to resume rewound rosbag player for hinted VSLAM remap." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
         stop_vslam
-        stop_cartographer
         return 0
     fi
 
@@ -1733,38 +1733,27 @@ run_vslam_hint_remap_pass() {
     ROSBAG_PLAYER_PID=""
     ROSBAG_PLAYER_USES_SETSID=false
 
-    if ! ros2 service call /finish_trajectory \
-        cartographer_ros_msgs/srv/FinishTrajectory \
-        "{trajectory_id: 0}" > /dev/null; then
-        echo "Warning: /finish_trajectory failed after hinted remap. Continue." >&2
-    fi
-
-    WRITE_STATE_REQUEST=$(printf "{filename: '%s', include_unfinished_submaps: true}" "${PBSTREAM_PATH}")
-    ros2 service call /write_state \
-        cartographer_ros_msgs/srv/WriteState \
-        "${WRITE_STATE_REQUEST}" > /dev/null
+    sleep 2
 
     if ! ros2 service call /visual_slam/save_map \
         isaac_ros_visual_slam_interfaces/srv/FilePath \
         "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null; then
-        echo "Warning: failed to save hinted VSLAM map. Continue with updated 2D map only." >&2
+        echo "Warning: failed to save VSLAM map initialized from 2D global pose." >&2
     fi
 
-    stop_cartographer
-    stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
     stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
     stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
     stop_vslam
 
-    if ! convert_pbstream_to_map "✅ Hinted remap generated:"; then
-        exit 1
-    fi
+    echo ""
+    echo "✅ VSLAM map rebuilt from 2D global pose:"
+    echo "  - fixed 2D map (unchanged): ${MAP_YAML_PATH}"
+    echo "  - rebuilt VSLAM map: ${VSLAM_MAP_DIR}/"
 }
 
 cleanup_all() {
     stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
     stop_recorder
-    stop_background_process "LOCALIZATION_MANAGER_PID" "LOCALIZATION_MANAGER_USES_SETSID"
     stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
     stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
     stop_vslam
