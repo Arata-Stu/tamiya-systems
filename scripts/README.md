@@ -11,7 +11,7 @@ directly.
 - `tmux.sh`: create tmux layouts for robot, mapping, Python, and simulator work.
 - `monitor.sh`: terminal monitoring dashboard.
 - `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `1280x720x30` 録画に合わせた preset。
-- `create_2d_map_from_bag.sh`: 2D map 作成用。`--mode 2d_slam` で VSLAM map 保存と lightweight 2D input bag 作成もまとめて実行できます。centerline 前に GUI で map を手修正したい場合は `--edit-map`、都度確認したい場合は既定の `--map-edit-mode auto` を使います。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
+- `create_2d_map_from_bag.sh`: 2D map 作成用。`--mode 2d_slam` で VSLAM map 保存と lightweight 2D input bag 作成もまとめて実行でき、既定では provisional 2D map 作成後に scan global localization の結果を `/visual_slam/initial_pose` へ流して hinted remap も試みます。centerline 前に GUI で map を手修正したい場合は `--edit-map`、都度確認したい場合は既定の `--map-edit-mode auto` を使います。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
 - `scp_data.sh`: data transfer helper.
 
 ## Terminal viewers
