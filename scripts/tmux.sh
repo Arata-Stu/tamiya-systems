@@ -28,6 +28,7 @@ CMD_LOCALIZATION_EVAL="bash /scripts/launch_system.sh production -- map_dir:=<ma
 CMD_LIDAR_CONTAINER="ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
 CMD_SIMULATOR="ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
 RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz'
+RVIZ_VSLAM_DEBUG='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.rviz'
 
 PYTHON_PANE1_DIR="/python_ws"
 PYTHON_PANE2_DIR="/record/"
@@ -287,7 +288,7 @@ create_python_layout() {
 create_map_layout() {
   reset_panes
   add_pane "$WINDOW_MAIN" "/workspaces" "$SETUP_SCRIPT" "$CMD_CREATE_MAP"
-  add_pane "$WINDOW_MAIN" "/map" "" ""
+  add_pane "$WINDOW_MAIN" "" "$SETUP_SCRIPT" "$RVIZ_VSLAM_DEBUG"
   add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_PLAY_BAG"
   add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_LOCALIZATION_EVAL"
   add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_LOCALIZATION_TRIGGER"
