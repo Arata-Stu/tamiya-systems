@@ -76,6 +76,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--video-step", type=int, default=1, help="Frame stride for video mode")
     parser.add_argument("--point-radius", type=int, default=2, help="Projected point radius in pixels")
     parser.add_argument(
+        "--color-mode",
+        choices=("range", "index"),
+        default="range",
+        help="Color projected points by range/depth or by LaserScan beam index.",
+    )
+    parser.add_argument(
         "--max-range",
         type=float,
         default=12.0,
@@ -570,7 +576,7 @@ def select_nearest_sample(
     return best
 
 
-def scan_to_points_lidar(scan_msg, min_range_m: float, max_range_m: float) -> np.ndarray:
+def scan_to_points_lidar(scan_msg, min_range_m: float, max_range_m: float) -> tuple[np.ndarray, np.ndarray, int]:
     np_mod = require_numpy()
     ranges = np_mod.asarray(scan_msg.ranges, dtype=np_mod.float32)
     beam_indices = np_mod.arange(ranges.shape[0], dtype=np_mod.float32)
@@ -581,10 +587,15 @@ def scan_to_points_lidar(scan_msg, min_range_m: float, max_range_m: float) -> np
     valid &= ranges <= min(float(scan_msg.range_max), max_range_m)
 
     if not np_mod.any(valid):
-        return np_mod.empty((0, 3), dtype=np_mod.float32)
+        return (
+            np_mod.empty((0, 3), dtype=np_mod.float32),
+            np_mod.empty((0,), dtype=np_mod.float32),
+            int(ranges.shape[0]),
+        )
 
     valid_ranges = ranges[valid]
     valid_angles = angles[valid]
+    valid_indices = beam_indices[valid]
     points = np_mod.stack(
         [
             valid_ranges * np_mod.cos(valid_angles),
@@ -593,18 +604,22 @@ def scan_to_points_lidar(scan_msg, min_range_m: float, max_range_m: float) -> np
         ],
         axis=1,
     )
-    return points.astype(np_mod.float32)
+    return points.astype(np_mod.float32), valid_indices.astype(np_mod.float32), int(ranges.shape[0])
 
 
 def project_points_to_image(
     points_lidar: np.ndarray,
     transform_camera_from_lidar: np.ndarray,
     camera_info_msg,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     np_mod = require_numpy()
 
     if points_lidar.size == 0:
-        return np_mod.empty((0, 2), dtype=np_mod.float32), np_mod.empty((0,), dtype=np_mod.float32)
+        return (
+            np_mod.empty((0, 2), dtype=np_mod.float32),
+            np_mod.empty((0,), dtype=np_mod.float32),
+            np_mod.empty((0,), dtype=bool),
+        )
 
     points_h = np_mod.concatenate(
         [points_lidar.astype(np_mod.float64), np_mod.ones((points_lidar.shape[0], 1), dtype=np_mod.float64)],
@@ -616,7 +631,11 @@ def project_points_to_image(
     points_camera = points_camera[positive_depth]
     depths = depths[positive_depth]
     if points_camera.size == 0:
-        return np_mod.empty((0, 2), dtype=np_mod.float32), np_mod.empty((0,), dtype=np_mod.float32)
+        return (
+            np_mod.empty((0, 2), dtype=np_mod.float32),
+            np_mod.empty((0,), dtype=np_mod.float32),
+            positive_depth,
+        )
 
     K = np_mod.asarray(camera_info_msg.k, dtype=np_mod.float64).reshape(3, 3)
     P = np_mod.asarray(camera_info_msg.p, dtype=np_mod.float64).reshape(3, 4)
@@ -631,7 +650,7 @@ def project_points_to_image(
         u = fx * (points_camera[:, 0] / depths) + cx
         v = fy * (points_camera[:, 1] / depths) + cy
         pixels = np_mod.stack([u, v], axis=1).astype(np_mod.float32)
-        return pixels, depths
+        return pixels, depths, positive_depth
 
     if np_mod.allclose(D, 0.0):
         fx = K[0, 0]
@@ -641,7 +660,7 @@ def project_points_to_image(
         u = fx * (points_camera[:, 0] / depths) + cx
         v = fy * (points_camera[:, 1] / depths) + cy
         pixels = np_mod.stack([u, v], axis=1).astype(np_mod.float32)
-        return pixels, depths
+        return pixels, depths, positive_depth
 
     cv = require_cv2()
     image_points, _ = cv.projectPoints(
@@ -651,7 +670,7 @@ def project_points_to_image(
         K,
         D,
     )
-    return image_points.reshape(-1, 2).astype(np_mod.float32), depths
+    return image_points.reshape(-1, 2).astype(np_mod.float32), depths, positive_depth
 
 
 def range_colors_bgr(depths: np.ndarray, max_range_m: float) -> np.ndarray:
@@ -670,14 +689,32 @@ def range_colors_bgr(depths: np.ndarray, max_range_m: float) -> np.ndarray:
     return bgr[:, 0, :]
 
 
+def index_colors_bgr(indices: np.ndarray, total_beams: int) -> np.ndarray:
+    np_mod = require_numpy()
+    cv = require_cv2()
+
+    if indices.size == 0:
+        return np_mod.empty((0, 3), dtype=np_mod.uint8)
+
+    denom = max(int(total_beams) - 1, 1)
+    norm = np_mod.clip(indices.astype(np_mod.float32) / float(denom), 0.0, 1.0)
+    hsv = np_mod.zeros((indices.shape[0], 1, 3), dtype=np_mod.uint8)
+    hsv[:, 0, 0] = (norm * 179.0).astype(np_mod.uint8)
+    hsv[:, 0, 1] = 255
+    hsv[:, 0, 2] = 255
+    bgr = cv.cvtColor(hsv, cv.COLOR_HSV2BGR)
+    return bgr[:, 0, :]
+
+
 def draw_projection_overlay(
     image_rgb: np.ndarray,
     pixels: np.ndarray,
     depths: np.ndarray,
+    point_colors_bgr: np.ndarray,
     scan_sample: HeaderStampedMessage,
     camera_info_sample: HeaderStampedMessage,
     image_sample: HeaderStampedMessage,
-    max_range_m: float,
+    color_mode: str,
     point_radius: int,
 ) -> np.ndarray:
     cv = require_cv2()
@@ -685,7 +722,6 @@ def draw_projection_overlay(
 
     canvas = cv.cvtColor(image_rgb.copy(), cv.COLOR_RGB2BGR)
     image_h, image_w = canvas.shape[:2]
-    colors = range_colors_bgr(depths, max_range_m)
 
     inside = (
         (pixels[:, 0] >= 0)
@@ -693,7 +729,7 @@ def draw_projection_overlay(
         & (pixels[:, 1] >= 0)
         & (pixels[:, 1] < image_h)
     )
-    for (u, v), color in zip(pixels[inside], colors[inside]):
+    for (u, v), color in zip(pixels[inside], point_colors_bgr[inside]):
         cv.circle(
             canvas,
             (int(round(float(u))), int(round(float(v)))),
@@ -707,7 +743,7 @@ def draw_projection_overlay(
         f"image frame={image_sample.frame_index} topic ts={image_sample.header_stamp_ns}",
         f"scan frame={scan_sample.frame_index} topic ts={scan_sample.header_stamp_ns}",
         f"camera_info ts={camera_info_sample.header_stamp_ns} frame={camera_info_sample.frame_id}",
-        f"projected points={int(np_mod.count_nonzero(inside))}/{len(pixels)} max_range={max_range_m:.2f}m",
+        f"projected points={int(np_mod.count_nonzero(inside))}/{len(pixels)} color_mode={color_mode}",
     ]
 
     y = 26
@@ -736,17 +772,26 @@ def build_single_projection_frame(
     graph = merged_tf_graph(tf_static_msgs, args, camera_optical_frame, camera_side)
     transform_camera_from_lidar = resolve_transform(graph, lidar_frame, camera_optical_frame)
 
-    points_lidar = scan_to_points_lidar(scan_sample.msg, args.min_range, args.max_range)
-    pixels, depths = project_points_to_image(points_lidar, transform_camera_from_lidar, camera_info_sample.msg)
+    points_lidar, point_indices, total_beams = scan_to_points_lidar(
+        scan_sample.msg, args.min_range, args.max_range
+    )
+    pixels, depths, positive_depth = project_points_to_image(
+        points_lidar, transform_camera_from_lidar, camera_info_sample.msg
+    )
+    if args.color_mode == "index":
+        point_colors_bgr = index_colors_bgr(point_indices[positive_depth], total_beams)
+    else:
+        point_colors_bgr = range_colors_bgr(depths, args.max_range)
 
     return draw_projection_overlay(
         image_sample.msg,
         pixels,
         depths,
+        point_colors_bgr,
         scan_sample,
         camera_info_sample,
         image_sample,
-        args.max_range,
+        args.color_mode,
         args.point_radius,
     )
 

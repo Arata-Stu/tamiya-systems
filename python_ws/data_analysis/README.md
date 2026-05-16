@@ -121,6 +121,7 @@ python data_analysis/visualize_lidar_camera_projection.py \
   --camera-info-topic /camera/left/camera_info \
   --scan-topic /scan \
   --frame 100 \
+  --color-mode index \
   --output /tmp/lidar_camera_projection.png \
   --no-show
 
@@ -152,6 +153,8 @@ python data_analysis/visualize_lidar_camera_projection.py \
 `visualize_lidar_camera_projection.py` の主な引数:
 - `--image-topic --camera-info-topic --scan-topic`
   - 投影元の image / camera_info / scan topic
+- `--color-mode`
+  - `range` は距離色、`index` は LaserScan の beam index 色
 - `--tf-static-topic`
   - bag 内の static TF topic。既定は `/tf_static`
 - `--camera-side`
