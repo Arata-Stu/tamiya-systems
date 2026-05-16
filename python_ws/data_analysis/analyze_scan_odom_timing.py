@@ -18,6 +18,7 @@ from rosbags.highlevel import AnyReader
 
 CSV_FIELDS = [
     "scan_index",
+    "time_from_start_sec",
     "scan_header_stamp_ns",
     "scan_recorded_stamp_ns",
     "prev_odom_header_stamp_ns",
@@ -31,6 +32,8 @@ CSV_FIELDS = [
     "nearest_signed_delta_ms",
     "nearest_abs_delta_ms",
     "odom_bracket_gap_ms",
+    "rolling_p90_abs_delta_ms",
+    "rolling_max_abs_delta_ms",
 ]
 
 
@@ -69,6 +72,18 @@ def parse_args() -> argparse.Namespace:
         "--plot",
         default=None,
         help="Optional PNG path for nearest-delta timeseries plot.",
+    )
+    parser.add_argument(
+        "--rolling-window-sec",
+        type=float,
+        default=2.0,
+        help="Window size for rolling stability statistics.",
+    )
+    parser.add_argument(
+        "--stability-threshold-ms",
+        type=float,
+        default=20.0,
+        help="Threshold used to estimate stabilization time from rolling p90.",
     )
     return parser.parse_args()
 
@@ -244,6 +259,7 @@ def compute_rows(
 
         row = {
             "scan_index": scan_index,
+            "time_from_start_sec": None,
             "scan_header_stamp_ns": scan.header_stamp_ns,
             "scan_recorded_stamp_ns": scan.recorded_stamp_ns,
             "prev_odom_header_stamp_ns": prev_odom.header_stamp_ns if prev_odom else None,
@@ -273,10 +289,59 @@ def compute_rows(
                 if prev_odom and next_odom
                 else None
             ),
+            "rolling_p90_abs_delta_ms": None,
+            "rolling_max_abs_delta_ms": None,
         }
         rows.append(row)
 
     return rows
+
+
+def annotate_rows_with_time_and_rolling_stats(
+    rows: list[dict[str, int | float | None]],
+    window_sec: float,
+) -> None:
+    if not rows:
+        return
+
+    first_stamp_ns = int(rows[0]["scan_header_stamp_ns"])
+    window_ns = max(int(window_sec * 1_000_000_000.0), 1)
+    left = 0
+
+    for right, row in enumerate(rows):
+        current_stamp_ns = int(row["scan_header_stamp_ns"])
+        row["time_from_start_sec"] = (current_stamp_ns - first_stamp_ns) / 1_000_000_000.0
+
+        while (
+            left < right
+            and current_stamp_ns - int(rows[left]["scan_header_stamp_ns"]) > window_ns
+        ):
+            left += 1
+
+        window_values = [
+            rows[idx]["nearest_abs_delta_ms"]
+            for idx in range(left, right + 1)
+            if rows[idx]["nearest_abs_delta_ms"] is not None
+        ]
+        if window_values:
+            sorted_window = sorted(float(v) for v in window_values)
+            row["rolling_p90_abs_delta_ms"] = percentile(sorted_window, 0.90)
+            row["rolling_max_abs_delta_ms"] = sorted_window[-1]
+
+
+def estimate_stable_after_sec(
+    rows: list[dict[str, int | float | None]],
+    threshold_ms: float,
+) -> float | None:
+    for row in rows:
+        rolling_p90 = row["rolling_p90_abs_delta_ms"]
+        if rolling_p90 is None:
+            continue
+        if float(rolling_p90) <= threshold_ms:
+            time_from_start_sec = row["time_from_start_sec"]
+            if time_from_start_sec is not None:
+                return float(time_from_start_sec)
+    return None
 
 
 def estimate_rate_hz(stamps: Iterable[TopicStamp]) -> float:
@@ -311,6 +376,9 @@ def print_summary(
     rows: list[dict[str, int | float | None]],
     csv_path: Path,
     plot_path: Path | None,
+    rolling_window_sec: float,
+    stability_threshold_ms: float,
+    stable_after_sec: float | None,
 ) -> None:
     nearest_abs = sorted(
         row["nearest_abs_delta_ms"]
@@ -353,10 +421,21 @@ def print_summary(
         f"p90={format_ms(percentile(bracket_gaps, 0.90))} "
         f"max={format_ms(bracket_gaps[-1] if bracket_gaps else math.nan)}"
     )
+    print(
+        "[INFO] stability: "
+        f"rolling_window_sec={rolling_window_sec:.3f} "
+        f"threshold_ms={stability_threshold_ms:.3f} "
+        f"stable_after_sec={stable_after_sec if stable_after_sec is not None else 'not_found'}"
+    )
     print(f"[INFO] edge_cases: no_prev_odom={no_prev} no_next_odom={no_next}")
 
 
-def maybe_plot(rows: list[dict[str, int | float | None]], plot_path: Path | None) -> None:
+def maybe_plot(
+    rows: list[dict[str, int | float | None]],
+    plot_path: Path | None,
+    stability_threshold_ms: float,
+    stable_after_sec: float | None,
+) -> None:
     if plot_path is None:
         return
 
@@ -367,17 +446,47 @@ def maybe_plot(rows: list[dict[str, int | float | None]], plot_path: Path | None
             f"matplotlib is required for --plot but could not be imported: {exc}"
         ) from exc
 
-    x = [row["scan_index"] for row in rows]
-    y = [row["nearest_signed_delta_ms"] for row in rows]
+    x = [row["time_from_start_sec"] for row in rows]
+    y_abs = [row["nearest_abs_delta_ms"] for row in rows]
+    y_roll = [row["rolling_p90_abs_delta_ms"] for row in rows]
 
     plot_path.parent.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(12, 4))
-    ax.plot(x, y, linewidth=1.0)
-    ax.axhline(0.0, color="black", linewidth=0.8, linestyle="--")
-    ax.set_xlabel("scan index")
-    ax.set_ylabel("nearest odom - scan [ms]")
-    ax.set_title("Scan/Odometry Header Timestamp Alignment")
-    ax.grid(True, alpha=0.3)
+    fig, (ax_ts, ax_hist) = plt.subplots(
+        1, 2, figsize=(14, 4), gridspec_kw={"width_ratios": [2.5, 1.0]}
+    )
+    ax_ts.plot(x, y_abs, linewidth=0.8, alpha=0.5, label="nearest abs delta")
+    ax_ts.plot(x, y_roll, linewidth=1.8, label="rolling p90")
+    ax_ts.axhline(
+        stability_threshold_ms,
+        color="tab:red",
+        linewidth=1.0,
+        linestyle="--",
+        label=f"threshold {stability_threshold_ms:.1f} ms",
+    )
+    if stable_after_sec is not None:
+        ax_ts.axvline(
+            stable_after_sec,
+            color="tab:green",
+            linewidth=1.2,
+            linestyle=":",
+            label=f"stable after {stable_after_sec:.2f} s",
+        )
+    ax_ts.set_xlabel("time from first scan [sec]")
+    ax_ts.set_ylabel("abs(nearest odom - scan) [ms]")
+    ax_ts.set_title("Scan/Odometry Header Timestamp Alignment")
+    ax_ts.grid(True, alpha=0.3)
+    ax_ts.legend(loc="upper right")
+
+    hist_values = [value for value in y_abs if value is not None]
+    ax_hist.hist(hist_values, bins=40, color="tab:blue", alpha=0.8)
+    ax_hist.axvline(
+        stability_threshold_ms, color="tab:red", linewidth=1.0, linestyle="--"
+    )
+    ax_hist.set_xlabel("nearest abs delta [ms]")
+    ax_hist.set_ylabel("count")
+    ax_hist.set_title("Histogram")
+    ax_hist.grid(True, alpha=0.3)
+
     fig.tight_layout()
     fig.savefig(plot_path, dpi=160)
     plt.close(fig)
@@ -405,8 +514,21 @@ def main() -> None:
         msgtype="nav_msgs/msg/Odometry",
     )
     rows = compute_rows(scan_stamps=scan_stamps, odom_stamps=odom_stamps)
+    annotate_rows_with_time_and_rolling_stats(
+        rows=rows,
+        window_sec=args.rolling_window_sec,
+    )
+    stable_after_sec = estimate_stable_after_sec(
+        rows=rows,
+        threshold_ms=args.stability_threshold_ms,
+    )
     write_csv(rows, csv_path)
-    maybe_plot(rows, plot_path)
+    maybe_plot(
+        rows,
+        plot_path,
+        stability_threshold_ms=args.stability_threshold_ms,
+        stable_after_sec=stable_after_sec,
+    )
     print_summary(
         bag_path=bag_path,
         scan_topic=args.scan_topic,
@@ -416,6 +538,9 @@ def main() -> None:
         rows=rows,
         csv_path=csv_path,
         plot_path=plot_path,
+        rolling_window_sec=args.rolling_window_sec,
+        stability_threshold_ms=args.stability_threshold_ms,
+        stable_after_sec=stable_after_sec,
     )
 
 

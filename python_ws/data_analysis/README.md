@@ -33,7 +33,8 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - rosbag から `sensor_msgs/msg/LaserScan` と `nav_msgs/msg/Odometry` を取得
   - `header.stamp` 基準で、各 scan に最も近い odom の時刻差を集計
   - `prev/next/nearest` の差分を CSV 出力
-  - 任意で時系列 PNG を出力
+  - 任意で時系列 + ヒストグラム PNG を出力
+  - rolling p90 を使って「開始何秒後から安定か」を推定
 
 - `plot_localization_quality_map.py`
   - 既存の評価CSVと `map.yaml` から、良否ポイント図と成功率ヒートマップを生成
@@ -97,6 +98,15 @@ python data_analysis/analyze_scan_odom_timing.py \
   --odom-topic /visual_slam/tracking/odometry \
   --csv /tmp/scan_odom_timing.csv \
   --plot /tmp/scan_odom_timing.png
+
+# 例6: 2秒 rolling window / 20ms threshold で安定時刻を見る
+python data_analysis/analyze_scan_odom_timing.py \
+  --bag /path/to/rosbag2_dir \
+  --scan-topic /scan \
+  --odom-topic /visual_slam/tracking/odometry \
+  --rolling-window-sec 2.0 \
+  --stability-threshold-ms 20.0 \
+  --plot /tmp/scan_odom_timing_stability.png
 ```
 
 `--bag` は以下を受け付けます。
@@ -118,6 +128,10 @@ python data_analysis/analyze_scan_odom_timing.py \
   - `nearest odom stamp - scan stamp` の符号付き差
 - `odom_bracket_gap_ms`
   - その scan を前後から挟む odom 同士の間隔
+- `rolling_p90_abs_delta_ms`
+  - 直近 `--rolling-window-sec` 秒の `nearest_abs_delta_ms` の p90
+- `stable_after_sec`
+  - `rolling_p90_abs_delta_ms <= --stability-threshold-ms` を最初に満たした時刻
 
 ## 使い方（camera crop 解析）
 
