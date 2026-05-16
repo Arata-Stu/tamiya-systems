@@ -1006,6 +1006,28 @@ compute_wall_delay_from_bag_delay() {
     '
 }
 
+build_rosbag_seek_request_from_seconds() {
+    local bag_time_sec="$1"
+
+    python3 - "${bag_time_sec}" <<'PY'
+import sys
+from decimal import Decimal, ROUND_FLOOR
+
+value = Decimal(sys.argv[1])
+if value < 0:
+    value = Decimal("0")
+
+sec = int(value.to_integral_value(rounding=ROUND_FLOOR))
+nanosec = int(((value - Decimal(sec)) * Decimal("1000000000")).to_integral_value())
+
+if nanosec >= 1_000_000_000:
+    sec += 1
+    nanosec -= 1_000_000_000
+
+print(f"{{time: {{sec: {sec}, nanosec: {nanosec}}}}}")
+PY
+}
+
 launch_lightweight_recorder_now() {
     local output_dir="$1"
     shift
@@ -1656,6 +1678,7 @@ run_vslam_hint_remap_pass() {
     local flatscan_wait_pid=""
     local set_slam_pose_request=""
     local set_slam_pose_output=""
+    local warmup_seek_request=""
 
     if [ "${RUN_VSLAM_HINT_REMAP}" != true ]; then
         return 0
@@ -1672,6 +1695,11 @@ run_vslam_hint_remap_pass() {
     fi
 
     mkdir -p "${VSLAM_MAP_DIR}"
+
+    if ! warmup_seek_request="$(build_rosbag_seek_request_from_seconds "${VSLAM_WARMUP_SEC}")"; then
+        echo "[hint-remap] Skip: failed to build rosbag seek request from warmup=${VSLAM_WARMUP_SEC}s" >&2
+        return 0
+    fi
 
     echo "[hint-remap] Launch 2D map publisher + scan global localization"
 
@@ -1727,7 +1755,15 @@ run_vslam_hint_remap_pass() {
         return 0
     fi
 
-    echo "[hint-remap] Resume briefly to collect scan data, then pause"
+    echo "[hint-remap] Seek to ${VSLAM_WARMUP_SEC}s, resume briefly to collect scan data, then pause"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
+        echo "Warning: failed to seek rosbag player to the warmup offset for hint remap." >&2
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        return 0
+    fi
+
     if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
         echo "Warning: failed to resume paused rosbag player for hint remap." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -1739,9 +1775,9 @@ run_vslam_hint_remap_pass() {
     sleep 2
     call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
-    echo "[hint-remap] Rewind to the bag start so the next scan arrives after trigger"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "{time: {sec: 0, nanosec: 0}}"; then
-        echo "Warning: failed to rewind rosbag player before scan global localization." >&2
+    echo "[hint-remap] Seek back to ${VSLAM_WARMUP_SEC}s so the next scan arrives after trigger"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
+        echo "Warning: failed to seek rosbag player to the warmup offset before scan global localization." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -1812,9 +1848,9 @@ run_vslam_hint_remap_pass() {
     # one-shot global localization result has been captured.
     stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
 
-    echo "[hint-remap] Rewind paused rosbag player, then start VSLAM from the 2D global pose"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "{time: {sec: 0, nanosec: 0}}"; then
-        echo "Warning: failed to rewind rosbag player for hint remap. Keeping provisional map and original VSLAM map." >&2
+    echo "[hint-remap] Seek paused rosbag player back to ${VSLAM_WARMUP_SEC}s, then start VSLAM from the 2D global pose"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
+        echo "Warning: failed to seek rosbag player to the warmup offset for hint remap. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
