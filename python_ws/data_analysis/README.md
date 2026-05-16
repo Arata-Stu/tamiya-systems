@@ -29,6 +29,12 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - 一定 scan 間隔ごとに global localization を trigger
   - `localization_result` と参照自己位置（例: vSLAM pose）を比較して誤差CSVを出力
 
+- `analyze_scan_odom_timing.py`
+  - rosbag から `sensor_msgs/msg/LaserScan` と `nav_msgs/msg/Odometry` を取得
+  - `header.stamp` 基準で、各 scan に最も近い odom の時刻差を集計
+  - `prev/next/nearest` の差分を CSV 出力
+  - 任意で時系列 PNG を出力
+
 - `plot_localization_quality_map.py`
   - 既存の評価CSVと `map.yaml` から、良否ポイント図と成功率ヒートマップを生成
 
@@ -83,6 +89,14 @@ python data_analysis/visualize_scan_gradient.py \
   --topic /scan \
   --video_output /tmp/scan_timeseries.gif \
   --no_show
+
+# 例5: /scan と vSLAM odometry の時刻差を集計
+python data_analysis/analyze_scan_odom_timing.py \
+  --bag /path/to/rosbag2_dir \
+  --scan-topic /scan \
+  --odom-topic /visual_slam/tracking/odometry \
+  --csv /tmp/scan_odom_timing.csv \
+  --plot /tmp/scan_odom_timing.png
 ```
 
 `--bag` は以下を受け付けます。
@@ -96,6 +110,14 @@ python data_analysis/visualize_scan_gradient.py \
 - `--video_start`: 開始フレーム
 - `--video_end`: 終了フレーム（含む）
 - `--video_step`: 何フレームおきに描画するか
+
+`analyze_scan_odom_timing.py` の主な出力:
+- `nearest_abs_delta_ms`
+  - 各 scan に最も近い odom との絶対時刻差
+- `nearest_signed_delta_ms`
+  - `nearest odom stamp - scan stamp` の符号付き差
+- `odom_bracket_gap_ms`
+  - その scan を前後から挟む odom 同士の間隔
 
 ## 使い方（camera crop 解析）
 
