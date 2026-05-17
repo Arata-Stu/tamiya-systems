@@ -149,11 +149,6 @@ Options:
   --image-width PX    camera width for offline vslam launch (default: 424)
   --image-height PX   camera height for offline vslam launch (default: 240)
   --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
-  --source-start-sec SEC
-                      source bag の先頭から SEC 秒進めた位置を全 replay の開始基準にする
-                      (default: 0.0)
-  --vslam-warmup-sec SEC
-                      lightweight bag 記録を始める前の vslam warmup 秒数 (default: 3.0)
   --with-imu          replay /camera/imu as well (default: disabled)
   --vslam-map-dir DIR visual slam map output directory
   --lightweight-bag-root DIR
@@ -262,8 +257,6 @@ PIPELINE_MODE="auto"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
-SOURCE_START_SEC="0.0"
-VSLAM_WARMUP_SEC="3.0"
 USE_IMU=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
 LOCALIZATION_CONTAINER_NAME="offline_localization_container_$$"
@@ -438,14 +431,6 @@ while (($#)); do
             ;;
         --image-fps)
             IMAGE_FPS="$2"
-            shift 2
-            ;;
-        --source-start-sec)
-            SOURCE_START_SEC="$2"
-            shift 2
-            ;;
-        --vslam-warmup-sec)
-            VSLAM_WARMUP_SEC="$2"
             shift 2
             ;;
         --with-imu)
@@ -863,13 +848,6 @@ prompt_pipeline_mode_interactive() {
         return 0
     fi
 
-    if awk -v value="${SOURCE_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }'; then
-        echo ""
-        echo "source start offset (${SOURCE_START_SEC}s) が指定されているため、source bag から full で作り直します。"
-        PIPELINE_MODE="full"
-        return 0
-    fi
-
     if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
         PIPELINE_MODE="full"
         return 0
@@ -946,11 +924,6 @@ BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 SOURCE_BAG_PATH="${BAG_PATH}"
 
 if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
-    if awk -v value="${SOURCE_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }' && \
-       [ "${PIPELINE_MODE}" = "fast" ]; then
-        echo "Warning: --source-start-sec requires rebuilding from the source bag. Forcing --pipeline-mode full." >&2
-        PIPELINE_MODE="full"
-    fi
     discover_lightweight_bag_candidates "${LIGHTWEIGHT_BAG_ROOT}" "${BAG_DIR_NAME}" "${MAP_NAME}" || true
     prompt_pipeline_mode_interactive
     if [ "${PIPELINE_MODE}" = "fast" ]; then
@@ -1064,17 +1037,6 @@ compute_wall_delay_from_bag_delay() {
     '
 }
 
-add_bag_time_seconds() {
-    local lhs_sec="$1"
-    local rhs_sec="$2"
-
-    awk -v lhs_sec="${lhs_sec}" -v rhs_sec="${rhs_sec}" '
-        BEGIN {
-            printf "%.6f\n", (lhs_sec + 0) + (rhs_sec + 0)
-        }
-    '
-}
-
 build_rosbag_seek_request_from_seconds() {
     local bag_time_sec="$1"
 
@@ -1097,63 +1059,20 @@ print(f"{{time: {{sec: {sec}, nanosec: {nanosec}}}}}")
 PY
 }
 
-play_rosbag_with_optional_start_offset() {
+play_rosbag() {
     local bag_path="$1"
-    local start_sec="$2"
-    local log_path="$3"
-    shift 3
+    local log_path="$2"
+    shift 2
 
     local -a player_cmd=(
         ros2 bag play "${bag_path}" --clock --rate "${PLAY_RATE}"
     )
-    local start_seek_request=""
 
     if [ "$#" -gt 0 ]; then
         player_cmd+=(--topics "$@")
     fi
 
-    if awk -v value="${start_sec}" 'BEGIN { exit !((value + 0) > 0) }'; then
-        if ! start_seek_request="$(build_rosbag_seek_request_from_seconds "${start_sec}")"; then
-            echo "Failed to build rosbag seek request from start offset ${start_sec}s" >&2
-            return 1
-        fi
-
-        if command -v setsid >/dev/null 2>&1; then
-            ROSBAG_PLAYER_USES_SETSID=true
-            setsid "${player_cmd[@]}" --start-paused > "${log_path}" 2>&1 &
-        else
-            ROSBAG_PLAYER_USES_SETSID=false
-            "${player_cmd[@]}" --start-paused > "${log_path}" 2>&1 &
-        fi
-        ROSBAG_PLAYER_PID="$!"
-
-        if ! wait_for_service "/rosbag2_player/resume" 30 || \
-           ! wait_for_service "/rosbag2_player/pause" 30 || \
-           ! wait_for_service "/rosbag2_player/seek" 30; then
-            echo "rosbag2 player services were not ready for start offset playback. Check log: ${log_path}" >&2
-            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-            return 1
-        fi
-
-        echo "  - start offset: ${start_sec}s"
-        if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${start_seek_request}"; then
-            echo "Failed to seek rosbag player to start offset ${start_sec}s. Check log: ${log_path}" >&2
-            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-            return 1
-        fi
-        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-            echo "Failed to resume rosbag player after start offset seek. Check log: ${log_path}" >&2
-            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-            return 1
-        fi
-
-        wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
-        ROSBAG_PLAYER_PID=""
-        ROSBAG_PLAYER_USES_SETSID=false
-        return 0
-    fi
-
-    "${player_cmd[@]}"
+    "${player_cmd[@]}" > "${log_path}" 2>&1
 }
 
 launch_lightweight_recorder_now() {
@@ -1838,8 +1757,7 @@ run_vslam_hint_remap_pass() {
     local tracker_wait_pid=""
     local set_slam_pose_request=""
     local set_slam_pose_output=""
-    local warmup_seek_request=""
-    local hint_remap_start_sec=""
+    local remap_seek_request=""
     local localization_attempt=""
     local localization_attempts=3
     local localization_attempt_succeeded=false
@@ -1864,12 +1782,8 @@ run_vslam_hint_remap_pass() {
 
     mkdir -p "${VSLAM_MAP_DIR}"
 
-    if ! hint_remap_start_sec="$(add_bag_time_seconds "${SOURCE_START_SEC}" "${VSLAM_WARMUP_SEC}")"; then
-        echo "[hint-remap] Skip: failed to compute hint remap start offset from source=${SOURCE_START_SEC}s and warmup=${VSLAM_WARMUP_SEC}s" >&2
-        return 0
-    fi
-    if ! warmup_seek_request="$(build_rosbag_seek_request_from_seconds "${hint_remap_start_sec}")"; then
-        echo "[hint-remap] Skip: failed to build rosbag seek request from start=${hint_remap_start_sec}s" >&2
+    if ! remap_seek_request="$(build_rosbag_seek_request_from_seconds "0.0")"; then
+        echo "[hint-remap] Skip: failed to build rosbag seek request from the source bag start" >&2
         return 0
     fi
     if ! localization_retry_wall_step_sec="$(
@@ -1933,9 +1847,9 @@ run_vslam_hint_remap_pass() {
         return 0
     fi
 
-    echo "[hint-remap] Seek to ${hint_remap_start_sec}s, resume briefly to collect scan data, then pause"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
-        echo "Warning: failed to seek rosbag player to the warmup offset for hint remap." >&2
+    echo "[hint-remap] Seek to the source bag start, resume briefly to collect scan data, then pause"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
+        echo "Warning: failed to seek rosbag player to the source bag start for hint remap." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -1953,9 +1867,9 @@ run_vslam_hint_remap_pass() {
     sleep 2
     call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
-    echo "[hint-remap] Seek back to ${hint_remap_start_sec}s so the next scan arrives after trigger"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
-        echo "Warning: failed to seek rosbag player to the warmup offset before scan global localization." >&2
+    echo "[hint-remap] Seek back to the source bag start so the next scan arrives after trigger"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
+        echo "Warning: failed to seek rosbag player to the source bag start before scan global localization." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -2059,9 +1973,9 @@ run_vslam_hint_remap_pass() {
     # one-shot global localization result has been captured.
     stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
 
-    echo "[hint-remap] Seek paused rosbag player back to ${hint_remap_start_sec}s, then start VSLAM from the 2D global pose"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
-        echo "Warning: failed to seek rosbag player to the warmup offset for hint remap. Keeping provisional map and original VSLAM map." >&2
+    echo "[hint-remap] Seek paused rosbag player back to the source bag start, then start VSLAM from the 2D global pose"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
+        echo "Warning: failed to seek rosbag player to the source bag start for hint remap. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -2123,9 +2037,9 @@ run_vslam_hint_remap_pass() {
 
     call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
-    echo "[hint-remap] Rewind to ${hint_remap_start_sec}s after tracker init"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
-        echo "Warning: failed to rewind rosbag player after priming the VSLAM tracker. Keeping provisional map and original VSLAM map." >&2
+    echo "[hint-remap] Rewind to the source bag start after tracker init"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
+        echo "Warning: failed to rewind rosbag player to the source bag start after priming the VSLAM tracker. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
@@ -2281,8 +2195,8 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
     echo "[4/8] Play source rosbag for online VSLAM + Cartographer"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
-        if ! play_rosbag_with_optional_start_offset \
-            "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}"; then
+        if ! play_rosbag \
+            "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}"; then
             exit 1
         fi
     else
@@ -2291,8 +2205,8 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
 
         echo "  - mode: filtered topics"
         echo "  - topics: ${PLAY_TOPICS[*]}"
-        if ! play_rosbag_with_optional_start_offset \
-            "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+        if ! play_rosbag \
+            "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
             exit 1
         fi
     fi
@@ -2364,8 +2278,8 @@ else
 
         if [ "${PLAY_ALL_TOPICS}" = true ]; then
             echo "  - mode: all topics"
-            if ! play_rosbag_with_optional_start_offset \
-                "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}"; then
+            if ! play_rosbag \
+                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}"; then
                 exit 1
             fi
         else
@@ -2374,8 +2288,8 @@ else
 
             echo "  - mode: filtered topics"
             echo "  - topics: ${PLAY_TOPICS[*]}"
-            if ! play_rosbag_with_optional_start_offset \
-                "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+            if ! play_rosbag \
+                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
                 exit 1
             fi
         fi
@@ -2398,20 +2312,12 @@ else
     fi
 
     # ==========================================
-    # 2. Create a post-warmup lightweight bag from saved VSLAM-map localization
+    # 2. Create a lightweight bag from saved VSLAM-map localization
     # ==========================================
     if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
-        WARMUP_WALL_DELAY_SEC="$(compute_wall_delay_from_bag_delay "${VSLAM_WARMUP_SEC}" "${PLAY_RATE}")" || {
-            echo "Failed to compute VSLAM warmup delay from ${VSLAM_WARMUP_SEC}s at rate ${PLAY_RATE}" >&2
-            exit 1
-        }
-
         echo "[6/8] Replay source rosbag with saved VSLAM map localization"
         echo "  - source map: ${VSLAM_MAP_DIR}"
         echo "  - lightweight bag: ${LIGHTWEIGHT_BAG_DIR}"
-        echo "  - source start offset: ${SOURCE_START_SEC}s"
-        echo "  - VSLAM warmup before record: ${VSLAM_WARMUP_SEC}s"
-        echo "  - wall clock warmup: ${WARMUP_WALL_DELAY_SEC}s"
         echo "  - logs: ${TF_LOCALIZATION_LOG_PATH}, ${VSLAM_LOCALIZATION_LOG_PATH}"
 
         if ! build_vslam_localization_param_file "${VSLAM_LOCALIZATION_PARAM_PATH}"; then
@@ -2450,70 +2356,37 @@ else
             exit 1
         fi
 
-        echo "[7/8] Start paused rosbag player for VSLAM warmup"
-        if [ "${PLAY_ALL_TOPICS}" = true ]; then
-            launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
-                ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused \
-                > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
-        else
-            build_source_play_topics
-            PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
-            launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
-                ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused --topics "${PLAY_TOPICS[@]}" \
-                > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
-        fi
-
-        if ! wait_for_service "/rosbag2_player/resume" 30 || \
-           ! wait_for_service "/rosbag2_player/pause" 30 || \
-           ! wait_for_service "/rosbag2_player/seek" 30; then
-            echo "rosbag2 player services were not ready. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
-            exit 1
-        fi
-
-        if awk -v value="${SOURCE_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }'; then
-            SOURCE_START_SEEK_REQUEST="$(build_rosbag_seek_request_from_seconds "${SOURCE_START_SEC}")" || {
-                echo "Failed to build source start seek request from ${SOURCE_START_SEC}s" >&2
-                exit 1
-            }
-            echo "  - seek paused player to source start offset: ${SOURCE_START_SEC}s"
-            if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${SOURCE_START_SEEK_REQUEST}"; then
-                echo "Failed to seek paused player to source start offset ${SOURCE_START_SEC}s. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
-                exit 1
-            fi
-        fi
-
-        echo "  - warm up VSLAM before recording"
-        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-            echo "Failed to resume paused player for VSLAM warmup." >&2
-            exit 1
-        fi
-        sleep "${WARMUP_WALL_DELAY_SEC}"
-        if ! call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}"; then
-            echo "Failed to pause player after VSLAM warmup. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
-            exit 1
-        fi
-
         build_lightweight_record_topics
+        echo "[7/8] Start lightweight rosbag record"
         echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
-        echo "  - record starts after warmup pause"
         echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
         launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
         sleep 2
 
-        echo "  - resume player and record post-warmup bag"
-        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-            echo "Failed to resume player for post-warmup recording." >&2
-            exit 1
+        echo "  - replay source rosbag"
+        if [ "${PLAY_ALL_TOPICS}" = true ]; then
+            echo "  - mode: all topics"
+            if ! play_rosbag \
+                "${SOURCE_BAG_PATH}" "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}"; then
+                exit 1
+            fi
+        else
+            build_source_play_topics
+            PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
+
+            echo "  - mode: filtered topics"
+            echo "  - topics: ${PLAY_TOPICS[*]}"
+            if ! play_rosbag \
+                "${SOURCE_BAG_PATH}" "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+                exit 1
+            fi
         fi
-        wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
-        ROSBAG_PLAYER_PID=""
-        ROSBAG_PLAYER_USES_SETSID=false
 
         stop_recorder
         stop_vslam
 
         if [ ! -f "${LIGHTWEIGHT_BAG_DIR}/metadata.yaml" ]; then
-            echo "Delayed lightweight bag was not recorded: ${LIGHTWEIGHT_BAG_DIR}" >&2
+            echo "Lightweight bag was not recorded: ${LIGHTWEIGHT_BAG_DIR}" >&2
             exit 1
         fi
 
@@ -2543,18 +2416,11 @@ else
     if [ "${USING_LIGHTWEIGHT_BAG}" = true ]; then
         echo "  - using lightweight bag: ${BAG_PATH}"
     fi
-    ACTIVE_BAG_START_SEC="0.0"
-    if [ "${USING_LIGHTWEIGHT_BAG}" != true ] && [ "${BAG_PATH}" = "${SOURCE_BAG_PATH}" ]; then
-        ACTIVE_BAG_START_SEC="${SOURCE_START_SEC}"
-    fi
-    if awk -v value="${ACTIVE_BAG_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }'; then
-        echo "  - active bag start offset: ${ACTIVE_BAG_START_SEC}s"
-    fi
 
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
-        if ! play_rosbag_with_optional_start_offset \
-            "${BAG_PATH}" "${ACTIVE_BAG_START_SEC}" "${CARTOGRAPHER_PLAYER_LOG_PATH}"; then
+        if ! play_rosbag \
+            "${BAG_PATH}" "${CARTOGRAPHER_PLAYER_LOG_PATH}"; then
             exit 1
         fi
     else
@@ -2567,8 +2433,8 @@ else
 
         echo "  - mode: filtered topics"
         echo "  - topics: ${PLAY_TOPICS[*]}"
-        if ! play_rosbag_with_optional_start_offset \
-            "${BAG_PATH}" "${ACTIVE_BAG_START_SEC}" "${CARTOGRAPHER_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+        if ! play_rosbag \
+            "${BAG_PATH}" "${CARTOGRAPHER_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
             exit 1
         fi
     fi

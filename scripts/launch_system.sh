@@ -218,9 +218,9 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
-      # Initial mapping runs record only lidar + camera sensor data at 1280x720x30.
-      set_extra_arg_value "image_width" "1280"
-      set_extra_arg_value "image_height" "720"
+      # Initial mapping runs record only lidar + camera sensor data at 424x240x30.
+      set_extra_arg_value "image_width" "424"
+      set_extra_arg_value "image_height" "240"
       set_extra_arg_value "image_fps" "30.0"
       ;;
     *)

@@ -89,8 +89,8 @@ apply_mode() {
         default)
             ;;
         vslam|vslam_map)
-            IMAGE_WIDTH="1280"
-            IMAGE_HEIGHT="720"
+            IMAGE_WIDTH="424"
+            IMAGE_HEIGHT="240"
             IMAGE_FPS="30.0"
             ;;
         *)
