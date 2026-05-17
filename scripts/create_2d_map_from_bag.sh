@@ -1983,7 +1983,7 @@ run_vslam_hint_remap_pass() {
         stop_vslam
         return 0
     fi
-    if ! printf '%s\n' "${set_slam_pose_output}" | grep -Eq 'success:[[:space:]]*true'; then
+    if ! printf '%s\n' "${set_slam_pose_output}" | grep -Eiq 'success[[:space:]]*[:=][[:space:]]*true'; then
         echo "Warning: visual_slam/set_slam_pose returned success=false. Keeping provisional map and original VSLAM map." >&2
         printf '%s\n' "${set_slam_pose_output}" >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
