@@ -149,6 +149,9 @@ Options:
   --image-width PX    camera width for offline vslam launch (default: 424)
   --image-height PX   camera height for offline vslam launch (default: 240)
   --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
+  --source-start-sec SEC
+                      source bag の先頭から SEC 秒進めた位置を全 replay の開始基準にする
+                      (default: 0.0)
   --vslam-warmup-sec SEC
                       lightweight bag 記録を始める前の vslam warmup 秒数 (default: 3.0)
   --with-imu          replay /camera/imu as well (default: disabled)
@@ -156,7 +159,7 @@ Options:
   --lightweight-bag-root DIR
                       2D map用 lightweight bag の保存先ルート (default: /record/2d_input)
   --pipeline-mode MODE
-                      full|fast|auto (default: auto)
+                      full|fast|online|auto (default: auto)
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --vslam-hint-remap  after the provisional 2D map, replay the source bag once more,
                       use scan global localization from the fixed 2D map as the initial
@@ -259,6 +262,7 @@ PIPELINE_MODE="auto"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
+SOURCE_START_SEC="0.0"
 VSLAM_WARMUP_SEC="3.0"
 USE_IMU=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
@@ -436,6 +440,10 @@ while (($#)); do
             IMAGE_FPS="$2"
             shift 2
             ;;
+        --source-start-sec)
+            SOURCE_START_SEC="$2"
+            shift 2
+            ;;
         --vslam-warmup-sec)
             VSLAM_WARMUP_SEC="$2"
             shift 2
@@ -570,6 +578,15 @@ done
 
 apply_mode "${MODE}"
 
+case "${PIPELINE_MODE}" in
+    auto|full|fast|online)
+        ;;
+    *)
+        echo "Invalid --pipeline-mode: ${PIPELINE_MODE}" >&2
+        exit 1
+        ;;
+esac
+
 BAG_PATH=""
 MAP_NAME=""
 BAG_DIR_NAME=""
@@ -678,6 +695,21 @@ build_source_play_topics() {
     SOURCE_PLAY_TOPICS=(
         "${SCAN_TOPIC}"
         "/tf"
+        "/tf_static"
+        "/camera/left/image_raw"
+        "/camera/left/camera_info"
+        "/camera/right/image_raw"
+        "/camera/right/camera_info"
+    )
+
+    if [ "${USE_IMU}" = true ]; then
+        SOURCE_PLAY_TOPICS+=("/camera/imu")
+    fi
+}
+
+build_online_source_play_topics() {
+    SOURCE_PLAY_TOPICS=(
+        "${SCAN_TOPIC}"
         "/tf_static"
         "/camera/left/image_raw"
         "/camera/left/camera_info"
@@ -825,7 +857,16 @@ prompt_map_name_interactive() {
 prompt_pipeline_mode_interactive() {
     local choice
 
-    if [ "${PIPELINE_MODE}" = "full" ] || [ "${PIPELINE_MODE}" = "fast" ]; then
+    if [ "${PIPELINE_MODE}" = "full" ] || \
+       [ "${PIPELINE_MODE}" = "fast" ] || \
+       [ "${PIPELINE_MODE}" = "online" ]; then
+        return 0
+    fi
+
+    if awk -v value="${SOURCE_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }'; then
+        echo ""
+        echo "source start offset (${SOURCE_START_SEC}s) が指定されているため、source bag から full で作り直します。"
+        PIPELINE_MODE="full"
         return 0
     fi
 
@@ -905,6 +946,11 @@ BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 SOURCE_BAG_PATH="${BAG_PATH}"
 
 if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
+    if awk -v value="${SOURCE_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }' && \
+       [ "${PIPELINE_MODE}" = "fast" ]; then
+        echo "Warning: --source-start-sec requires rebuilding from the source bag. Forcing --pipeline-mode full." >&2
+        PIPELINE_MODE="full"
+    fi
     discover_lightweight_bag_candidates "${LIGHTWEIGHT_BAG_ROOT}" "${BAG_DIR_NAME}" "${MAP_NAME}" || true
     prompt_pipeline_mode_interactive
     if [ "${PIPELINE_MODE}" = "fast" ]; then
@@ -915,9 +961,21 @@ if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odome
     fi
 fi
 
+if [ "${PIPELINE_MODE}" = "online" ]; then
+    if [ "${RUN_VSLAM}" != true ]; then
+        echo "--pipeline-mode online requires --run-vslam or --mode 2d_slam." >&2
+        exit 1
+    fi
+    if [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odometry" ]; then
+        echo "--pipeline-mode online requires odom topic /visual_slam/tracking/odometry." >&2
+        exit 1
+    fi
+fi
+
 if [ "${RUN_VSLAM}" = true ] && \
    [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ] && \
-   [ "${USING_LIGHTWEIGHT_BAG}" != true ]; then
+   [ "${USING_LIGHTWEIGHT_BAG}" != true ] && \
+   [ "${PIPELINE_MODE}" != "online" ]; then
     USE_VSLAM_LOCALIZATION_REPLAY=true
 fi
 
@@ -1006,6 +1064,17 @@ compute_wall_delay_from_bag_delay() {
     '
 }
 
+add_bag_time_seconds() {
+    local lhs_sec="$1"
+    local rhs_sec="$2"
+
+    awk -v lhs_sec="${lhs_sec}" -v rhs_sec="${rhs_sec}" '
+        BEGIN {
+            printf "%.6f\n", (lhs_sec + 0) + (rhs_sec + 0)
+        }
+    '
+}
+
 build_rosbag_seek_request_from_seconds() {
     local bag_time_sec="$1"
 
@@ -1026,6 +1095,65 @@ if nanosec >= 1_000_000_000:
 
 print(f"{{time: {{sec: {sec}, nanosec: {nanosec}}}}}")
 PY
+}
+
+play_rosbag_with_optional_start_offset() {
+    local bag_path="$1"
+    local start_sec="$2"
+    local log_path="$3"
+    shift 3
+
+    local -a player_cmd=(
+        ros2 bag play "${bag_path}" --clock --rate "${PLAY_RATE}"
+    )
+    local start_seek_request=""
+
+    if [ "$#" -gt 0 ]; then
+        player_cmd+=(--topics "$@")
+    fi
+
+    if awk -v value="${start_sec}" 'BEGIN { exit !((value + 0) > 0) }'; then
+        if ! start_seek_request="$(build_rosbag_seek_request_from_seconds "${start_sec}")"; then
+            echo "Failed to build rosbag seek request from start offset ${start_sec}s" >&2
+            return 1
+        fi
+
+        if command -v setsid >/dev/null 2>&1; then
+            ROSBAG_PLAYER_USES_SETSID=true
+            setsid "${player_cmd[@]}" --start-paused > "${log_path}" 2>&1 &
+        else
+            ROSBAG_PLAYER_USES_SETSID=false
+            "${player_cmd[@]}" --start-paused > "${log_path}" 2>&1 &
+        fi
+        ROSBAG_PLAYER_PID="$!"
+
+        if ! wait_for_service "/rosbag2_player/resume" 30 || \
+           ! wait_for_service "/rosbag2_player/pause" 30 || \
+           ! wait_for_service "/rosbag2_player/seek" 30; then
+            echo "rosbag2 player services were not ready for start offset playback. Check log: ${log_path}" >&2
+            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+            return 1
+        fi
+
+        echo "  - start offset: ${start_sec}s"
+        if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${start_seek_request}"; then
+            echo "Failed to seek rosbag player to start offset ${start_sec}s. Check log: ${log_path}" >&2
+            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+            return 1
+        fi
+        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+            echo "Failed to resume rosbag player after start offset seek. Check log: ${log_path}" >&2
+            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+            return 1
+        fi
+
+        wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
+        ROSBAG_PLAYER_PID=""
+        ROSBAG_PLAYER_USES_SETSID=false
+        return 0
+    fi
+
+    "${player_cmd[@]}"
 }
 
 launch_lightweight_recorder_now() {
@@ -1621,6 +1749,36 @@ call_rosbag_player_service() {
         "${request}" > /dev/null
 }
 
+launch_cartographer_mapping() {
+    local -a launch_args=(
+        "use_sim_time:=true"
+        "scan_topic:=${SCAN_TOPIC}"
+        "configuration_basename:=${CONFIG_BASENAME}"
+    )
+
+    if [ -n "${ODOM_TOPIC}" ]; then
+        launch_args+=("odom_topic:=${ODOM_TOPIC}")
+    fi
+
+    capture_base_cartographer_pids
+
+    if command -v setsid >/dev/null 2>&1; then
+        build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
+        CARTOGRAPHER_USES_SETSID=true
+        setsid "${SYSTEM_LAUNCH_CMD[@]}" \
+            "${launch_args[@]}" \
+            > "${MAP_LOG_PATH}" 2>&1 &
+    else
+        build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
+        CARTOGRAPHER_USES_SETSID=false
+        "${SYSTEM_LAUNCH_CMD[@]}" \
+            "${launch_args[@]}" \
+            > "${MAP_LOG_PATH}" 2>&1 &
+    fi
+
+    CARTOGRAPHER_PID="$!"
+}
+
 convert_pbstream_to_map() {
     local success_label="$1"
     local png_filename
@@ -1681,6 +1839,7 @@ run_vslam_hint_remap_pass() {
     local set_slam_pose_request=""
     local set_slam_pose_output=""
     local warmup_seek_request=""
+    local hint_remap_start_sec=""
     local localization_attempt=""
     local localization_attempts=3
     local localization_attempt_succeeded=false
@@ -1705,8 +1864,12 @@ run_vslam_hint_remap_pass() {
 
     mkdir -p "${VSLAM_MAP_DIR}"
 
-    if ! warmup_seek_request="$(build_rosbag_seek_request_from_seconds "${VSLAM_WARMUP_SEC}")"; then
-        echo "[hint-remap] Skip: failed to build rosbag seek request from warmup=${VSLAM_WARMUP_SEC}s" >&2
+    if ! hint_remap_start_sec="$(add_bag_time_seconds "${SOURCE_START_SEC}" "${VSLAM_WARMUP_SEC}")"; then
+        echo "[hint-remap] Skip: failed to compute hint remap start offset from source=${SOURCE_START_SEC}s and warmup=${VSLAM_WARMUP_SEC}s" >&2
+        return 0
+    fi
+    if ! warmup_seek_request="$(build_rosbag_seek_request_from_seconds "${hint_remap_start_sec}")"; then
+        echo "[hint-remap] Skip: failed to build rosbag seek request from start=${hint_remap_start_sec}s" >&2
         return 0
     fi
     if ! localization_retry_wall_step_sec="$(
@@ -1770,7 +1933,7 @@ run_vslam_hint_remap_pass() {
         return 0
     fi
 
-    echo "[hint-remap] Seek to ${VSLAM_WARMUP_SEC}s, resume briefly to collect scan data, then pause"
+    echo "[hint-remap] Seek to ${hint_remap_start_sec}s, resume briefly to collect scan data, then pause"
     if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
         echo "Warning: failed to seek rosbag player to the warmup offset for hint remap." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -1790,7 +1953,7 @@ run_vslam_hint_remap_pass() {
     sleep 2
     call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
-    echo "[hint-remap] Seek back to ${VSLAM_WARMUP_SEC}s so the next scan arrives after trigger"
+    echo "[hint-remap] Seek back to ${hint_remap_start_sec}s so the next scan arrives after trigger"
     if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
         echo "Warning: failed to seek rosbag player to the warmup offset before scan global localization." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -1896,7 +2059,7 @@ run_vslam_hint_remap_pass() {
     # one-shot global localization result has been captured.
     stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
 
-    echo "[hint-remap] Seek paused rosbag player back to ${VSLAM_WARMUP_SEC}s, then start VSLAM from the 2D global pose"
+    echo "[hint-remap] Seek paused rosbag player back to ${hint_remap_start_sec}s, then start VSLAM from the 2D global pose"
     if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
         echo "Warning: failed to seek rosbag player to the warmup offset for hint remap. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -1960,7 +2123,7 @@ run_vslam_hint_remap_pass() {
 
     call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
-    echo "[hint-remap] Rewind to ${VSLAM_WARMUP_SEC}s after tracker init"
+    echo "[hint-remap] Rewind to ${hint_remap_start_sec}s after tracker init"
     if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
         echo "Warning: failed to rewind rosbag player after priming the VSLAM tracker. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -2052,10 +2215,12 @@ if [ -z "${LIGHTWEIGHT_BAG_DIR}" ]; then
 fi
 VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
 TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_PLAYER_LOG_PATH="/tmp/offline_vslam_mapping_player_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LOCALIZATION_LOG_PATH="/tmp/offline_vslam_localization_$(date +%Y%m%d_%H%M%S).log"
 TF_LOCALIZATION_LOG_PATH="/tmp/offline_vslam_localization_tf_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LOCALIZATION_PLAYER_LOG_PATH="/tmp/offline_vslam_localization_player_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LOCALIZATION_PARAM_PATH="/tmp/offline_vslam_localization_param_$(date +%Y%m%d_%H%M%S).yaml"
+CARTOGRAPHER_PLAYER_LOG_PATH="/tmp/cartographer_player_$(date +%Y%m%d_%H%M%S).log"
 
 if [ "${RUN_VSLAM}" = true ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
@@ -2067,9 +2232,9 @@ if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odom
 fi
 
 # ==========================================
-# 1. Generate the base VSLAM map
+# 1-3. Build maps
 # ==========================================
-if [ "${RUN_VSLAM}" = true ]; then
+if [ "${PIPELINE_MODE}" = "online" ]; then
     echo "[1/8] Launch offline TF + VSLAM mapping (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
     build_system_launch_cmd "offline_sensor_tf.launch.xml"
     launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
@@ -2096,241 +2261,332 @@ if [ "${RUN_VSLAM}" = true ]; then
         "save_map_path:=${VSLAM_MAP_DIR}" \
         > "${VSLAM_LOG_PATH}" 2>&1
 
-    echo "[2/8] Wait for /visual_slam/save_map service"
+    echo "[2/8] Launch cartographer online (log: ${MAP_LOG_PATH})"
+    launch_cartographer_mapping
+
+    echo "[3/8] Wait for VSLAM odometry and cartographer services"
     if ! wait_for_service "/visual_slam/save_map" 60; then
         echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
         exit 1
     fi
-
-    if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
-        echo "[3/8] Play source rosbag for the first VSLAM mapping pass"
-    else
-        echo "[3/8] Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
-        build_lightweight_record_topics
-        echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
-        echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
-        launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
-        sleep 2
-        echo "[4/8] Play source rosbag for offline VSLAM"
+    if ! wait_for_topic "${ODOM_TOPIC}" 60; then
+        echo "Visual SLAM odometry topic was not ready. Check log: ${VSLAM_LOG_PATH}" >&2
+        exit 1
+    fi
+    if ! wait_for_service "/write_state" 60; then
+        echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
+        exit 1
     fi
 
+    echo "[4/8] Play source rosbag for online VSLAM + Cartographer"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
-        ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}"
+        if ! play_rosbag_with_optional_start_offset \
+            "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}"; then
+            exit 1
+        fi
     else
-        build_source_play_topics
+        build_online_source_play_topics
         PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
 
         echo "  - mode: filtered topics"
         echo "  - topics: ${PLAY_TOPICS[*]}"
-        ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --topics "${PLAY_TOPICS[@]}"
+        if ! play_rosbag_with_optional_start_offset \
+            "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+            exit 1
+        fi
     fi
 
-    echo "[5/8] Save the first VSLAM map and stop mapping-side processes"
+    echo "[5/8] Save online VSLAM map and cartographer state"
     sleep 2
     ros2 service call /visual_slam/save_map \
         isaac_ros_visual_slam_interfaces/srv/FilePath \
         "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
 
-    stop_recorder
-    stop_vslam
+    if ! ros2 service call /finish_trajectory \
+        cartographer_ros_msgs/srv/FinishTrajectory \
+        "{trajectory_id: 0}" > /dev/null; then
+        echo "Warning: /finish_trajectory failed. Continue." >&2
+    fi
 
-    if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" != true ]; then
+    WRITE_STATE_REQUEST=$(printf "{filename: '%s', include_unfinished_submaps: true}" "${PBSTREAM_PATH}")
+    ros2 service call /write_state \
+        cartographer_ros_msgs/srv/WriteState \
+        "${WRITE_STATE_REQUEST}" > /dev/null
+
+    stop_vslam
+    stop_cartographer
+else
+    if [ "${RUN_VSLAM}" = true ]; then
+        echo "[1/8] Launch offline TF + VSLAM mapping (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+        build_system_launch_cmd "offline_sensor_tf.launch.xml"
+        launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+            "${SYSTEM_LAUNCH_CMD[@]}" \
+            > "${TF_LOG_PATH}" 2>&1
+
+        sleep 2
+
+        launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
+            ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
+
+        sleep 2
+
+        build_system_launch_cmd "vslam.launch.xml"
+        launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
+            "${SYSTEM_LAUNCH_CMD[@]}" \
+            "image_width:=${IMAGE_WIDTH}" \
+            "image_height:=${IMAGE_HEIGHT}" \
+            "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
+            "enable_localization_and_mapping:=true" \
+            "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
+            "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
+            "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
+            "save_map_path:=${VSLAM_MAP_DIR}" \
+            > "${VSLAM_LOG_PATH}" 2>&1
+
+        echo "[2/8] Wait for /visual_slam/save_map service"
+        if ! wait_for_service "/visual_slam/save_map" 60; then
+            echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
+            exit 1
+        fi
+
+        if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
+            echo "[3/8] Play source rosbag for the first VSLAM mapping pass"
+        else
+            echo "[3/8] Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
+            build_lightweight_record_topics
+            echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
+            echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
+            launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
+            sleep 2
+            echo "[4/8] Play source rosbag for offline VSLAM"
+        fi
+
+        if [ "${PLAY_ALL_TOPICS}" = true ]; then
+            echo "  - mode: all topics"
+            if ! play_rosbag_with_optional_start_offset \
+                "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}"; then
+                exit 1
+            fi
+        else
+            build_source_play_topics
+            PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
+
+            echo "  - mode: filtered topics"
+            echo "  - topics: ${PLAY_TOPICS[*]}"
+            if ! play_rosbag_with_optional_start_offset \
+                "${SOURCE_BAG_PATH}" "${SOURCE_START_SEC}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+                exit 1
+            fi
+        fi
+
+        echo "[5/8] Save the first VSLAM map and stop mapping-side processes"
+        sleep 2
+        ros2 service call /visual_slam/save_map \
+            isaac_ros_visual_slam_interfaces/srv/FilePath \
+            "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
+
+        stop_recorder
+        stop_vslam
+
+        if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" != true ]; then
+            USING_LIGHTWEIGHT_BAG=true
+            BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
+        fi
+    else
+        echo "[1/8] Skip offline VSLAM"
+    fi
+
+    # ==========================================
+    # 2. Create a post-warmup lightweight bag from saved VSLAM-map localization
+    # ==========================================
+    if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
+        WARMUP_WALL_DELAY_SEC="$(compute_wall_delay_from_bag_delay "${VSLAM_WARMUP_SEC}" "${PLAY_RATE}")" || {
+            echo "Failed to compute VSLAM warmup delay from ${VSLAM_WARMUP_SEC}s at rate ${PLAY_RATE}" >&2
+            exit 1
+        }
+
+        echo "[6/8] Replay source rosbag with saved VSLAM map localization"
+        echo "  - source map: ${VSLAM_MAP_DIR}"
+        echo "  - lightweight bag: ${LIGHTWEIGHT_BAG_DIR}"
+        echo "  - source start offset: ${SOURCE_START_SEC}s"
+        echo "  - VSLAM warmup before record: ${VSLAM_WARMUP_SEC}s"
+        echo "  - wall clock warmup: ${WARMUP_WALL_DELAY_SEC}s"
+        echo "  - logs: ${TF_LOCALIZATION_LOG_PATH}, ${VSLAM_LOCALIZATION_LOG_PATH}"
+
+        if ! build_vslam_localization_param_file "${VSLAM_LOCALIZATION_PARAM_PATH}"; then
+            echo "Failed to build temporary VSLAM localization param file." >&2
+            exit 1
+        fi
+
+        build_system_launch_cmd "offline_sensor_tf.launch.xml"
+        launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+            "${SYSTEM_LAUNCH_CMD[@]}" \
+            > "${TF_LOCALIZATION_LOG_PATH}" 2>&1
+
+        sleep 2
+
+        launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
+            ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
+
+        sleep 2
+
+        build_system_launch_cmd "vslam.launch.xml"
+        launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
+            "${SYSTEM_LAUNCH_CMD[@]}" \
+            "image_width:=${IMAGE_WIDTH}" \
+            "image_height:=${IMAGE_HEIGHT}" \
+            "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
+            "vslam_param:=${VSLAM_LOCALIZATION_PARAM_PATH}" \
+            "enable_localization_and_mapping:=true" \
+            "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
+            "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
+            "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
+            "load_map_path:=${VSLAM_MAP_DIR}" \
+            > "${VSLAM_LOCALIZATION_LOG_PATH}" 2>&1
+
+        if ! wait_for_topic "${ODOM_TOPIC}" 60; then
+            echo "Visual SLAM localization topic was not ready. Check log: ${VSLAM_LOCALIZATION_LOG_PATH}" >&2
+            exit 1
+        fi
+
+        echo "[7/8] Start paused rosbag player for VSLAM warmup"
+        if [ "${PLAY_ALL_TOPICS}" = true ]; then
+            launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
+                ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused \
+                > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
+        else
+            build_source_play_topics
+            PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
+            launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
+                ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused --topics "${PLAY_TOPICS[@]}" \
+                > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
+        fi
+
+        if ! wait_for_service "/rosbag2_player/resume" 30 || \
+           ! wait_for_service "/rosbag2_player/pause" 30 || \
+           ! wait_for_service "/rosbag2_player/seek" 30; then
+            echo "rosbag2 player services were not ready. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
+            exit 1
+        fi
+
+        if awk -v value="${SOURCE_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }'; then
+            SOURCE_START_SEEK_REQUEST="$(build_rosbag_seek_request_from_seconds "${SOURCE_START_SEC}")" || {
+                echo "Failed to build source start seek request from ${SOURCE_START_SEC}s" >&2
+                exit 1
+            }
+            echo "  - seek paused player to source start offset: ${SOURCE_START_SEC}s"
+            if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${SOURCE_START_SEEK_REQUEST}"; then
+                echo "Failed to seek paused player to source start offset ${SOURCE_START_SEC}s. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
+                exit 1
+            fi
+        fi
+
+        echo "  - warm up VSLAM before recording"
+        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+            echo "Failed to resume paused player for VSLAM warmup." >&2
+            exit 1
+        fi
+        sleep "${WARMUP_WALL_DELAY_SEC}"
+        if ! call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}"; then
+            echo "Failed to pause player after VSLAM warmup. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
+            exit 1
+        fi
+
+        build_lightweight_record_topics
+        echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
+        echo "  - record starts after warmup pause"
+        echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
+        launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
+        sleep 2
+
+        echo "  - resume player and record post-warmup bag"
+        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+            echo "Failed to resume player for post-warmup recording." >&2
+            exit 1
+        fi
+        wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
+        ROSBAG_PLAYER_PID=""
+        ROSBAG_PLAYER_USES_SETSID=false
+
+        stop_recorder
+        stop_vslam
+
+        if [ ! -f "${LIGHTWEIGHT_BAG_DIR}/metadata.yaml" ]; then
+            echo "Delayed lightweight bag was not recorded: ${LIGHTWEIGHT_BAG_DIR}" >&2
+            exit 1
+        fi
+
         USING_LIGHTWEIGHT_BAG=true
         BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
     fi
-else
-    echo "[1/8] Skip offline VSLAM"
-fi
 
-# ==========================================
-# 2. Create a post-warmup lightweight bag from saved VSLAM-map localization
-# ==========================================
-if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
-    WARMUP_WALL_DELAY_SEC="$(compute_wall_delay_from_bag_delay "${VSLAM_WARMUP_SEC}" "${PLAY_RATE}")" || {
-        echo "Failed to compute VSLAM warmup delay from ${VSLAM_WARMUP_SEC}s at rate ${PLAY_RATE}" >&2
-        exit 1
-    }
-
-    echo "[6/8] Replay source rosbag with saved VSLAM map localization"
-    echo "  - source map: ${VSLAM_MAP_DIR}"
-    echo "  - lightweight bag: ${LIGHTWEIGHT_BAG_DIR}"
-    echo "  - VSLAM warmup before record: ${VSLAM_WARMUP_SEC}s"
-    echo "  - wall clock warmup: ${WARMUP_WALL_DELAY_SEC}s"
-    echo "  - logs: ${TF_LOCALIZATION_LOG_PATH}, ${VSLAM_LOCALIZATION_LOG_PATH}"
-
-    if ! build_vslam_localization_param_file "${VSLAM_LOCALIZATION_PARAM_PATH}"; then
-        echo "Failed to build temporary VSLAM localization param file." >&2
+    # ==========================================
+    # 3. Launch cartographer with finalized odom bag
+    # ==========================================
+    if [ ! -d "${BAG_PATH}" ] || [ ! -f "${BAG_PATH}/metadata.yaml" ]; then
+        echo "Invalid finalized BAG_PATH for Cartographer: ${BAG_PATH}" >&2
+        echo "metadata.yaml not found." >&2
         exit 1
     fi
 
-    build_system_launch_cmd "offline_sensor_tf.launch.xml"
-    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        > "${TF_LOCALIZATION_LOG_PATH}" 2>&1
+    echo "[8/8] Launch cartographer (log: ${MAP_LOG_PATH})"
+    launch_cartographer_mapping
 
-    sleep 2
-
-    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-
-    sleep 2
-
-    build_system_launch_cmd "vslam.launch.xml"
-    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        "image_width:=${IMAGE_WIDTH}" \
-        "image_height:=${IMAGE_HEIGHT}" \
-        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-        "vslam_param:=${VSLAM_LOCALIZATION_PARAM_PATH}" \
-        "enable_localization_and_mapping:=true" \
-        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
-        "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
-        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
-        "load_map_path:=${VSLAM_MAP_DIR}" \
-        > "${VSLAM_LOCALIZATION_LOG_PATH}" 2>&1
-
-    if ! wait_for_topic "${ODOM_TOPIC}" 60; then
-        echo "Visual SLAM localization topic was not ready. Check log: ${VSLAM_LOCALIZATION_LOG_PATH}" >&2
+    echo "[8/8] Wait for /write_state service"
+    if ! wait_for_service "/write_state" 60; then
+        echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
         exit 1
     fi
 
-    echo "[7/8] Start paused rosbag player for VSLAM warmup"
+    echo "[8/8] Build the provisional 2D map"
+    if [ "${USING_LIGHTWEIGHT_BAG}" = true ]; then
+        echo "  - using lightweight bag: ${BAG_PATH}"
+    fi
+    ACTIVE_BAG_START_SEC="0.0"
+    if [ "${USING_LIGHTWEIGHT_BAG}" != true ] && [ "${BAG_PATH}" = "${SOURCE_BAG_PATH}" ]; then
+        ACTIVE_BAG_START_SEC="${SOURCE_START_SEC}"
+    fi
+    if awk -v value="${ACTIVE_BAG_START_SEC}" 'BEGIN { exit !((value + 0) > 0) }'; then
+        echo "  - active bag start offset: ${ACTIVE_BAG_START_SEC}s"
+    fi
+
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
-        launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
-            ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused \
-            > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
+        echo "  - mode: all topics"
+        if ! play_rosbag_with_optional_start_offset \
+            "${BAG_PATH}" "${ACTIVE_BAG_START_SEC}" "${CARTOGRAPHER_PLAYER_LOG_PATH}"; then
+            exit 1
+        fi
     else
-        build_source_play_topics
-        PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
-        launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
-            ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused --topics "${PLAY_TOPICS[@]}" \
-            > "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" 2>&1
+        # Cartographer only needs the scan, odometry topic, and static sensor TFs.
+        # Replaying VSLAM's dynamic /tf here can conflict with Cartographer's own TF output.
+        PLAY_TOPICS=("${SCAN_TOPIC}" "/tf_static")
+        if [ -n "${ODOM_TOPIC}" ]; then
+            PLAY_TOPICS+=("${ODOM_TOPIC}")
+        fi
+
+        echo "  - mode: filtered topics"
+        echo "  - topics: ${PLAY_TOPICS[*]}"
+        if ! play_rosbag_with_optional_start_offset \
+            "${BAG_PATH}" "${ACTIVE_BAG_START_SEC}" "${CARTOGRAPHER_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+            exit 1
+        fi
     fi
 
-    if ! wait_for_service "/rosbag2_player/resume" 30 || \
-       ! wait_for_service "/rosbag2_player/pause" 30; then
-        echo "rosbag2 player services were not ready. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
-        exit 1
+    if ! ros2 service call /finish_trajectory \
+        cartographer_ros_msgs/srv/FinishTrajectory \
+        "{trajectory_id: 0}" > /dev/null; then
+        echo "Warning: /finish_trajectory failed. Continue." >&2
     fi
 
-    echo "  - warm up VSLAM before recording"
-    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Failed to resume paused player for VSLAM warmup." >&2
-        exit 1
-    fi
-    sleep "${WARMUP_WALL_DELAY_SEC}"
-    if ! call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}"; then
-        echo "Failed to pause player after VSLAM warmup. Check log: ${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" >&2
-        exit 1
-    fi
+    WRITE_STATE_REQUEST=$(printf "{filename: '%s', include_unfinished_submaps: true}" "${PBSTREAM_PATH}")
 
-    build_lightweight_record_topics
-    echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
-    echo "  - record starts after warmup pause"
-    echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
-    launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
-    sleep 2
+    ros2 service call /write_state \
+        cartographer_ros_msgs/srv/WriteState \
+        "${WRITE_STATE_REQUEST}" > /dev/null
 
-    echo "  - resume player and record post-warmup bag"
-    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Failed to resume player for post-warmup recording." >&2
-        exit 1
-    fi
-    wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
-    ROSBAG_PLAYER_PID=""
-    ROSBAG_PLAYER_USES_SETSID=false
-
-    stop_recorder
-    stop_vslam
-
-    if [ ! -f "${LIGHTWEIGHT_BAG_DIR}/metadata.yaml" ]; then
-        echo "Delayed lightweight bag was not recorded: ${LIGHTWEIGHT_BAG_DIR}" >&2
-        exit 1
-    fi
-
-    USING_LIGHTWEIGHT_BAG=true
-    BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
+    stop_cartographer
 fi
-
-# ==========================================
-# 3. Launch cartographer with finalized odom bag
-# ==========================================
-if [ ! -d "${BAG_PATH}" ] || [ ! -f "${BAG_PATH}/metadata.yaml" ]; then
-    echo "Invalid finalized BAG_PATH for Cartographer: ${BAG_PATH}" >&2
-    echo "metadata.yaml not found." >&2
-    exit 1
-fi
-
-echo "[8/8] Launch cartographer (log: ${MAP_LOG_PATH})"
-capture_base_cartographer_pids
-
-LAUNCH_ARGS=(
-    "use_sim_time:=true"
-    "scan_topic:=${SCAN_TOPIC}"
-    "configuration_basename:=${CONFIG_BASENAME}"
-)
-
-if [ -n "${ODOM_TOPIC}" ]; then
-    LAUNCH_ARGS+=("odom_topic:=${ODOM_TOPIC}")
-fi
-
-if command -v setsid >/dev/null 2>&1; then
-    build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
-    CARTOGRAPHER_USES_SETSID=true
-    setsid "${SYSTEM_LAUNCH_CMD[@]}" \
-        "${LAUNCH_ARGS[@]}" \
-        > "${MAP_LOG_PATH}" 2>&1 &
-else
-    build_system_launch_cmd "cartographer_2d_mapping.launch.xml"
-    CARTOGRAPHER_USES_SETSID=false
-    "${SYSTEM_LAUNCH_CMD[@]}" \
-        "${LAUNCH_ARGS[@]}" \
-        > "${MAP_LOG_PATH}" 2>&1 &
-fi
-
-CARTOGRAPHER_PID=$!
-
-echo "[8/8] Wait for /write_state service"
-if ! wait_for_service "/write_state" 60; then
-    echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
-    exit 1
-fi
-
-echo "[8/8] Build the provisional 2D map"
-if [ "${USING_LIGHTWEIGHT_BAG}" = true ]; then
-    echo "  - using lightweight bag: ${BAG_PATH}"
-fi
-
-if [ "${PLAY_ALL_TOPICS}" = true ]; then
-    echo "  - mode: all topics"
-    ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}"
-else
-    # Cartographer only needs the scan, odometry topic, and static sensor TFs.
-    # Replaying VSLAM's dynamic /tf here can conflict with Cartographer's own TF output.
-    PLAY_TOPICS=("${SCAN_TOPIC}" "/tf_static")
-    if [ -n "${ODOM_TOPIC}" ]; then
-        PLAY_TOPICS+=("${ODOM_TOPIC}")
-    fi
-
-    echo "  - mode: filtered topics"
-    echo "  - topics: ${PLAY_TOPICS[*]}"
-    ros2 bag play "${BAG_PATH}" --clock --rate "${PLAY_RATE}" --topics "${PLAY_TOPICS[@]}"
-fi
-
-if ! ros2 service call /finish_trajectory \
-    cartographer_ros_msgs/srv/FinishTrajectory \
-    "{trajectory_id: 0}" > /dev/null; then
-    echo "Warning: /finish_trajectory failed. Continue." >&2
-fi
-
-WRITE_STATE_REQUEST=$(printf "{filename: '%s', include_unfinished_submaps: true}" "${PBSTREAM_PATH}")
-
-ros2 service call /write_state \
-    cartographer_ros_msgs/srv/WriteState \
-    "${WRITE_STATE_REQUEST}" > /dev/null
-
-stop_cartographer
 
 if ! convert_pbstream_to_map "✅ Provisional map generated:"; then
     exit 1
