@@ -1674,8 +1674,10 @@ run_vslam_hint_remap_pass() {
     local tf_log_path="/tmp/offline_vslam_hint_tf_$(date +%Y%m%d_%H%M%S).log"
     local localization_result_log="/tmp/offline_vslam_hint_localization_result_$(date +%Y%m%d_%H%M%S).log"
     local post_trigger_flatscan_log="/tmp/offline_vslam_hint_post_trigger_flatscan_$(date +%Y%m%d_%H%M%S).log"
+    local tracker_init_odom_log="/tmp/offline_vslam_hint_tracker_init_odom_$(date +%Y%m%d_%H%M%S).log"
     local localization_wait_pid=""
     local flatscan_wait_pid=""
+    local tracker_wait_pid=""
     local set_slam_pose_request=""
     local set_slam_pose_output=""
     local warmup_seek_request=""
@@ -1878,6 +1880,43 @@ run_vslam_hint_remap_pass() {
     if ! wait_for_service "/visual_slam/set_slam_pose" 60 || \
        ! wait_for_service "/visual_slam/save_map" 60; then
         echo "Warning: hint remap skipped because VSLAM services were not ready. Check log: ${vslam_log_path}" >&2
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        stop_vslam
+        return 0
+    fi
+
+    echo "[hint-remap] Prime VSLAM tracker before set_slam_pose"
+    wait_for_topic_message "${ODOM_TOPIC}" 15 "${tracker_init_odom_log}" &
+    tracker_wait_pid="$!"
+
+    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+        echo "Warning: failed to resume rosbag player while priming the VSLAM tracker." >&2
+        kill "${tracker_wait_pid}" 2>/dev/null || true
+        wait "${tracker_wait_pid}" 2>/dev/null || true
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        stop_vslam
+        return 0
+    fi
+
+    if ! wait "${tracker_wait_pid}"; then
+        echo "Warning: VSLAM tracker did not publish ${ODOM_TOPIC} while priming set_slam_pose. Check log: ${vslam_log_path}" >&2
+        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
+        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+        stop_vslam
+        return 0
+    fi
+
+    call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
+
+    echo "[hint-remap] Rewind to ${VSLAM_WARMUP_SEC}s after tracker init"
+    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${warmup_seek_request}"; then
+        echo "Warning: failed to rewind rosbag player after priming the VSLAM tracker. Keeping provisional map and original VSLAM map." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
