@@ -1983,7 +1983,7 @@ run_vslam_hint_remap_pass() {
         stop_vslam
         return 0
     fi
-    if ! printf '%s\n' "${set_slam_pose_output}" | grep -Eiq 'success[[:space:]]*[:=][[:space:]]*true'; then
+    if ! grep -Eiq 'success[[:space:]]*[:=][[:space:]]*true' <<<"${set_slam_pose_output}"; then
         echo "Warning: visual_slam/set_slam_pose returned success=false. Keeping provisional map and original VSLAM map." >&2
         printf '%s\n' "${set_slam_pose_output}" >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -1993,6 +1993,7 @@ run_vslam_hint_remap_pass() {
         return 0
     fi
 
+    echo "[hint-remap] Resume rewound rosbag player for VSLAM remap"
     if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
         echo "Warning: failed to resume rewound rosbag player for hinted VSLAM remap." >&2
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
@@ -2005,6 +2006,7 @@ run_vslam_hint_remap_pass() {
     wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
     ROSBAG_PLAYER_PID=""
     ROSBAG_PLAYER_USES_SETSID=false
+    echo "[hint-remap] Rewound rosbag player finished"
 
     sleep 2
 
