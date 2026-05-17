@@ -1672,8 +1672,8 @@ run_vslam_hint_remap_pass() {
     local localization_log_path="/tmp/offline_vslam_hint_localization_$(date +%Y%m%d_%H%M%S).log"
     local vslam_log_path="/tmp/offline_vslam_hint_vslam_$(date +%Y%m%d_%H%M%S).log"
     local tf_log_path="/tmp/offline_vslam_hint_tf_$(date +%Y%m%d_%H%M%S).log"
-    local localization_result_log="/tmp/offline_vslam_hint_localization_result_$(date +%Y%m%d_%H%M%S).log"
-    local post_trigger_flatscan_log="/tmp/offline_vslam_hint_post_trigger_flatscan_$(date +%Y%m%d_%H%M%S).log"
+    local localization_result_log=""
+    local post_trigger_flatscan_log=""
     local tracker_init_odom_log="/tmp/offline_vslam_hint_tracker_init_odom_$(date +%Y%m%d_%H%M%S).log"
     local localization_wait_pid=""
     local flatscan_wait_pid=""
@@ -1681,6 +1681,13 @@ run_vslam_hint_remap_pass() {
     local set_slam_pose_request=""
     local set_slam_pose_output=""
     local warmup_seek_request=""
+    local localization_attempt=""
+    local localization_attempts=3
+    local localization_attempt_succeeded=false
+    local localization_retry_bag_step_sec="1.0"
+    local localization_retry_wall_step_sec=""
+    local localization_result_wait_sec=10
+    local localization_post_trigger_settle_sec="0.5"
 
     if [ "${RUN_VSLAM_HINT_REMAP}" != true ]; then
         return 0
@@ -1700,6 +1707,12 @@ run_vslam_hint_remap_pass() {
 
     if ! warmup_seek_request="$(build_rosbag_seek_request_from_seconds "${VSLAM_WARMUP_SEC}")"; then
         echo "[hint-remap] Skip: failed to build rosbag seek request from warmup=${VSLAM_WARMUP_SEC}s" >&2
+        return 0
+    fi
+    if ! localization_retry_wall_step_sec="$(
+        compute_wall_delay_from_bag_delay "${localization_retry_bag_step_sec}" "${PLAY_RATE}"
+    )"; then
+        echo "[hint-remap] Skip: failed to compute localization retry delay from bag=${localization_retry_bag_step_sec}s at rate=${PLAY_RATE}" >&2
         return 0
     fi
 
@@ -1787,56 +1800,89 @@ run_vslam_hint_remap_pass() {
     fi
 
     echo "[hint-remap] Trigger scan global localization and wait for /localization_result"
-    wait_for_topic_message "/localization_result" 45 "${localization_result_log}" &
-    localization_wait_pid="$!"
-    wait_for_topic_message "/flatscan" 15 "${post_trigger_flatscan_log}" &
-    flatscan_wait_pid="$!"
+    for localization_attempt in $(seq 1 "${localization_attempts}"); do
+        local attempt_label="[hint-remap] Localization attempt ${localization_attempt}/${localization_attempts}"
+        local attempt_localization_result_log="/tmp/offline_vslam_hint_localization_result_attempt${localization_attempt}_$(date +%Y%m%d_%H%M%S).log"
+        local attempt_post_trigger_flatscan_log="/tmp/offline_vslam_hint_post_trigger_flatscan_attempt${localization_attempt}_$(date +%Y%m%d_%H%M%S).log"
+        local localization_poll_elapsed="0.0"
 
-    if ! ros2 service call /trigger_grid_search_localization std_srvs/srv/Empty "{}" > /dev/null; then
-        echo "Warning: failed to trigger scan global localization for hint remap." >&2
+        echo "${attempt_label}: arm trigger and advance up to ${localization_retry_bag_step_sec}s of bag time"
+        wait_for_topic_message "/localization_result" "${localization_result_wait_sec}" "${attempt_localization_result_log}" &
+        localization_wait_pid="$!"
+        wait_for_topic_message "/flatscan" 5 "${attempt_post_trigger_flatscan_log}" &
+        flatscan_wait_pid="$!"
+
+        if ! ros2 service call /trigger_grid_search_localization std_srvs/srv/Empty "{}" > /dev/null; then
+            echo "Warning: failed to trigger scan global localization for hint remap." >&2
+            kill "${localization_wait_pid}" 2>/dev/null || true
+            wait "${localization_wait_pid}" 2>/dev/null || true
+            kill "${flatscan_wait_pid}" 2>/dev/null || true
+            wait "${flatscan_wait_pid}" 2>/dev/null || true
+            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+            stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+            stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+            return 0
+        fi
+
+        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
+            echo "Warning: failed to resume rosbag player after arming scan global localization." >&2
+            kill "${localization_wait_pid}" 2>/dev/null || true
+            wait "${localization_wait_pid}" 2>/dev/null || true
+            kill "${flatscan_wait_pid}" 2>/dev/null || true
+            wait "${flatscan_wait_pid}" 2>/dev/null || true
+            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+            stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+            stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+            return 0
+        fi
+
+        if ! wait "${flatscan_wait_pid}"; then
+            echo "Warning: did not observe a post-trigger /flatscan during hint remap." >&2
+            kill "${localization_wait_pid}" 2>/dev/null || true
+            wait "${localization_wait_pid}" 2>/dev/null || true
+            call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
+            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
+            stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
+            stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
+            return 0
+        fi
+
+        sleep "${localization_retry_wall_step_sec}"
+        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
+
+        while kill -0 "${localization_wait_pid}" 2>/dev/null; do
+            if awk -v elapsed="${localization_poll_elapsed}" -v limit="${localization_post_trigger_settle_sec}" 'BEGIN { exit !(elapsed >= limit) }'; then
+                break
+            fi
+            sleep 0.1
+            localization_poll_elapsed="$(
+                awk -v value="${localization_poll_elapsed}" 'BEGIN { printf "%.1f", value + 0.1 }'
+            )"
+        done
+
+        if ! kill -0 "${localization_wait_pid}" 2>/dev/null; then
+            if wait "${localization_wait_pid}"; then
+                localization_attempt_succeeded=true
+                localization_result_log="${attempt_localization_result_log}"
+                post_trigger_flatscan_log="${attempt_post_trigger_flatscan_log}"
+                echo "${attempt_label}: received /localization_result"
+                break
+            fi
+        fi
+
         kill "${localization_wait_pid}" 2>/dev/null || true
         wait "${localization_wait_pid}" 2>/dev/null || true
-        kill "${flatscan_wait_pid}" 2>/dev/null || true
-        wait "${flatscan_wait_pid}" 2>/dev/null || true
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
+        echo "${attempt_label}: no /localization_result yet, keep advancing scans"
+    done
 
-    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Warning: failed to resume rosbag player after arming scan global localization." >&2
-        kill "${localization_wait_pid}" 2>/dev/null || true
-        wait "${localization_wait_pid}" 2>/dev/null || true
-        kill "${flatscan_wait_pid}" 2>/dev/null || true
-        wait "${flatscan_wait_pid}" 2>/dev/null || true
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    if ! wait "${flatscan_wait_pid}"; then
-        echo "Warning: did not observe a post-trigger /flatscan during hint remap." >&2
-        kill "${localization_wait_pid}" 2>/dev/null || true
-        wait "${localization_wait_pid}" 2>/dev/null || true
+    if [ "${localization_attempt_succeeded}" != true ]; then
+        echo "Warning: did not receive /localization_result during hint remap after ${localization_attempts} attempts. Keeping provisional map and original VSLAM map." >&2
         call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
         stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
         stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
         stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
         return 0
     fi
-
-    if ! wait "${localization_wait_pid}"; then
-        echo "Warning: did not receive /localization_result during hint remap. Keeping provisional map and original VSLAM map." >&2
-        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
 
     if ! set_slam_pose_request="$(build_vslam_set_pose_request_from_pose_cov_file "${localization_result_log}")"; then
         echo "Warning: failed to build VSLAM set_slam_pose request from ${localization_result_log}. Keeping provisional map and original VSLAM map." >&2
