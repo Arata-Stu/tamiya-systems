@@ -8,6 +8,7 @@
     <arg name="use_camera" default="false" description="use camera"/>
     <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
     <arg name="use_emergency" default="false" description="run emergency override controller"/>
+    <arg name="use_perception" default="false" description="run lidar-camera perception cropper"/>
     <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
     <arg name="magp_rl_run_pure_pursuit" default="false" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
@@ -50,6 +51,23 @@
     <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
     <arg name="pure_pursuit_velocity_topic" default="/current_velocity" />
     <arg name="pure_pursuit_odometry_topic" default="/visual_slam/tracking/odometry" />
+
+    <!-- Perception -->
+    <arg name="perception_param" default="$(find-pkg-share system_launch)/config/perception/scan_image_projection_cropper.param.yaml" />
+    <arg name="perception_scan_topic" default="/scan" />
+    <arg name="perception_use_rectify" default="true" />
+    <arg name="perception_input_image_topic" default="/realsense2_camera/color/image_raw" />
+    <arg name="perception_input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
+    <arg name="perception_rectified_image_width" default="640" />
+    <arg name="perception_rectified_image_height" default="480" />
+    <arg name="perception_rectified_image_topic" default="/perception/image_rect" />
+    <arg name="perception_rectified_camera_info_topic" default="/perception/camera_info_rect" />
+    <arg name="perception_debug_input_image_topic" default="/realsense2_camera/color/image_raw" />
+    <arg name="perception_debug_input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
+    <arg name="perception_crop_image_topic" default="/perception/crop/image" />
+    <arg name="perception_crop_camera_info_topic" default="/perception/crop/camera_info" />
+    <arg name="perception_crop_roi_topic" default="/perception/crop/roi" />
+    <arg name="perception_debug_image_topic" default="/perception/debug/image" />
 
     <!-- Operation tools -->
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
@@ -216,6 +234,29 @@
             <arg name="input_drive_topic" value="$(var autonomous_control_cmd)"/>
             <arg name="output_drive_topic" value="$(var emergency_control_cmd)"/>
             <arg name="signal_topic" value="$(var emergency_signal_topic)"/>
+        </include>
+    </group>
+
+    <!-- Perception -->
+    <group if="$(var use_perception)">
+        <include file="$(find-pkg-share system_launch)/launch/perception.launch.xml">
+            <arg name="perception_param" value="$(var perception_param)"/>
+            <arg name="scan_topic" value="$(var perception_scan_topic)"/>
+            <arg name="input_image_topic" value="$(var perception_input_image_topic)"/>
+            <arg name="input_camera_info_topic" value="$(var perception_input_camera_info_topic)"/>
+            <arg name="use_rectify" value="$(var perception_use_rectify)"/>
+            <arg name="rectified_image_width" value="$(var perception_rectified_image_width)"/>
+            <arg name="rectified_image_height" value="$(var perception_rectified_image_height)"/>
+            <arg name="rectified_image_topic" value="$(var perception_rectified_image_topic)"/>
+            <arg name="rectified_camera_info_topic" value="$(var perception_rectified_camera_info_topic)"/>
+            <arg name="debug_input_image_topic" value="$(var perception_debug_input_image_topic)"/>
+            <arg name="debug_input_camera_info_topic" value="$(var perception_debug_input_camera_info_topic)"/>
+            <arg name="crop_image_topic" value="$(var perception_crop_image_topic)"/>
+            <arg name="crop_camera_info_topic" value="$(var perception_crop_camera_info_topic)"/>
+            <arg name="crop_roi_topic" value="$(var perception_crop_roi_topic)"/>
+            <arg name="debug_image_topic" value="$(var perception_debug_image_topic)"/>
+            <arg name="container_name" value="$(var camera_container_name)"/>
+            <arg name="create_container" value="false"/>
         </include>
     </group>
 

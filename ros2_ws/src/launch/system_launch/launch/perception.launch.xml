@@ -1,0 +1,73 @@
+<launch>
+  <arg name="perception_param"
+       default="$(find-pkg-share system_launch)/config/perception/scan_image_projection_cropper.param.yaml" />
+  <arg name="scan_topic" default="/scan" />
+
+  <arg name="input_image_topic" default="/realsense2_camera/color/image_raw" />
+  <arg name="input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
+  <arg name="use_rectify" default="true" />
+  <arg name="rectified_image_width" default="640" />
+  <arg name="rectified_image_height" default="480" />
+  <arg name="rectified_image_topic" default="/perception/image_rect" />
+  <arg name="rectified_camera_info_topic" default="/perception/camera_info_rect" />
+
+  <arg name="debug_input_image_topic" default="/realsense2_camera/color/image_raw" />
+  <arg name="debug_input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
+  <arg name="crop_image_topic" default="/perception/crop/image" />
+  <arg name="crop_camera_info_topic" default="/perception/crop/camera_info" />
+  <arg name="crop_roi_topic" default="/perception/crop/roi" />
+  <arg name="debug_image_topic" default="/perception/debug/image" />
+
+  <arg name="container_name" default="camera_container" />
+  <arg name="create_container" default="false" />
+
+  <let name="perception_image_topic"
+       value="$(var rectified_image_topic)"
+       if="$(var use_rectify)" />
+  <let name="perception_image_topic"
+       value="$(var input_image_topic)"
+       unless="$(var use_rectify)" />
+  <let name="perception_camera_info_topic"
+       value="$(var rectified_camera_info_topic)"
+       if="$(var use_rectify)" />
+  <let name="perception_camera_info_topic"
+       value="$(var input_camera_info_topic)"
+       unless="$(var use_rectify)" />
+
+  <group if="$(var create_container)">
+    <node pkg="rclcpp_components"
+          exec="component_container_mt"
+          name="$(var container_name)"
+          output="screen"/>
+  </group>
+
+  <group if="$(var use_rectify)">
+    <load_composable_node target="$(var container_name)">
+      <composable_node pkg="isaac_ros_image_proc"
+                       plugin="nvidia::isaac_ros::image_proc::RectifyNode"
+                       name="perception_rectify_node">
+        <param name="output_width" value="$(var rectified_image_width)" />
+        <param name="output_height" value="$(var rectified_image_height)" />
+        <remap from="image_raw" to="$(var input_image_topic)" />
+        <remap from="camera_info" to="$(var input_camera_info_topic)" />
+        <remap from="image_rect" to="$(var rectified_image_topic)" />
+        <remap from="camera_info_rect" to="$(var rectified_camera_info_topic)" />
+      </composable_node>
+    </load_composable_node>
+  </group>
+
+  <include file="$(find-pkg-share scan_image_projection_cropper)/launch/scan_image_projection_cropper.launch.xml">
+    <arg name="scan_image_projection_cropper_param" value="$(var perception_param)" />
+    <arg name="scan_topic" value="$(var scan_topic)" />
+    <arg name="image_topic" value="$(var perception_image_topic)" />
+    <arg name="camera_info_topic" value="$(var perception_camera_info_topic)" />
+    <arg name="crop_image_topic" value="$(var crop_image_topic)" />
+    <arg name="crop_camera_info_topic" value="$(var crop_camera_info_topic)" />
+    <arg name="crop_roi_topic" value="$(var crop_roi_topic)" />
+    <arg name="debug_input_image_topic" value="$(var debug_input_image_topic)" />
+    <arg name="debug_input_camera_info_topic" value="$(var debug_input_camera_info_topic)" />
+    <arg name="debug_image_topic" value="$(var debug_image_topic)" />
+    <arg name="container_name" value="$(var container_name)" />
+    <arg name="create_container" value="false" />
+  </include>
+</launch>
