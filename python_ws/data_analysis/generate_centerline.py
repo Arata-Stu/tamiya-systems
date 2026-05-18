@@ -337,6 +337,14 @@ def zhang_suen_thinning(mask: np.ndarray, max_iters: int = 200) -> np.ndarray:
     return img.astype(np.uint8)
 
 
+def lee_skeletonize_if_available(mask: np.ndarray) -> Optional[np.ndarray]:
+    try:
+        from skimage.morphology import skeletonize
+    except Exception:
+        return None
+    return skeletonize(mask.astype(bool), method="lee").astype(np.uint8)
+
+
 def neighbor_count(binary: np.ndarray) -> np.ndarray:
     k = np.ones((3, 3), dtype=np.uint8)
     count = cv2.filter2D(binary.astype(np.uint8), ddepth=cv2.CV_16U, kernel=k, borderType=cv2.BORDER_CONSTANT)
@@ -536,6 +544,41 @@ def smooth_points(points: np.ndarray, sigma: float, closed: bool) -> np.ndarray:
     return np.stack([xs, ys], axis=1)
 
 
+def smooth_points_race_stacks(points: np.ndarray) -> np.ndarray:
+    if len(points) < 7:
+        return points
+
+    try:
+        from scipy.signal import savgol_filter
+    except Exception:
+        return smooth_points(points, sigma=2.0, closed=True)
+
+    centerline_length = len(points)
+    if centerline_length > 2000:
+        filter_length = int(centerline_length / 200) * 10 + 1
+    elif centerline_length > 1000:
+        filter_length = 81
+    elif centerline_length > 500:
+        filter_length = 41
+    else:
+        filter_length = 21
+
+    max_filter = max(5, ((centerline_length // 2) * 2) - 1)
+    filter_length = min(filter_length, max_filter)
+    if filter_length < 5:
+        return points
+
+    centerline_smooth = savgol_filter(points, filter_length, 3, axis=0)
+
+    cen_len = centerline_length // 2
+    centerline2 = np.append(points[cen_len:], points[:cen_len], axis=0)
+    centerline_smooth2 = savgol_filter(centerline2, filter_length, 3, axis=0)
+
+    centerline_smooth[:filter_length] = centerline_smooth2[cen_len:cen_len + filter_length]
+    centerline_smooth[-filter_length:] = centerline_smooth2[cen_len - filter_length:cen_len]
+    return np.asarray(centerline_smooth, dtype=np.float64)
+
+
 def resample_polyline(points: np.ndarray, spacing: float, closed: bool) -> np.ndarray:
     if len(points) < 2 or spacing <= 0.0:
         return points
@@ -598,6 +641,7 @@ def save_debug_images(
     track_mask: np.ndarray,
     dist: np.ndarray,
     centerline_mask: np.ndarray,
+    boundary_mask: Optional[np.ndarray] = None,
 ) -> None:
     os.makedirs(debug_dir, exist_ok=True)
 
@@ -615,6 +659,11 @@ def save_debug_images(
         os.path.join(debug_dir, "05_centerline_mask.png"),
         (centerline_mask.astype(np.uint8) * 255),
     )
+    if boundary_mask is not None:
+        cv2.imwrite(
+            os.path.join(debug_dir, "06_track_bounds.png"),
+            np.clip(boundary_mask, 0, 255).astype(np.uint8),
+        )
 
 
 def output_path_for_direction(base_output_path: str, direction: str) -> str:
@@ -665,6 +714,114 @@ def preset_defaults(preset: str) -> dict:
     }
 
 
+def extract_track_boundary_contours(track_mask: np.ndarray) -> List[np.ndarray]:
+    contours, hierarchy = cv2.findContours(track_mask.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+    if hierarchy is None or len(contours) == 0:
+        return []
+
+    closed_contours: List[np.ndarray] = []
+    for i, cont in enumerate(contours):
+        opened = hierarchy[0][i][2] < 0 and hierarchy[0][i][3] < 0
+        if not opened:
+            closed_contours.append(cont.reshape(-1, 2).astype(np.float64))
+
+    if len(closed_contours) < 2:
+        return []
+
+    closed_contours.sort(key=lambda cont: abs(cv2.contourArea(cont.astype(np.float32))), reverse=True)
+    return closed_contours[:2]
+
+
+def contour_points_to_world(
+    contour: np.ndarray,
+    yaml_used: bool,
+    resolution: float,
+    origin_x: float,
+    origin_y: float,
+) -> np.ndarray:
+    if yaml_used:
+        return contour * resolution + np.array([origin_x, origin_y], dtype=np.float64)
+    return contour.copy()
+
+
+def centerline_normals(points: np.ndarray) -> np.ndarray:
+    prev_pts = np.roll(points, 1, axis=0)
+    next_pts = np.roll(points, -1, axis=0)
+    tangent = next_pts - prev_pts
+    norm = np.linalg.norm(tangent, axis=1)
+    norm[norm < 1e-9] = 1.0
+    tangent = tangent / norm[:, None]
+    return np.column_stack([-tangent[:, 1], tangent[:, 0]])
+
+
+def nearest_points_and_dists(points: np.ndarray, contour: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    nearest = np.zeros_like(points, dtype=np.float64)
+    dists = np.zeros(len(points), dtype=np.float64)
+
+    for i, point in enumerate(points):
+        delta = contour - point
+        dist_sq = np.sum(delta * delta, axis=1)
+        idx = int(np.argmin(dist_sq))
+        nearest[i] = contour[idx]
+        dists[i] = float(np.sqrt(dist_sq[idx]))
+
+    return nearest, dists
+
+
+def compute_asymmetric_widths_from_contours(
+    points: np.ndarray,
+    contour_a: np.ndarray,
+    contour_b: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    normals = centerline_normals(points)
+    nearest_a, dists_a = nearest_points_and_dists(points, contour_a)
+    nearest_b, dists_b = nearest_points_and_dists(points, contour_b)
+
+    proj_a = np.sum((nearest_a - points) * normals, axis=1)
+    proj_b = np.sum((nearest_b - points) * normals, axis=1)
+
+    width_right = np.zeros(len(points), dtype=np.float64)
+    width_left = np.zeros(len(points), dtype=np.float64)
+
+    for i in range(len(points)):
+        if proj_a[i] >= proj_b[i]:
+            left_proj, left_dist = proj_a[i], dists_a[i]
+            right_proj, right_dist = proj_b[i], dists_b[i]
+        else:
+            left_proj, left_dist = proj_b[i], dists_b[i]
+            right_proj, right_dist = proj_a[i], dists_a[i]
+
+        if left_proj < 0.0 and right_proj < 0.0:
+            left_dist = max(dists_a[i], dists_b[i])
+            right_dist = min(dists_a[i], dists_b[i])
+        elif left_proj > 0.0 and right_proj > 0.0:
+            left_dist = min(dists_a[i], dists_b[i])
+            right_dist = max(dists_a[i], dists_b[i])
+
+        width_left[i] = left_dist
+        width_right[i] = right_dist
+
+    return width_right, width_left
+
+
+def build_boundary_debug_mask(
+    shape: Tuple[int, int],
+    boundaries_px: Sequence[np.ndarray],
+) -> np.ndarray:
+    canvas = np.zeros(shape, dtype=np.uint8)
+    colors = (128, 255)
+    for idx, contour in enumerate(boundaries_px[:2]):
+        cv2.drawContours(
+            canvas,
+            [contour.astype(np.int32)],
+            0,
+            int(colors[min(idx, len(colors) - 1)]),
+            1,
+            cv2.LINE_8,
+        )
+    return canvas
+
+
 def run(args: argparse.Namespace) -> None:
     gray = read_map_grayscale(args.map)
     gray = gray_to_black(gray, args.gray_to_black_white_threshold)
@@ -691,7 +848,12 @@ def run(args: argparse.Namespace) -> None:
     )
     dist = distance_transform(track_mask)
 
-    skeleton = zhang_suen_thinning(track_mask)
+    if args.preset == "race-stacks":
+        skeleton = lee_skeletonize_if_available(track_mask)
+        if skeleton is None:
+            skeleton = zhang_suen_thinning(track_mask)
+    else:
+        skeleton = zhang_suen_thinning(track_mask)
     skeleton = prune_spurs(skeleton, args.prune_iters)
 
     points_px = extract_centerline_contour(
@@ -705,7 +867,10 @@ def run(args: argparse.Namespace) -> None:
         cv2.drawContours(centerline_mask, [points_px.astype(np.int32)], 0, 1, 1, cv2.LINE_8)
 
     is_closed = True
-    points_px = smooth_points(points_px, sigma=args.smooth_sigma, closed=is_closed)
+    if args.preset == "race-stacks":
+        points_px = smooth_points_race_stacks(points_px)
+    else:
+        points_px = smooth_points(points_px, sigma=args.smooth_sigma, closed=is_closed)
     points_px = resample_polyline(points_px, spacing=args.spacing_px, closed=is_closed)
 
     # Bilinear sampling via OpenCV remap.
@@ -724,7 +889,27 @@ def run(args: argparse.Namespace) -> None:
         widths = np.maximum(widths_px - args.track_width_margin_px, 0.0)
         header = "x_px,y_px,w_tr_right_px,w_tr_left_px"
 
-    out = np.column_stack([points[:, 0], points[:, 1], widths, widths])
+    boundary_mask = None
+    width_right = widths.copy()
+    width_left = widths.copy()
+
+    if args.preset == "race-stacks":
+        boundaries_px = extract_track_boundary_contours(track_mask)
+        if len(boundaries_px) == 2:
+            contour_a = contour_points_to_world(boundaries_px[0], yaml_used, resolution, origin_x, origin_y)
+            contour_b = contour_points_to_world(boundaries_px[1], yaml_used, resolution, origin_x, origin_y)
+            width_right, width_left = compute_asymmetric_widths_from_contours(points, contour_a, contour_b)
+
+            if yaml_used:
+                margin_world = args.track_width_margin_m
+            else:
+                margin_world = args.track_width_margin_px
+
+            width_right = np.maximum(width_right - margin_world, 0.0)
+            width_left = np.maximum(width_left - margin_world, 0.0)
+            boundary_mask = build_boundary_debug_mask(track_mask.shape, boundaries_px)
+
+    out = np.column_stack([points[:, 0], points[:, 1], width_right, width_left])
 
     out_path = os.path.abspath(args.output)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -751,6 +936,7 @@ def run(args: argparse.Namespace) -> None:
             track_mask=track_mask,
             dist=dist,
             centerline_mask=centerline_mask,
+            boundary_mask=boundary_mask,
         )
 
     print(f"Input map: {args.map}")
