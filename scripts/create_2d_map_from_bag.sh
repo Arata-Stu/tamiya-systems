@@ -180,7 +180,7 @@ Options:
   --centerline-script PATH
                       path to generate_centerline.py (auto-detect by default)
   --line-preset PRESET
-                      default|race-stacks for centerline/raceline helper scripts (default: race-stacks)
+                      default|race-stacks for centerline/raceline helper scripts (default: default)
   --centerline-direction DIR
                       forward|reverse|both (default: forward)
   --raceline-script PATH
@@ -246,10 +246,10 @@ MAP_EDIT_OUTPUT_PATH=""
 CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
-CENTERLINE_PRESET="race-stacks"
+CENTERLINE_PRESET="default"
 CENTERLINE_DIRECTION="forward"
 RACELINE_SCRIPT_PATH=""
-RACELINE_PRESET="race-stacks"
+RACELINE_PRESET="default"
 RACELINE_BACKEND="auto"
 RACELINE_OPT_TYPE="mincurv_iqp"
 RACELINE_DIRECTION="forward"
