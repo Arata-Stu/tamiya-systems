@@ -25,6 +25,7 @@ from scipy import interpolate, spatial
 
 
 VALID_DIRECTIONS = ("forward", "reverse", "both")
+VALID_PRESETS = ("default", "race-stacks")
 
 
 def circular_gaussian_smooth(values: np.ndarray, sigma: float) -> np.ndarray:
@@ -164,6 +165,31 @@ def default_optimizer_root() -> str:
         if os.path.isdir(candidate):
             return candidate
     return candidates[0]
+
+
+def preset_defaults(preset: str) -> dict:
+    if preset == "race-stacks":
+        return {
+            # Align the optimizer discretization with the race_stacks F110
+            # configuration while keeping the Tamiya-specific vehicle defaults.
+            "backend": "heuristic",
+            "opt_type": "mincurv_iqp",
+            "curvature_limit": 1.0,
+            "global_opt_stepsize_prep": 0.05,
+            "global_opt_stepsize_reg": 0.20,
+            "global_opt_stepsize_after_opt": 0.10,
+            "global_opt_spline_smoothing": 1.0,
+        }
+
+    return {
+        "backend": "heuristic",
+        "opt_type": "mincurv_iqp",
+        "curvature_limit": 3.0,
+        "global_opt_stepsize_prep": 0.10,
+        "global_opt_stepsize_reg": 0.30,
+        "global_opt_stepsize_after_opt": 0.10,
+        "global_opt_spline_smoothing": 10.0,
+    }
 
 
 class ProgressReporter:
@@ -690,11 +716,18 @@ def run(args: argparse.Namespace) -> None:
         print(f"Wrote raceline CSV: {direction_out_path}")
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def build_arg_parser(preset: str = "default") -> argparse.ArgumentParser:
+    defaults = preset_defaults(preset)
     p = argparse.ArgumentParser(description="Generate a lightweight raceline from a centerline CSV.")
     p.add_argument("--centerline", required=True, help="Path to centerline CSV: x,y,w_tr_right,w_tr_left")
     p.add_argument("--output", required=True, help="Path to output raceline CSV")
-    p.add_argument("--backend", choices=["heuristic", "global-opt", "auto"], default="heuristic")
+    p.add_argument(
+        "--preset",
+        choices=VALID_PRESETS,
+        default=preset,
+        help="Parameter preset. 'race-stacks' aligns spline/stepsize defaults with race_stacks.",
+    )
+    p.add_argument("--backend", choices=["heuristic", "global-opt", "auto"], default=defaults["backend"])
     p.add_argument("--show-progress", action="store_true", help="Print coarse-grained progress updates to stderr")
 
     p.add_argument(
@@ -702,14 +735,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to global_racetrajectory_optimization checkout for --backend global-opt",
     )
-    p.add_argument("--opt-type", choices=["shortest_path", "mincurv", "mincurv_iqp"], default="mincurv_iqp")
+    p.add_argument("--opt-type", choices=["shortest_path", "mincurv", "mincurv_iqp"], default=defaults["opt_type"])
     p.add_argument("--vehicle-width", type=float, default=0.18)
     p.add_argument("--safety-margin", type=float, default=0.05)
-    p.add_argument("--curvature-limit", type=float, default=3.0)
-    p.add_argument("--global-opt-stepsize-prep", type=float, default=0.10)
-    p.add_argument("--global-opt-stepsize-reg", type=float, default=0.30)
-    p.add_argument("--global-opt-stepsize-after-opt", type=float, default=0.10)
-    p.add_argument("--global-opt-spline-smoothing", type=float, default=10.0)
+    p.add_argument("--curvature-limit", type=float, default=defaults["curvature_limit"])
+    p.add_argument("--global-opt-stepsize-prep", type=float, default=defaults["global_opt_stepsize_prep"])
+    p.add_argument("--global-opt-stepsize-reg", type=float, default=defaults["global_opt_stepsize_reg"])
+    p.add_argument(
+        "--global-opt-stepsize-after-opt",
+        type=float,
+        default=defaults["global_opt_stepsize_after_opt"],
+    )
+    p.add_argument("--global-opt-spline-smoothing", type=float, default=defaults["global_opt_spline_smoothing"])
     p.add_argument("--global-opt-debug", action="store_true")
 
     p.add_argument("--spacing-m", type=float, default=0.10, help="Approximate output waypoint spacing")
@@ -732,7 +769,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    parser = build_arg_parser()
+    preset_parser = argparse.ArgumentParser(add_help=False)
+    preset_parser.add_argument("--preset", choices=VALID_PRESETS, default="default")
+    preset_args, _ = preset_parser.parse_known_args()
+
+    parser = build_arg_parser(preset=preset_args.preset)
     args = parser.parse_args()
     run(args)
 

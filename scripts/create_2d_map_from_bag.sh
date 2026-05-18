@@ -179,6 +179,8 @@ Options:
                       set centerline debug image output directory
   --centerline-script PATH
                       path to generate_centerline.py (auto-detect by default)
+  --line-preset PRESET
+                      default|race-stacks for centerline/raceline helper scripts (default: default)
   --centerline-direction DIR
                       forward|reverse|both (default: forward)
   --raceline-script PATH
@@ -244,8 +246,10 @@ MAP_EDIT_OUTPUT_PATH=""
 CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
+CENTERLINE_PRESET="default"
 CENTERLINE_DIRECTION="forward"
 RACELINE_SCRIPT_PATH=""
+RACELINE_PRESET="default"
 RACELINE_BACKEND="auto"
 RACELINE_OPT_TYPE="mincurv_iqp"
 RACELINE_DIRECTION="forward"
@@ -513,6 +517,11 @@ while (($#)); do
             ;;
         --centerline-script)
             CENTERLINE_SCRIPT_PATH="$2"
+            shift 2
+            ;;
+        --line-preset)
+            CENTERLINE_PRESET="$2"
+            RACELINE_PRESET="$2"
             shift 2
             ;;
         --centerline-direction)
@@ -1420,6 +1429,7 @@ generate_centerline() {
         --map "${input_map_path}"
         --output "${CENTERLINE_OUTPUT_PATH}"
         --yaml "${MAP_YAML_PATH}"
+        --preset "${CENTERLINE_PRESET}"
         --direction "${CENTERLINE_DIRECTION}"
     )
     if [ -n "${CENTERLINE_DEBUG_PATH}" ]; then
@@ -1474,6 +1484,7 @@ generate_raceline() {
 
     raceline_cmd=(
         python3 "${raceline_script_path}"
+        --preset "${RACELINE_PRESET}"
         --backend "${RACELINE_BACKEND}"
         --opt-type "${RACELINE_OPT_TYPE}"
         --centerline "${centerline_path}"

@@ -297,6 +297,14 @@ python data_analysis/generate_centerline.py \
   --output /path/to/map_centerline.csv \
   --debug-dir /path/to/map_centerline_debug
 
+# race_stacks 寄せの前処理で centerline を作る:
+python data_analysis/generate_centerline.py \
+  --preset race-stacks \
+  --map /path/to/map.png \
+  --yaml /path/to/map.yaml \
+  --output /path/to/map_centerline.csv \
+  --debug-dir /path/to/map_centerline_debug
+
 # 逆走版も同時に作る:
 python data_analysis/generate_centerline.py \
   --map /path/to/map.png \
@@ -305,6 +313,15 @@ python data_analysis/generate_centerline.py \
   --direction both
 
 python data_analysis/generate_raceline.py \
+  --centerline /path/to/map_centerline.csv \
+  --output /path/to/map_raceline.csv
+
+# race_stacks 寄せの spline / stepsize 設定で global-opt を試す:
+python data_analysis/generate_raceline.py \
+  --preset race-stacks \
+  --backend global-opt \
+  --optimizer-root /workspaces/tamiya-systems/python_ws/global_racetrajectory_optimization \
+  --opt-type mincurv_iqp \
   --centerline /path/to/map_centerline.csv \
   --output /path/to/map_raceline.csv
 
@@ -336,6 +353,8 @@ python data_analysis/visualize_race_lines.py \
 ```
 
 `scripts/create_2d_map_from_bag.sh` では、centerline / raceline 生成後に preview画像も生成します。スキップしたい場合は `--no-raceline` または `--no-line-preview` を指定してください。
+
+`race_stacks` 寄せで map 生成を試したい場合は、`create_2d_map_from_bag.sh` に `--line-preset race-stacks` を付けると、centerline の前処理と global-opt の spline/stepsize 設定をまとめて近づけられます。これは `race_stacks` の GUI map editing や watershed 境界抽出そのものを完全再現するものではありませんが、まず比較実験を回すには扱いやすい入口です。
 
 global optimizerを使う場合は `python_ws/requirements_global_opt.txt` の依存をDockerへ入れてください。現在のglobal-opt backendは `shortest_path` / `mincurv` / `mincurv_iqp` を対象にしており、古い `casadi` 依存を避けるため `mintime` はまだ扱いません。
 

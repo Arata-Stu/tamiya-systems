@@ -23,6 +23,7 @@ from omegaconf import OmegaConf
 
 
 VALID_DIRECTIONS = ("forward", "reverse", "both")
+VALID_PRESETS = ("default", "race-stacks")
 
 
 DIR8: Tuple[Tuple[int, int], ...] = (
@@ -632,6 +633,38 @@ def reverse_centerline_output(rows: np.ndarray) -> np.ndarray:
     return reversed_rows
 
 
+def preset_defaults(preset: str) -> dict:
+    if preset == "race-stacks":
+        return {
+            # Approximate the race_stacks global planner preprocessing:
+            # strong morphological opening on a near-binary map, no spur pruning,
+            # and a slightly smoother/resparser centerline before optimization.
+            "min_free_intensity": 250.0,
+            "gray_to_black_white_threshold": 250.0,
+            "gaussian_sigma": 0.0,
+            "close_radius": 0,
+            "open_radius": 4,
+            "min_track_area": 800,
+            "max_small_hole_area": 0,
+            "prune_iters": 0,
+            "smooth_sigma": 2.0,
+            "spacing_px": 2.0,
+        }
+
+    return {
+        "min_free_intensity": 210.0,
+        "gray_to_black_white_threshold": 250.0,
+        "gaussian_sigma": 1.0,
+        "close_radius": 2,
+        "open_radius": 1,
+        "min_track_area": 800,
+        "max_small_hole_area": 128,
+        "prune_iters": 30,
+        "smooth_sigma": 1.2,
+        "spacing_px": 1.5,
+    }
+
+
 def run(args: argparse.Namespace) -> None:
     gray = read_map_grayscale(args.map)
     gray = gray_to_black(gray, args.gray_to_black_white_threshold)
@@ -733,34 +766,41 @@ def run(args: argparse.Namespace) -> None:
         print("No YAML metadata used. Output is in pixel coordinates.")
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def build_arg_parser(preset: str = "default") -> argparse.ArgumentParser:
+    defaults = preset_defaults(preset)
     p = argparse.ArgumentParser(description="Robust centerline extraction from PNG/PGM map.")
     p.add_argument("--map", required=True, help="Path to input .png or .pgm map image")
     p.add_argument("--output", required=True, help="Path to output centerline CSV")
+    p.add_argument(
+        "--preset",
+        choices=VALID_PRESETS,
+        default=preset,
+        help="Parameter preset. 'race-stacks' approximates the original race_stacks map preprocessing.",
+    )
     p.add_argument(
         "--yaml",
         default="auto",
         help="Map YAML path. Use 'auto' to infer from map path, or non-existing path to disable.",
     )
 
-    p.add_argument("--min-free-intensity", type=float, default=210.0)
+    p.add_argument("--min-free-intensity", type=float, default=defaults["min_free_intensity"])
     p.add_argument(
         "--gray-to-black-white-threshold",
         type=float,
-        default=250.0,
+        default=defaults["gray_to_black_white_threshold"],
         help=(
             "Before centerline extraction, convert pixels below this intensity to black. "
             "Set <=0 to disable."
         ),
     )
-    p.add_argument("--gaussian-sigma", type=float, default=1.0)
-    p.add_argument("--close-radius", type=int, default=2)
-    p.add_argument("--open-radius", type=int, default=1)
-    p.add_argument("--min-track-area", type=int, default=800)
-    p.add_argument("--max-small-hole-area", type=int, default=128)
-    p.add_argument("--prune-iters", type=int, default=30)
-    p.add_argument("--smooth-sigma", type=float, default=1.2)
-    p.add_argument("--spacing-px", type=float, default=1.5)
+    p.add_argument("--gaussian-sigma", type=float, default=defaults["gaussian_sigma"])
+    p.add_argument("--close-radius", type=int, default=defaults["close_radius"])
+    p.add_argument("--open-radius", type=int, default=defaults["open_radius"])
+    p.add_argument("--min-track-area", type=int, default=defaults["min_track_area"])
+    p.add_argument("--max-small-hole-area", type=int, default=defaults["max_small_hole_area"])
+    p.add_argument("--prune-iters", type=int, default=defaults["prune_iters"])
+    p.add_argument("--smooth-sigma", type=float, default=defaults["smooth_sigma"])
+    p.add_argument("--spacing-px", type=float, default=defaults["spacing_px"])
     p.add_argument(
         "--expected-centerline-length-m",
         type=float,
@@ -787,7 +827,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    parser = build_arg_parser()
+    preset_parser = argparse.ArgumentParser(add_help=False)
+    preset_parser.add_argument("--preset", choices=VALID_PRESETS, default="default")
+    preset_args, _ = preset_parser.parse_known_args()
+
+    parser = build_arg_parser(preset=preset_args.preset)
     args = parser.parse_args()
     run(args)
 
