@@ -55,15 +55,20 @@
     <!-- Perception -->
     <arg name="perception_param" default="$(find-pkg-share system_launch)/config/perception/scan_image_projection_cropper.param.yaml" />
     <arg name="perception_scan_topic" default="/scan" />
+    <arg name="perception_camera_source" default="color" />
     <arg name="perception_use_rectify" default="true" />
-    <arg name="perception_input_image_topic" default="/realsense2_camera/color/image_raw" />
-    <arg name="perception_input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
-    <arg name="perception_rectified_image_width" default="640" />
-    <arg name="perception_rectified_image_height" default="480" />
+    <arg name="perception_input_image_topic" default="" />
+    <arg name="perception_input_camera_info_topic" default="" />
+    <arg name="perception_color_image_width" default="640" />
+    <arg name="perception_color_image_height" default="480" />
+    <arg name="perception_stereo_image_width" default="$(var image_width)" />
+    <arg name="perception_stereo_image_height" default="$(var image_height)" />
+    <arg name="perception_rectified_image_width" default="" />
+    <arg name="perception_rectified_image_height" default="" />
     <arg name="perception_rectified_image_topic" default="/perception/image_rect" />
     <arg name="perception_rectified_camera_info_topic" default="/perception/camera_info_rect" />
-    <arg name="perception_debug_input_image_topic" default="/realsense2_camera/color/image_raw" />
-    <arg name="perception_debug_input_camera_info_topic" default="/realsense2_camera/color/camera_info" />
+    <arg name="perception_debug_input_image_topic" default="" />
+    <arg name="perception_debug_input_camera_info_topic" default="" />
     <arg name="perception_crop_image_topic" default="/perception/crop/image" />
     <arg name="perception_crop_camera_info_topic" default="/perception/crop/camera_info" />
     <arg name="perception_crop_roi_topic" default="/perception/crop/roi" />
@@ -242,9 +247,14 @@
         <include file="$(find-pkg-share system_launch)/launch/perception.launch.xml">
             <arg name="perception_param" value="$(var perception_param)"/>
             <arg name="scan_topic" value="$(var perception_scan_topic)"/>
+            <arg name="camera_source" value="$(var perception_camera_source)"/>
             <arg name="input_image_topic" value="$(var perception_input_image_topic)"/>
             <arg name="input_camera_info_topic" value="$(var perception_input_camera_info_topic)"/>
             <arg name="use_rectify" value="$(var perception_use_rectify)"/>
+            <arg name="color_image_width" value="$(var perception_color_image_width)"/>
+            <arg name="color_image_height" value="$(var perception_color_image_height)"/>
+            <arg name="stereo_image_width" value="$(var perception_stereo_image_width)"/>
+            <arg name="stereo_image_height" value="$(var perception_stereo_image_height)"/>
             <arg name="rectified_image_width" value="$(var perception_rectified_image_width)"/>
             <arg name="rectified_image_height" value="$(var perception_rectified_image_height)"/>
             <arg name="rectified_image_topic" value="$(var perception_rectified_image_topic)"/>
