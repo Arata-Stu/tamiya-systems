@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>path_obstacle_filter</name>
+  <version>0.0.1</version>
+  <description>
+    Filters obstacle detection results against the planned path.
+    Subscribes to scan-based obstacle position and classification results,
+    and publishes whether an obstacle lies on the upcoming trajectory.
+  </description>
+
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <depend>visualization_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

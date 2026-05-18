@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "cv_bridge/cv_bridge.h"
+#include "geometry_msgs/msg/point_stamped.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
@@ -14,6 +15,7 @@
 #include "sensor_msgs/msg/laser_scan.hpp"
 #include "sensor_msgs/msg/region_of_interest.hpp"
 #include "std_msgs/msg/header.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
 
@@ -100,6 +102,8 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr crop_camera_info_pub_;
   rclcpp::Publisher<sensor_msgs::msg::RegionOfInterest>::SharedPtr roi_pub_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr debug_image_pub_;
+  // 選択クラスタの重心を base_link 座標系で publish
+  rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr obstacle_position_pub_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -130,6 +134,7 @@ private:
   double output_padding_value_ = 0.0;
   bool debug_enabled_ = false;
   std::string candidate_selection_mode_;
+  std::string base_frame_;  // obstacle_position の出力フレーム
 };
 
 } // namespace scan_image_projection_cropper

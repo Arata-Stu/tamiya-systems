@@ -1,0 +1,16 @@
+<launch>
+  <arg name="param_file" default="$(find-pkg-share path_obstacle_filter)/config/path_obstacle_filter.param.yaml" />
+  
+  <!-- Topic mappings -->
+  <arg name="target_detected_topic" default="/perception/classification/target_detected" />
+  <arg name="obstacle_position_topic" default="/perception/crop/obstacle_position" />
+  <arg name="trajectory_topic" default="/trajectory" />
+
+  <node pkg="path_obstacle_filter" exec="path_obstacle_filter_node" name="path_obstacle_filter_node" output="screen">
+    <param from="$(var param_file)" />
+    
+    <remap from="/perception/classification/target_detected" to="$(var target_detected_topic)" />
+    <remap from="crop/obstacle_position" to="$(var obstacle_position_topic)" />
+    <remap from="/trajectory" to="$(var trajectory_topic)" />
+  </node>
+</launch>

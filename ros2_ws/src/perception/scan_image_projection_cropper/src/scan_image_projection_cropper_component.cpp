@@ -101,6 +101,7 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
   debug_enabled_ = declare_parameter<bool>("debug", publish_debug_image);
   candidate_selection_mode_ = declare_parameter<std::string>(
       "candidate_selection_mode", "closest");
+  base_frame_ = declare_parameter<std::string>("base_frame", "base_link");
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -111,6 +112,8 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
       "crop/camera_info", rclcpp::SensorDataQoS());
   roi_pub_ = create_publisher<sensor_msgs::msg::RegionOfInterest>(
       "crop/roi", rclcpp::QoS(10));
+  obstacle_position_pub_ = create_publisher<geometry_msgs::msg::PointStamped>(
+      "crop/obstacle_position", rclcpp::QoS(10));
 
   if (debug_enabled_) {
     debug_image_pub_ = create_publisher<sensor_msgs::msg::Image>(
@@ -861,6 +864,43 @@ void ScanImageProjectionCropperComponent::ImageCallback(
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                              "Debug TF lookup failed: %s", exception.what());
       }
+    }
+  }
+
+  // 選択クラスタの重心を base_link 座標系で publish
+  {
+    // クラスタの scan フレーム内 XY 重心を計算
+    double sum_x = 0.0, sum_y = 0.0;
+    for (const auto & pt : selected_candidate.cluster.points) {
+      sum_x += pt.x;
+      sum_y += pt.y;
+    }
+    const double count =
+        static_cast<double>(selected_candidate.cluster.points.size());
+    const double cx = sum_x / count;
+    const double cy = sum_y / count;
+
+    try {
+      const auto tf_to_base = tf_buffer_->lookupTransform(
+          base_frame_, scan_msg->header.frame_id,
+          tf2::TimePoint(std::chrono::seconds(msg->header.stamp.sec) +
+                         std::chrono::nanoseconds(msg->header.stamp.nanosec)),
+          tf2::durationFromSec(tf_timeout_sec_));
+
+      geometry_msgs::msg::PointStamped pt_scan;
+      pt_scan.header.stamp = msg->header.stamp;
+      pt_scan.header.frame_id = scan_msg->header.frame_id;
+      pt_scan.point.x = cx;
+      pt_scan.point.y = cy;
+      pt_scan.point.z = 0.0;
+
+      geometry_msgs::msg::PointStamped pt_base;
+      tf2::doTransform(pt_scan, pt_base, tf_to_base);
+      pt_base.header.frame_id = base_frame_;
+      obstacle_position_pub_->publish(pt_base);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                           "obstacle_position TF lookup failed: %s", ex.what());
     }
   }
 }

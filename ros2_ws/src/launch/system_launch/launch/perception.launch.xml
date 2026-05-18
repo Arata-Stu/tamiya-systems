@@ -48,6 +48,8 @@
   <arg name="classifier_confidence_topic" default="/perception/classification/confidence" />
   <arg name="classifier_scores_topic" default="/perception/classification/scores" />
   <arg name="classifier_target_detected_topic" default="/perception/classification/target_detected" />
+  <arg name="crop_obstacle_position_topic" default="/perception/crop/obstacle_position" />
+  <arg name="path_obstacle_filter_param" default="" />
 
   <arg name="container_name" default="camera_container" />
   <arg name="create_container" default="false" />
@@ -217,6 +219,13 @@
       <arg name="target_detected_topic" value="$(var classifier_target_detected_topic)" />
       <arg name="container_name" value="$(var container_name)" />
       <arg name="create_container" value="false" />
+    </include>
+
+    <!-- Path obstacle filter (requires classifier output) -->
+    <include file="$(find-pkg-share path_obstacle_filter)/launch/path_obstacle_filter.launch.xml">
+      <arg name="param_file" value="$(var path_obstacle_filter_param)" />
+      <arg name="target_detected_topic" value="$(var classifier_target_detected_topic)" />
+      <arg name="obstacle_position_topic" value="$(var crop_obstacle_position_topic)" />
     </include>
   </group>
 </launch>

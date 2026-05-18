@@ -1,0 +1,35 @@
+path_obstacle_filter_node:
+  ros__parameters:
+    # ------------------------------------------------------------------
+    # 経路上障害物判定ゾーン
+    # RC カー車幅 ~30cm に余裕を持たせて合計 50cm (片側 0.25m)
+    # ------------------------------------------------------------------
+    forward_distance_m: 3.0        # 前方何mまで判定するか
+    lateral_half_width_m: 0.25     # 横方向の片側マージン [m]
+
+    # ------------------------------------------------------------------
+    # 分類器連携
+    # true: target_detected == true のときのみ反応
+    # false: 位置情報だけで判定 (分類器不要だが誤検出増加)
+    # ------------------------------------------------------------------
+    require_classification: true
+
+    # 障害物の最終受信から何秒後に "なし" に切り替えるか
+    obstacle_timeout_sec: 0.5
+
+    # 減速信号を /planning/deceleration_requested に出すか
+    deceleration_on_obstacle: true
+
+    # デバッグ: map フレームに MarkerArray を publish するか
+    publish_debug_markers: true
+
+    # TF フレーム名
+    map_frame: "map"
+    base_frame: "base_link"
+    tf_timeout_sec: 0.05
+
+    # ---------------------------------------------------------------
+    # 将来拡張: セクション別行動 (section_localizer と連携予定)
+    #   section_ids_no_overtake: [1, 3]  # 追い越し禁止セクション
+    #   section_ids_overtake:    [2, 4]  # 積極追い越しセクション
+    # ---------------------------------------------------------------

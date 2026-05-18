@@ -108,6 +108,8 @@
     <arg name="perception_classifier_confidence_topic" default="/perception/classification/confidence" />
     <arg name="perception_classifier_scores_topic" default="/perception/classification/scores" />
     <arg name="perception_classifier_target_detected_topic" default="/perception/classification/target_detected" />
+    <arg name="perception_crop_obstacle_position_topic" default="/perception/crop/obstacle_position" />
+    <arg name="path_obstacle_filter_param" default="$(find-pkg-share system_launch)/config/perception/path_obstacle_filter.param.yaml" />
 
     <!-- Operation tools -->
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
@@ -324,6 +326,8 @@
             <arg name="classifier_confidence_topic" value="$(var perception_classifier_confidence_topic)"/>
             <arg name="classifier_scores_topic" value="$(var perception_classifier_scores_topic)"/>
             <arg name="classifier_target_detected_topic" value="$(var perception_classifier_target_detected_topic)"/>
+            <arg name="crop_obstacle_position_topic" value="$(var perception_crop_obstacle_position_topic)"/>
+            <arg name="path_obstacle_filter_param" value="$(var path_obstacle_filter_param)"/>
             <arg name="container_name" value="$(var camera_container_name)"/>
             <arg name="create_container" value="false"/>
         </include>
