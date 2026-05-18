@@ -36,8 +36,6 @@ PathObstacleFilterNode::PathObstacleFilterNode(const rclcpp::NodeOptions &option
     debug_markers_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/debug/markers", rclcpp::QoS(10));
   }
 
-  last_target_detected_time_ = this->now();
-
   timer_ = this->create_wall_timer(
       std::chrono::milliseconds(100), // 10 Hz
       std::bind(&PathObstacleFilterNode::TimerCallback, this));
