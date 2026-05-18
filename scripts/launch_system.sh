@@ -20,6 +20,7 @@ BOOL_KEYS=(
   use_camera
   use_ftg
   use_emergency
+  use_perception
   use_magp_rl_trajectory
   magp_rl_run_pure_pursuit
   use_pure_pursuit
@@ -41,6 +42,7 @@ ARG_use_lidar="false"
 ARG_use_camera="false"
 ARG_use_ftg="false"
 ARG_use_emergency="false"
+ARG_use_perception="false"
 ARG_use_magp_rl_trajectory="false"
 ARG_magp_rl_run_pure_pursuit="false"
 ARG_use_pure_pursuit="false"
@@ -114,6 +116,7 @@ Examples:
   ${SCRIPT_NAME} sensor_data_recording --bag-manager mapping
   ${SCRIPT_NAME} sensor_data_recording --set record=false --dry-run
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} production --set use_perception=true
   ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
 EOF
 }
@@ -154,7 +157,7 @@ set_arg() {
   fi
 
   case "$key" in
-    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
+    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_perception|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
       value="$(normalize_bool "$value")"
       var_name="ARG_${key}"
       printf -v "$var_name" '%s' "$value"
@@ -184,6 +187,7 @@ apply_mode() {
       ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
+      ARG_use_perception="false"
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
@@ -206,6 +210,7 @@ apply_mode() {
       ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
+      ARG_use_perception="false"
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
@@ -816,6 +821,7 @@ exec ros2 launch system_launch system.launch.xml \
   "use_camera:=${ARG_use_camera}" \
   "use_ftg:=${ARG_use_ftg}" \
   "use_emergency:=${ARG_use_emergency}" \
+  "use_perception:=${ARG_use_perception}" \
   "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}" \
   "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}" \
   "use_pure_pursuit:=${ARG_use_pure_pursuit}" \
