@@ -49,6 +49,10 @@
   <arg name="classifier_scores_topic" default="/perception/classification/scores" />
   <arg name="classifier_target_detected_topic" default="/perception/classification/target_detected" />
   <arg name="crop_obstacle_position_topic" default="/perception/crop/obstacle_position" />
+  
+  <arg name="perception_object_tracker_param" default="" />
+  <arg name="tracked_object_topic" default="/perception/tracked_object" />
+  
   <arg name="path_obstacle_filter_param" default="" />
 
   <arg name="container_name" default="camera_container" />
@@ -188,6 +192,7 @@
     <arg name="debug_input_image_topic" value="$(var resolved_debug_input_image_topic)" />
     <arg name="debug_input_camera_info_topic" value="$(var resolved_debug_input_camera_info_topic)" />
     <arg name="debug_image_topic" value="$(var debug_image_topic)" />
+    <arg name="tracked_object_topic" value="$(var tracked_object_topic)" />
     <arg name="container_name" value="$(var container_name)" />
     <arg name="create_container" value="false" />
   </include>
@@ -221,11 +226,18 @@
       <arg name="create_container" value="false" />
     </include>
 
-    <!-- Path obstacle filter (requires classifier output) -->
-    <include file="$(find-pkg-share path_obstacle_filter)/launch/path_obstacle_filter.launch.xml">
-      <arg name="param_file" value="$(var path_obstacle_filter_param)" />
+    <!-- Object Tracker (requires classifier output & obstacle position) -->
+    <include file="$(find-pkg-share perception_object_tracker)/launch/perception_object_tracker.launch.xml">
+      <arg name="param_file" value="$(var perception_object_tracker_param)" />
       <arg name="target_detected_topic" value="$(var classifier_target_detected_topic)" />
       <arg name="obstacle_position_topic" value="$(var crop_obstacle_position_topic)" />
+      <arg name="tracked_object_topic" value="$(var tracked_object_topic)" />
+    </include>
+
+    <!-- Path obstacle filter (requires tracker output) -->
+    <include file="$(find-pkg-share path_obstacle_filter)/launch/path_obstacle_filter.launch.xml">
+      <arg name="param_file" value="$(var path_obstacle_filter_param)" />
+      <arg name="tracked_object_topic" value="$(var tracked_object_topic)" />
     </include>
   </group>
 </launch>

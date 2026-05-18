@@ -8,11 +8,9 @@ path_obstacle_filter_node:
     lateral_half_width_m: 0.25     # 横方向の片側マージン [m]
 
     # ------------------------------------------------------------------
-    # 分類器連携
-    # true: target_detected == true のときのみ反応
-    # false: 位置情報だけで判定 (分類器不要だが誤検出増加)
+    # 状態判定
     # ------------------------------------------------------------------
-    require_classification: true
+    stopped_speed_threshold_m_s: 0.3  # これ未満の絶対速度なら「停止」とみなす
 
     # 障害物の最終受信から何秒後に "なし" に切り替えるか
     obstacle_timeout_sec: 0.5

@@ -19,5 +19,11 @@ scan_image_projection_cropper_node:
     output_image_height_px: 64
     output_padding_value: 0.0
     debug: true
-    candidate_selection_mode: "closest"
+    candidate_selection_mode: "widest"
+
+    # ------------------------------------------------------------------
+    # トラッカーフィードバック
+    # ------------------------------------------------------------------
+    tracking_lock_radius_m: 1.0  # Tracker予測位置からこの半径内なら優先
+    tracker_timeout_sec: 0.5     # Trackerからの情報がこれ以上古ければフィードバック無効
     publish_debug_image: true

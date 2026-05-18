@@ -1,0 +1,16 @@
+perception_object_tracker_node:
+  ros__parameters:
+    require_classification: true
+    timeout_sec: 1.0           # 何秒見失ったらロストとするか
+    alpha: 0.6                 # 位置の追従ゲイン (0.0~1.0)
+    beta: 0.1                  # 速度の追従ゲイン (0.0~1.0)
+    
+    # フレーム設定
+    odom_frame: "odom"         # トラッキングを行う固定座標系
+    base_frame: "base_link"    # 相対速度を出力する座標系
+    tf_timeout_sec: 0.05
+    
+    # 推定周波数
+    update_rate_hz: 20.0
+    
+    publish_debug_markers: true

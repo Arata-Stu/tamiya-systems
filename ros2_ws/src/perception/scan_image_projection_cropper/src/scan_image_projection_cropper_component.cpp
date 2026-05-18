@@ -94,14 +94,13 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
       declare_parameter<int>("output_image_width_px", 64));
   output_image_height_px_ = ClampNonNegativeInt(
       declare_parameter<int>("output_image_height_px", 64));
-  output_padding_value_ = ClampNonNegative(
-      declare_parameter<double>("output_padding_value", 0.0));
-  const bool publish_debug_image =
-      declare_parameter<bool>("publish_debug_image", true);
-  debug_enabled_ = declare_parameter<bool>("debug", publish_debug_image);
-  candidate_selection_mode_ = declare_parameter<std::string>(
-      "candidate_selection_mode", "closest");
+  output_padding_value_ = declare_parameter<double>("output_padding_value", 0.0);
+  debug_enabled_ = declare_parameter<bool>("debug_enabled", false);
+  candidate_selection_mode_ =
+      declare_parameter<std::string>("candidate_selection_mode", "widest");
   base_frame_ = declare_parameter<std::string>("base_frame", "base_link");
+  tracking_lock_radius_m_ = declare_parameter<double>("tracking_lock_radius_m", 1.0);
+  tracker_timeout_sec_ = declare_parameter<double>("tracker_timeout_sec", 0.5);
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -127,6 +126,11 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
         std::bind(&ScanImageProjectionCropperComponent::DebugImageCallback, this,
                   std::placeholders::_1));
   }
+
+  tracked_object_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+      "/perception/tracked_object", rclcpp::QoS(10),
+      std::bind(&ScanImageProjectionCropperComponent::TrackedObjectCallback, this,
+                std::placeholders::_1));
 
   scan_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", rclcpp::SensorDataQoS(),
@@ -170,6 +174,12 @@ void ScanImageProjectionCropperComponent::DebugCameraInfoCallback(
     const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
   std::scoped_lock lock(data_mutex_);
   latest_debug_camera_info_ = msg;
+}
+
+void ScanImageProjectionCropperComponent::TrackedObjectCallback(
+    const nav_msgs::msg::Odometry::SharedPtr msg) {
+  std::scoped_lock lock(data_mutex_);
+  latest_tracked_object_ = msg;
 }
 
 std::vector<ScanImageProjectionCropperComponent::ScanCluster>
@@ -440,9 +450,37 @@ bool ScanImageProjectionCropperComponent::BuildCropRoi(
 
 bool ScanImageProjectionCropperComponent::SelectCandidate(
     const std::vector<ProjectedCandidate> &candidates,
+    const std::optional<geometry_msgs::msg::Point> &target_pos_in_scan,
     ProjectedCandidate &candidate) const {
   if (candidates.empty()) {
     return false;
+  }
+
+  if (target_pos_in_scan.has_value()) {
+    const ProjectedCandidate *best_tracker_candidate = nullptr;
+    double min_tracker_dist = tracking_lock_radius_m_;
+
+    for (const auto &current : candidates) {
+      double sum_x = 0.0;
+      double sum_y = 0.0;
+      for (const auto &pt : current.cluster.points) {
+        sum_x += pt.x;
+        sum_y += pt.y;
+      }
+      double cx = sum_x / std::max(1.0, static_cast<double>(current.cluster.points.size()));
+      double cy = sum_y / std::max(1.0, static_cast<double>(current.cluster.points.size()));
+
+      double dist = std::hypot(cx - target_pos_in_scan->x, cy - target_pos_in_scan->y);
+      if (dist < min_tracker_dist) {
+        min_tracker_dist = dist;
+        best_tracker_candidate = &current;
+      }
+    }
+
+    if (best_tracker_candidate != nullptr) {
+      candidate = *best_tracker_candidate;
+      return true;
+    }
   }
 
   const ProjectedCandidate *best_candidate = &candidates.front();
@@ -776,22 +814,60 @@ void ScanImageProjectionCropperComponent::ImageCallback(
   }
 
   std::vector<ProjectedCandidate> projected_candidates;
-  projected_candidates.reserve(clusters.size());
-  for (std::size_t cluster_index = 0; cluster_index < clusters.size();
-       ++cluster_index) {
-    const auto &cluster = clusters[cluster_index];
+  for (std::size_t i = 0; i < clusters.size(); ++i) {
     ProjectedCandidate candidate;
-    if (!ProjectCluster(cluster, transform, *camera_info_msg,
-                        static_cast<int>(msg->width),
-                        static_cast<int>(msg->height), candidate)) {
+    if (!ProjectClusterWithDistortion(clusters[i], transform,
+                                      *camera_info_msg, static_cast<int>(msg->width), 
+                                      static_cast<int>(msg->height),
+                                      candidate)) {
       continue;
     }
-    candidate.cluster_index = cluster_index;
+    candidate.cluster_index = i;
     projected_candidates.push_back(std::move(candidate));
   }
 
+  // Calculate target position in scan frame if tracking is active
+  std::optional<geometry_msgs::msg::Point> target_pos_in_scan;
+  {
+    std::scoped_lock lock(data_mutex_);
+    if (latest_tracked_object_) {
+      rclcpp::Time now = this->now();
+      double tracker_age = (now - latest_tracked_object_->header.stamp).seconds();
+      if (tracker_age <= tracker_timeout_sec_) {
+        // Predict position
+        double px = latest_tracked_object_->pose.pose.position.x;
+        double py = latest_tracked_object_->pose.pose.position.y;
+        double vx = latest_tracked_object_->twist.twist.linear.x;
+        double vy = latest_tracked_object_->twist.twist.linear.y;
+        double pred_x = px + vx * tracker_age;
+        double pred_y = py + vy * tracker_age;
+
+        // Transform from odom to scan frame
+        try {
+          geometry_msgs::msg::PointStamped pt_odom;
+          pt_odom.header.frame_id = latest_tracked_object_->header.frame_id;
+          pt_odom.header.stamp = now;
+          pt_odom.point.x = pred_x;
+          pt_odom.point.y = pred_y;
+          pt_odom.point.z = 0.0;
+
+          const auto tf_to_scan = tf_buffer_->lookupTransform(
+              scan_msg->header.frame_id, pt_odom.header.frame_id,
+              tf2::TimePointZero, tf2::durationFromSec(tf_timeout_sec_));
+
+          geometry_msgs::msg::PointStamped pt_scan;
+          tf2::doTransform(pt_odom, pt_scan, tf_to_scan);
+          target_pos_in_scan = pt_scan.point;
+        } catch (const tf2::TransformException &ex) {
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                               "Failed to transform tracked object to scan frame: %s", ex.what());
+        }
+      }
+    }
+  }
+
   ProjectedCandidate selected_candidate;
-  if (!SelectCandidate(projected_candidates, selected_candidate)) {
+  if (!SelectCandidate(projected_candidates, target_pos_in_scan, selected_candidate)) {
     RCLCPP_DEBUG(get_logger(), "No projected candidate passed image constraints.");
     return;
   }

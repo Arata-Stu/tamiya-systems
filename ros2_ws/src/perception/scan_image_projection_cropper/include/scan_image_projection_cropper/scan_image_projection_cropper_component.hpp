@@ -10,6 +10,7 @@
 #include "geometry_msgs/msg/point_stamped.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -52,6 +53,7 @@ private:
   void ScanCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void CameraInfoCallback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
   void ImageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
+  void TrackedObjectCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
 
   std::vector<ScanCluster> ExtractClusters(
       const sensor_msgs::msg::LaserScan &scan) const;
@@ -69,6 +71,7 @@ private:
                     int image_height,
                     sensor_msgs::msg::RegionOfInterest &roi) const;
   bool SelectCandidate(const std::vector<ProjectedCandidate> &candidates,
+                       const std::optional<geometry_msgs::msg::Point> &target_pos_in_scan,
                        ProjectedCandidate &candidate) const;
   sensor_msgs::msg::CameraInfo BuildCroppedCameraInfo(
       const sensor_msgs::msg::CameraInfo &camera_info,
@@ -97,6 +100,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr
       debug_camera_info_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr debug_image_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr tracked_object_sub_;
 
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr crop_image_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr crop_camera_info_pub_;
@@ -113,6 +117,7 @@ private:
   sensor_msgs::msg::CameraInfo::SharedPtr latest_camera_info_;
   sensor_msgs::msg::Image::SharedPtr latest_debug_image_;
   sensor_msgs::msg::CameraInfo::SharedPtr latest_debug_camera_info_;
+  nav_msgs::msg::Odometry::SharedPtr latest_tracked_object_;
 
   double min_range_m_ = 0.0;
   double max_range_m_ = 0.0;
@@ -135,6 +140,9 @@ private:
   bool debug_enabled_ = false;
   std::string candidate_selection_mode_;
   std::string base_frame_;  // obstacle_position の出力フレーム
+  
+  double tracking_lock_radius_m_ = 1.0;
+  double tracker_timeout_sec_ = 0.5;
 };
 
 } // namespace scan_image_projection_cropper

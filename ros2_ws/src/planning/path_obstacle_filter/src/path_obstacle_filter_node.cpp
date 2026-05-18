@@ -16,13 +16,9 @@ PathObstacleFilterNode::PathObstacleFilterNode(const rclcpp::NodeOptions &option
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-  target_detected_sub_ = create_subscription<std_msgs::msg::Bool>(
-      "/perception/classification/target_detected", rclcpp::QoS(10),
-      std::bind(&PathObstacleFilterNode::TargetDetectedCallback, this, std::placeholders::_1));
-
-  obstacle_position_sub_ = create_subscription<geometry_msgs::msg::PointStamped>(
-      "crop/obstacle_position", rclcpp::QoS(10),
-      std::bind(&PathObstacleFilterNode::ObstaclePositionCallback, this, std::placeholders::_1));
+  tracked_object_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+      "/perception/tracked_object", rclcpp::QoS(10),
+      std::bind(&PathObstacleFilterNode::TrackedObjectCallback, this, std::placeholders::_1));
 
   trajectory_sub_ = create_subscription<nav_msgs::msg::Path>(
       "/trajectory", rclcpp::QoS(10),
@@ -30,6 +26,9 @@ PathObstacleFilterNode::PathObstacleFilterNode(const rclcpp::NodeOptions &option
 
   obstacle_on_path_pub_ = create_publisher<std_msgs::msg::Bool>("~/obstacle_on_path", rclcpp::QoS(10));
   deceleration_requested_pub_ = create_publisher<std_msgs::msg::Bool>("~/deceleration_requested", rclcpp::QoS(10));
+  avoidance_requested_pub_ = create_publisher<std_msgs::msg::Bool>("~/avoidance_requested", rclcpp::QoS(10));
+  following_requested_pub_ = create_publisher<std_msgs::msg::Bool>("~/following_requested", rclcpp::QoS(10));
+  target_speed_pub_ = create_publisher<std_msgs::msg::Float32>("~/target_speed_m_s", rclcpp::QoS(10));
   obstacle_distance_pub_ = create_publisher<std_msgs::msg::Float32>("~/obstacle_distance_m", rclcpp::QoS(10));
   obstacle_lateral_pub_ = create_publisher<std_msgs::msg::Float32>("~/obstacle_lateral_m", rclcpp::QoS(10));
   
@@ -49,7 +48,7 @@ PathObstacleFilterNode::PathObstacleFilterNode(const rclcpp::NodeOptions &option
 void PathObstacleFilterNode::LoadParameters() {
   forward_distance_m_ = declare_parameter<double>("forward_distance_m", 3.0);
   lateral_half_width_m_ = declare_parameter<double>("lateral_half_width_m", 0.25);
-  require_classification_ = declare_parameter<bool>("require_classification", true);
+  stopped_speed_threshold_m_s_ = declare_parameter<double>("stopped_speed_threshold_m_s", 0.3);
   deceleration_on_obstacle_ = declare_parameter<bool>("deceleration_on_obstacle", true);
   obstacle_timeout_sec_ = declare_parameter<double>("obstacle_timeout_sec", 0.5);
   map_frame_ = declare_parameter<std::string>("map_frame", "map");
@@ -58,15 +57,9 @@ void PathObstacleFilterNode::LoadParameters() {
   publish_debug_markers_ = declare_parameter<bool>("publish_debug_markers", true);
 }
 
-void PathObstacleFilterNode::TargetDetectedCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+void PathObstacleFilterNode::TrackedObjectCallback(const nav_msgs::msg::Odometry::SharedPtr msg) {
   std::scoped_lock lock(data_mutex_);
-  latest_target_detected_ = msg->data;
-  last_target_detected_time_ = this->now();
-}
-
-void PathObstacleFilterNode::ObstaclePositionCallback(const geometry_msgs::msg::PointStamped::SharedPtr msg) {
-  std::scoped_lock lock(data_mutex_);
-  latest_obstacle_position_ = msg;
+  latest_tracked_object_ = msg;
 }
 
 void PathObstacleFilterNode::TrajectoryCallback(const nav_msgs::msg::Path::SharedPtr msg) {
@@ -76,6 +69,8 @@ void PathObstacleFilterNode::TrajectoryCallback(const nav_msgs::msg::Path::Share
 
 void PathObstacleFilterNode::TimerCallback() {
   bool obstacle_on_path = false;
+  bool is_stopped = false;
+  double obstacle_speed = 0.0;
   double min_distance_m = -1.0;
   double min_lateral_m = -1.0;
   double obs_x = 0.0;
@@ -84,27 +79,31 @@ void PathObstacleFilterNode::TimerCallback() {
   {
     std::scoped_lock lock(data_mutex_);
 
-    if (latest_obstacle_position_ && latest_trajectory_) {
+    if (latest_tracked_object_ && latest_trajectory_) {
       const auto now = this->now();
-      const double position_age = (now - latest_obstacle_position_->header.stamp).seconds();
-      const double target_age = (now - last_target_detected_time_).seconds();
+      const double object_age = (now - latest_tracked_object_->header.stamp).seconds();
 
-      bool has_active_obstacle = false;
-      if (position_age <= obstacle_timeout_sec_) {
-        if (!require_classification_) {
-          has_active_obstacle = true;
-        } else if (latest_target_detected_ && target_age <= obstacle_timeout_sec_) {
-          has_active_obstacle = true;
-        }
-      }
+      if (object_age <= obstacle_timeout_sec_) {
+        try {
+          // Transform obstacle pose from its frame (e.g. odom) to base_link
+          geometry_msgs::msg::PoseStamped pose_in;
+          pose_in.header = latest_tracked_object_->header;
+          pose_in.pose = latest_tracked_object_->pose.pose;
+          
+          const auto tf_to_base = tf_buffer_->lookupTransform(
+              base_frame_, pose_in.header.frame_id, tf2::TimePointZero, tf2::durationFromSec(tf_timeout_sec_));
+              
+          geometry_msgs::msg::PoseStamped pose_base;
+          tf2::doTransform(pose_in, pose_base, tf_to_base);
 
-      if (has_active_obstacle) {
-        // Assume obstacle is in base_link because cropper publishes in base_link (as modified).
-        // If it's not in base_link, we would need to TF transform it. 
-        // For safety, let's check frame_id.
-        if (latest_obstacle_position_->header.frame_id == base_frame_) {
-          obs_x = latest_obstacle_position_->point.x;
-          obs_y = latest_obstacle_position_->point.y;
+          obs_x = pose_base.pose.position.x;
+          obs_y = pose_base.pose.position.y;
+          
+          // Calculate absolute speed from twist (which is in odom frame usually)
+          const double vx = latest_tracked_object_->twist.twist.linear.x;
+          const double vy = latest_tracked_object_->twist.twist.linear.y;
+          obstacle_speed = std::hypot(vx, vy);
+          is_stopped = (obstacle_speed < stopped_speed_threshold_m_s_);
           
           if (std::hypot(obs_x, obs_y) <= forward_distance_m_) {
             // Find closest waypoint on trajectory
@@ -128,14 +127,13 @@ void PathObstacleFilterNode::TimerCallback() {
 
             if (closest_lateral <= lateral_half_width_m_) {
               obstacle_on_path = true;
-              min_distance_m = closest_longitudinal; // Distance along the path to the obstacle
+              min_distance_m = closest_longitudinal;
               min_lateral_m = closest_lateral;
             }
           }
-        } else {
+        } catch (const tf2::TransformException &ex) {
           RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-                               "Obstacle position frame '%s' != base_frame '%s'",
-                               latest_obstacle_position_->header.frame_id.c_str(), base_frame_.c_str());
+                               "Tracked object TF lookup failed: %s", ex.what());
         }
       }
     }
@@ -148,8 +146,20 @@ void PathObstacleFilterNode::TimerCallback() {
   std_msgs::msg::Bool decel_msg;
   decel_msg.data = obstacle_on_path && deceleration_on_obstacle_;
   deceleration_requested_pub_->publish(decel_msg);
+  
+  std_msgs::msg::Bool avoid_msg;
+  avoid_msg.data = obstacle_on_path && is_stopped;
+  avoidance_requested_pub_->publish(avoid_msg);
+  
+  std_msgs::msg::Bool follow_msg;
+  follow_msg.data = obstacle_on_path && !is_stopped;
+  following_requested_pub_->publish(follow_msg);
 
   if (obstacle_on_path) {
+    std_msgs::msg::Float32 target_spd_msg;
+    target_spd_msg.data = is_stopped ? 0.0 : obstacle_speed;
+    target_speed_pub_->publish(target_spd_msg);
+
     std_msgs::msg::Float32 dist_msg;
     dist_msg.data = min_distance_m;
     obstacle_distance_pub_->publish(dist_msg);

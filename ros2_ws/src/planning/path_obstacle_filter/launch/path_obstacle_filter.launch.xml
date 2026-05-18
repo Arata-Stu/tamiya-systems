@@ -2,15 +2,27 @@
   <arg name="param_file" default="$(find-pkg-share path_obstacle_filter)/config/path_obstacle_filter.param.yaml" />
   
   <!-- Topic mappings -->
-  <arg name="target_detected_topic" default="/perception/classification/target_detected" />
-  <arg name="obstacle_position_topic" default="/perception/crop/obstacle_position" />
+  <arg name="tracked_object_topic" default="/perception/tracked_object" />
   <arg name="trajectory_topic" default="/trajectory" />
 
-  <node pkg="path_obstacle_filter" exec="path_obstacle_filter_node" name="path_obstacle_filter_node" output="screen">
-    <param from="$(var param_file)" />
-    
-    <remap from="/perception/classification/target_detected" to="$(var target_detected_topic)" />
-    <remap from="crop/obstacle_position" to="$(var obstacle_position_topic)" />
-    <remap from="/trajectory" to="$(var trajectory_topic)" />
-  </node>
+  <arg name="container_name" default="camera_container" />
+  <arg name="create_container" default="false" />
+
+  <group if="$(var create_container)">
+    <node pkg="rclcpp_components"
+          exec="component_container_mt"
+          name="$(var container_name)"
+          output="screen"/>
+  </group>
+
+  <load_composable_node target="$(var container_name)">
+    <composable_node pkg="path_obstacle_filter"
+                     plugin="path_obstacle_filter::PathObstacleFilterNode"
+                     name="path_obstacle_filter_node">
+      <param from="$(var param_file)" />
+      
+      <remap from="/perception/tracked_object" to="$(var tracked_object_topic)" />
+      <remap from="/trajectory" to="$(var trajectory_topic)" />
+    </composable_node>
+  </load_composable_node>
 </launch>

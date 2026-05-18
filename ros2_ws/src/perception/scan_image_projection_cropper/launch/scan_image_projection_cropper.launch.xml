@@ -10,6 +10,7 @@
   <arg name="debug_input_image_topic" default="$(var image_topic)"/>
   <arg name="debug_input_camera_info_topic" default="$(var camera_info_topic)"/>
   <arg name="debug_image_topic" default="/perception/debug/image"/>
+  <arg name="tracked_object_topic" default="/perception/tracked_object"/>
 
   <arg name="container_name" default="camera_container"/>
   <arg name="create_container" default="false"/>
@@ -35,6 +36,7 @@
       <remap from="debug/image_input" to="$(var debug_input_image_topic)"/>
       <remap from="debug/camera_info" to="$(var debug_input_camera_info_topic)"/>
       <remap from="debug/image" to="$(var debug_image_topic)"/>
+      <remap from="/perception/tracked_object" to="$(var tracked_object_topic)"/>
     </composable_node>
   </load_composable_node>
 </launch>

@@ -109,6 +109,8 @@
     <arg name="perception_classifier_scores_topic" default="/perception/classification/scores" />
     <arg name="perception_classifier_target_detected_topic" default="/perception/classification/target_detected" />
     <arg name="perception_crop_obstacle_position_topic" default="/perception/crop/obstacle_position" />
+    <arg name="perception_tracked_object_topic" default="/perception/tracked_object" />
+    <arg name="perception_object_tracker_param" default="$(find-pkg-share system_launch)/config/perception/perception_object_tracker.param.yaml" />
     <arg name="path_obstacle_filter_param" default="$(find-pkg-share system_launch)/config/perception/path_obstacle_filter.param.yaml" />
 
     <!-- Operation tools -->
@@ -327,6 +329,8 @@
             <arg name="classifier_scores_topic" value="$(var perception_classifier_scores_topic)"/>
             <arg name="classifier_target_detected_topic" value="$(var perception_classifier_target_detected_topic)"/>
             <arg name="crop_obstacle_position_topic" value="$(var perception_crop_obstacle_position_topic)"/>
+            <arg name="perception_object_tracker_param" value="$(var perception_object_tracker_param)"/>
+            <arg name="tracked_object_topic" value="$(var perception_tracked_object_topic)"/>
             <arg name="path_obstacle_filter_param" value="$(var path_obstacle_filter_param)"/>
             <arg name="container_name" value="$(var camera_container_name)"/>
             <arg name="create_container" value="false"/>

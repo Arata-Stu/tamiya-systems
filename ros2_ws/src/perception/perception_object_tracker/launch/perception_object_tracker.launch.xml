@@ -1,0 +1,29 @@
+<launch>
+  <arg name="param_file" default="$(find-pkg-share perception_object_tracker)/config/perception_object_tracker.param.yaml" />
+  
+  <arg name="target_detected_topic" default="/perception/classification/target_detected" />
+  <arg name="obstacle_position_topic" default="/perception/crop/obstacle_position" />
+  <arg name="tracked_object_topic" default="/perception/tracked_object" />
+
+  <arg name="container_name" default="camera_container" />
+  <arg name="create_container" default="false" />
+
+  <group if="$(var create_container)">
+    <node pkg="rclcpp_components"
+          exec="component_container_mt"
+          name="$(var container_name)"
+          output="screen"/>
+  </group>
+
+  <load_composable_node target="$(var container_name)">
+    <composable_node pkg="perception_object_tracker"
+                     plugin="perception_object_tracker::PerceptionObjectTrackerNode"
+                     name="perception_object_tracker_node">
+      <param from="$(var param_file)" />
+      
+      <remap from="/perception/classification/target_detected" to="$(var target_detected_topic)" />
+      <remap from="crop/obstacle_position" to="$(var obstacle_position_topic)" />
+      <remap from="~/tracked_object" to="$(var tracked_object_topic)" />
+    </composable_node>
+  </load_composable_node>
+</launch>
