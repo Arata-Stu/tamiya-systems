@@ -346,7 +346,7 @@ cd /python_ws
 bash setup_global_opt_env.sh
 ```
 
-このスクリプトは通常の `requirements_global_opt.txt` インストールを試し、`quadprog` の `undefined symbol` を検出した場合は互換ワークアラウンドへ自動で切り替えて、最後に `check_global_opt_env.py` を再実行します。ワークアラウンドだけを試したい場合は `bash setup_global_opt_env.sh --force-compat` を使ってください。
+このスクリプトは通常の `requirements_global_opt.txt` インストールを試し、`quadprog` の `undefined symbol` を検出した場合は互換ワークアラウンドへ自動で切り替えて、最後に `check_global_opt_env.py` を再実行します。互換ワークアラウンドでは `Cython` / `wheel` を先に入れたうえで `quadprog==0.1.6` を `--no-build-isolation` でビルドします。それでも同じ ABI エラーが残る場合は、上流 `trajectory_planning_helpers` の `master` と新しめの `quadprog` へ切り替える modern fallback を試します。ワークアラウンドだけを試したい場合は `bash setup_global_opt_env.sh --force-compat`、modern stack だけを試したい場合は `bash setup_global_opt_env.sh --force-modern` を使ってください。
 
 `quadprog` は環境によっては install 後も import 時に `undefined symbol` で失敗することがあります。これは依存解決エラーではなく、ネイティブ拡張の ABI 不整合です。その場合は一度 `quadprog` と `trajectory-planning-helpers` を削除し、`trajectory-planning-helpers` の自動依存解決を使わずに `quadprog==0.1.6` を先に入れてから `trajectory-planning-helpers --no-deps` を入れる回避策を試してください。
 

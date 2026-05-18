@@ -29,7 +29,8 @@ def hint_for_import_error(module_name: str, exc: Exception) -> str:
             " Hint: quadprog native extension looks ABI-incompatible. "
             "Try reinstalling with quadprog==0.1.6 and "
             "trajectory-planning-helpers==0.79 --no-deps, "
-            "or run /python_ws/setup_global_opt_env.sh."
+            "or run /python_ws/setup_global_opt_env.sh. "
+            "If the legacy stack still fails, try /python_ws/setup_global_opt_env.sh --force-modern."
         )
     return ""
 
