@@ -1,0 +1,64 @@
+# --- Path settings ---
+data:
+  dataset_root: "./datasets"
+  annotations_file: "./datasets/annotations.csv"
+  labels: ["rc_car", "duct_tube", "background"]
+  train_split: "train"
+  val_split: "val"
+  test_split: "test"
+  require_reviewed: true
+  import_ids: []
+
+resume_ckpt_path: null
+log_dir: ./logs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
+ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+# --- Dataset / transform settings ---
+dataset:
+  input_channels: 3
+  image_height: 64
+  image_width: 64
+  force_grayscale_3ch: true
+  pixel_mean: [0.5, 0.5, 0.5]
+  pixel_std: [0.5, 0.5, 0.5]
+  augment_fill_value: 127
+  random_horizontal_flip_p: 0.5
+  rotation_prob: 0.35
+  rotation_deg: 8.0
+  affine_prob: 0.30
+  affine_translate_ratio: 0.10
+  affine_scale_min: 0.90
+  affine_scale_max: 1.10
+  brightness_jitter: 0.10
+  contrast_jitter: 0.10
+  blur_prob: 0.10
+  blur_kernel_size: 3
+  noise_prob: 0.12
+  noise_sigma: 6.0
+  cutout_prob: 0.10
+  cutout_min_ratio: 0.10
+  cutout_max_ratio: 0.28
+
+# --- Training settings ---
+training:
+  seed: 42
+  epochs: 30
+  batch_size: 128
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  num_workers: 8
+  label_smoothing: 0.0
+  use_class_weights: true
+  freeze_backbone_epochs: 3
+
+# --- Model settings ---
+model:
+  architecture: mobilenet_v3_small
+  pretrained: true
+  num_classes: 3
+  dropout: 0.2
+
+# --- Hydra output settings ---
+hydra:
+  run:
+    dir: ./outputs/train/${now:%Y-%m-%d}/${now:%H-%M-%S}

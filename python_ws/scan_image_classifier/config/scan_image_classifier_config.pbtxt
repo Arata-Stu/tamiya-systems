@@ -1,0 +1,17 @@
+name: "scan_image_classifier"
+platform: "tensorrt_plan"
+max_batch_size: 1
+input [
+  {
+    name: "input_tensor"
+    data_type: TYPE_FP32
+    dims: [ 3, 64, 64 ]
+  }
+]
+output [
+  {
+    name: "output_logits"
+    data_type: TYPE_FP32
+    dims: [ 3 ]
+  }
+]
