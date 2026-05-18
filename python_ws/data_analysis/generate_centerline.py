@@ -563,19 +563,16 @@ def smooth_points_race_stacks(points: np.ndarray) -> np.ndarray:
     else:
         filter_length = 21
 
-    max_filter = max(5, ((centerline_length // 2) * 2) - 1)
+    max_filter = centerline_length if centerline_length % 2 == 1 else centerline_length - 1
     filter_length = min(filter_length, max_filter)
     if filter_length < 5:
         return points
 
-    centerline_smooth = savgol_filter(points, filter_length, 3, axis=0)
-
-    cen_len = centerline_length // 2
-    centerline2 = np.append(points[cen_len:], points[:cen_len], axis=0)
-    centerline_smooth2 = savgol_filter(centerline2, filter_length, 3, axis=0)
-
-    centerline_smooth[:filter_length] = centerline_smooth2[cen_len:cen_len + filter_length]
-    centerline_smooth[-filter_length:] = centerline_smooth2[cen_len - filter_length:cen_len]
+    # The race_stacks implementation used a second half-track-shifted pass to
+    # avoid seam artifacts on closed loops. For short loops that can overrun the
+    # available slice length, so we use Savitzky-Golay's circular wrap mode to
+    # preserve the same "closed loop" intent without brittle indexing.
+    centerline_smooth = savgol_filter(points, filter_length, 3, axis=0, mode="wrap")
     return np.asarray(centerline_smooth, dtype=np.float64)
 
 
