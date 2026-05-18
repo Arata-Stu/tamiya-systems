@@ -1,0 +1,40 @@
+<launch>
+  <arg name="scan_image_projection_cropper_param"
+       default="$(find-pkg-share scan_image_projection_cropper)/config/scan_image_projection_cropper.param.yaml"/>
+  <arg name="scan_topic" default="/scan"/>
+  <arg name="image_topic" default="/camera/left/image_rect"/>
+  <arg name="camera_info_topic" default="/camera/left/camera_info_rect"/>
+  <arg name="crop_image_topic" default="/perception/crop/image"/>
+  <arg name="crop_camera_info_topic" default="/perception/crop/camera_info"/>
+  <arg name="crop_roi_topic" default="/perception/crop/roi"/>
+  <arg name="debug_input_image_topic" default="$(var image_topic)"/>
+  <arg name="debug_input_camera_info_topic" default="$(var camera_info_topic)"/>
+  <arg name="debug_image_topic" default="/perception/debug/image"/>
+
+  <arg name="container_name" default="camera_container"/>
+  <arg name="create_container" default="false"/>
+
+  <group if="$(var create_container)">
+    <node pkg="rclcpp_components"
+          exec="component_container_mt"
+          name="$(var container_name)"
+          output="screen"/>
+  </group>
+
+  <load_composable_node target="$(var container_name)">
+    <composable_node pkg="scan_image_projection_cropper"
+                     plugin="scan_image_projection_cropper::ScanImageProjectionCropperComponent"
+                     name="scan_image_projection_cropper_node">
+      <param from="$(var scan_image_projection_cropper_param)"/>
+      <remap from="scan" to="$(var scan_topic)"/>
+      <remap from="image" to="$(var image_topic)"/>
+      <remap from="camera_info" to="$(var camera_info_topic)"/>
+      <remap from="crop/image" to="$(var crop_image_topic)"/>
+      <remap from="crop/camera_info" to="$(var crop_camera_info_topic)"/>
+      <remap from="crop/roi" to="$(var crop_roi_topic)"/>
+      <remap from="debug/image_input" to="$(var debug_input_image_topic)"/>
+      <remap from="debug/camera_info" to="$(var debug_input_camera_info_topic)"/>
+      <remap from="debug/image" to="$(var debug_image_topic)"/>
+    </composable_node>
+  </load_composable_node>
+</launch>

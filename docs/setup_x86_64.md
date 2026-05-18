@@ -231,20 +231,13 @@ bash /scripts/create_2d_map_from_bag.sh \
   --scan-topic /scan_filtered
 ```
 
-VSLAM の odom を使う場合:
+VSLAM map も同時に作る場合は、最初から VSLAM と 2D SLAM を同時実行します。
+Cartographer は `/visual_slam/tracking/odometry` を使わず、scan-only のまま動かします。
 
 ```bash
 bash /scripts/create_2d_map_from_bag.sh \
   --record-root /workspaces/bags \
-  --use-vslam-odom
-```
-
-または odom topic を明示指定:
-
-```bash
-bash /scripts/create_2d_map_from_bag.sh \
-  --record-root /workspaces/bags \
-  --odom-topic /visual_slam/tracking/odometry
+  --mode 2d_slam
 ```
 
 ---

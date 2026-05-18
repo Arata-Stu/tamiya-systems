@@ -141,26 +141,19 @@ Options:
   --scan-topic TOPIC  scan topic for cartographer (default: /scan)
   --rate RATE         ros2 bag play rate (default: 1.0)
   --odom-topic TOPIC  use odometry topic and enable odometry in cartographer
-  --use-vslam-odom    shorthand of --odom-topic /visual_slam/tracking/odometry
-  --run-vslam         replay stereo/imu topics and generate /visual_slam/tracking/odometry offline
-  --no-vslam          do not launch offline vslam even if --use-vslam-odom is specified
-  --vslam-vis         enable VSLAM visualization topics and record them into the lightweight bag
+                      /visual_slam/tracking/odometry is no longer supported
+  --run-vslam         run VSLAM in parallel and save a VSLAM map during 2D map creation
+  --no-vslam          do not launch VSLAM unless implied by --mode 2d_slam
+  --vslam-vis         enable VSLAM visualization topics during parallel VSLAM execution
   --no-vslam-vis      disable VSLAM visualization topics (default)
   --image-width PX    camera width for offline vslam launch (default: 424)
   --image-height PX   camera height for offline vslam launch (default: 240)
   --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
   --with-imu          replay /camera/imu as well (default: disabled)
   --vslam-map-dir DIR visual slam map output directory
-  --lightweight-bag-root DIR
-                      2D map用 lightweight bag の保存先ルート (default: /record/2d_input)
   --pipeline-mode MODE
-                      full|fast|online|auto (default: auto)
+                      online|auto (default: auto; auto becomes online when VSLAM is enabled)
   --play-all-topics   play all topics in bag (default: play only needed topics)
-  --vslam-hint-remap  after the provisional 2D map, replay the source bag once more,
-                      use scan global localization from the fixed 2D map as the initial
-                      SLAM pose, then rebuild only the VSLAM map (default)
-  --no-vslam-hint-remap
-                      skip the hinted VSLAM remap pass
   --record-root DIR   rosbag探索ルート (default: /record)
   --no-scp            skip interactive scp transfer step
   --no-centerline     skip centerline CSV generation
@@ -203,7 +196,6 @@ Outputs:
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline_input.png (optional; hand-edited map cleanup result)
-  /record/2d_input/<bag_name>/<MAP_NAME>_2d_input_<timestamp>/ (optional; legacy/full-record or fast-path workflow)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_raceline.csv (optional; generated unless --no-raceline)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_lines.png (optional; generated unless --no-line-preview)
@@ -235,7 +227,6 @@ MODE="default"
 RUN_VSLAM=false
 VSLAM_VIS_ENABLED=false
 PLAY_ALL_TOPICS=false
-RUN_VSLAM_HINT_REMAP=true
 ENABLE_CENTERLINE=true
 ENABLE_RACELINE=true
 ENABLE_LINE_PREVIEW=true
@@ -256,18 +247,13 @@ RACELINE_DIRECTION="forward"
 GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
-LIGHTWEIGHT_BAG_ROOT="/record/2d_input"
 PIPELINE_MODE="auto"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
 USE_IMU=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
-LOCALIZATION_CONTAINER_NAME="offline_localization_container_$$"
 VSLAM_MAP_DIR=""
-LIGHTWEIGHT_BAG_DIR=""
-USING_LIGHTWEIGHT_BAG=false
-USE_VSLAM_LOCALIZATION_REPLAY=false
 OFFLINE_TF_PID=""
 OFFLINE_TF_USES_SETSID=false
 ENABLE_SCP=true
@@ -281,20 +267,10 @@ CARTOGRAPHER_PID=""
 CARTOGRAPHER_USES_SETSID=false
 CAMERA_CONTAINER_PID=""
 CAMERA_CONTAINER_USES_SETSID=false
-LIDAR_CONTAINER_PID=""
-LIDAR_CONTAINER_USES_SETSID=false
 VSLAM_LAUNCH_PID=""
 VSLAM_LAUNCH_USES_SETSID=false
-LOCALIZATION_LAUNCH_PID=""
-LOCALIZATION_LAUNCH_USES_SETSID=false
-RECORDER_PID=""
-RECORDER_USES_SETSID=false
-ROSBAG_PLAYER_PID=""
-ROSBAG_PLAYER_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
-LIGHTWEIGHT_BAG_CANDIDATES=()
-LIGHTWEIGHT_RECORD_TOPICS=()
 SOURCE_PLAY_TOPICS=()
 
 apply_mode() {
@@ -302,9 +278,10 @@ apply_mode() {
         default)
             ;;
         2d_slam)
-            ODOM_TOPIC="/visual_slam/tracking/odometry"
-            CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+            ODOM_TOPIC=""
+            CONFIG_BASENAME="cartographer_2d.lua"
             RUN_VSLAM=true
+            PIPELINE_MODE="online"
             ;;
         *)
             echo "Unknown mode: $1" >&2
@@ -403,12 +380,6 @@ while (($#)); do
             CONFIG_BASENAME="cartographer_2d_with_odom.lua"
             shift 2
             ;;
-        --use-vslam-odom)
-            ODOM_TOPIC="/visual_slam/tracking/odometry"
-            CONFIG_BASENAME="cartographer_2d_with_odom.lua"
-            RUN_VSLAM=true
-            shift
-            ;;
         --run-vslam)
             RUN_VSLAM=true
             shift
@@ -445,24 +416,12 @@ while (($#)); do
             VSLAM_MAP_DIR="$2"
             shift 2
             ;;
-        --lightweight-bag-root)
-            LIGHTWEIGHT_BAG_ROOT="$2"
-            shift 2
-            ;;
         --pipeline-mode)
             PIPELINE_MODE="$2"
             shift 2
             ;;
         --play-all-topics)
             PLAY_ALL_TOPICS=true
-            shift
-            ;;
-        --vslam-hint-remap)
-            RUN_VSLAM_HINT_REMAP=true
-            shift
-            ;;
-        --no-vslam-hint-remap)
-            RUN_VSLAM_HINT_REMAP=false
             shift
             ;;
         --record-root)
@@ -573,7 +532,11 @@ done
 apply_mode "${MODE}"
 
 case "${PIPELINE_MODE}" in
-    auto|full|fast|online)
+    auto|online)
+        ;;
+    full|fast)
+        echo "Legacy --pipeline-mode ${PIPELINE_MODE} has been removed. Use simultaneous VSLAM + 2D SLAM via --mode 2d_slam or --run-vslam." >&2
+        exit 1
         ;;
     *)
         echo "Invalid --pipeline-mode: ${PIPELINE_MODE}" >&2
@@ -628,79 +591,6 @@ discover_rosbag_candidates() {
     [ "${#ROSBAG_CANDIDATES[@]}" -gt 0 ]
 }
 
-discover_lightweight_bag_candidates() {
-    local search_root="$1"
-    local bag_name="$2"
-    local map_name="$3"
-    local metadata_path
-    local dir
-    local expected_prefix="${map_name}_2d_input_"
-
-    LIGHTWEIGHT_BAG_CANDIDATES=()
-    if [ ! -d "${search_root%/}/${bag_name}" ]; then
-        return 1
-    fi
-
-    while IFS= read -r -d '' metadata_path; do
-        dir="$(dirname "${metadata_path}")"
-        if [[ "$(basename "${dir}")" == "${expected_prefix}"* ]]; then
-            LIGHTWEIGHT_BAG_CANDIDATES+=("${dir}")
-        fi
-    done < <(find "${search_root%/}/${bag_name}" -type f -name metadata.yaml -print0 2>/dev/null)
-
-    if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
-        return 1
-    fi
-
-    mapfile -t LIGHTWEIGHT_BAG_CANDIDATES < <(printf '%s\n' "${LIGHTWEIGHT_BAG_CANDIDATES[@]}" | sort -r)
-    [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -gt 0 ]
-}
-
-build_lightweight_record_topics() {
-    LIGHTWEIGHT_RECORD_TOPICS=(
-        /visual_slam/tracking/odometry
-        "${SCAN_TOPIC}"
-        /tf
-        /tf_static
-    )
-
-    if [ "${VSLAM_VIS_ENABLED}" = true ]; then
-        LIGHTWEIGHT_RECORD_TOPICS+=(
-            /visual_slam/status
-            /visual_slam/tracking/vo_pose
-            /visual_slam/tracking/vo_path
-            /visual_slam/tracking/slam_path
-            /visual_slam/vis/slam_odometry
-            /visual_slam/vis/velocity
-            /visual_slam/vis/gravity
-            /visual_slam/vis/landmarks_cloud
-            /visual_slam/vis/observations_cloud
-            /visual_slam/vis/loop_closure_cloud
-            /visual_slam/vis/pose_graph_nodes
-            /visual_slam/vis/pose_graph_edges
-            /visual_slam/vis/pose_graph_edges2
-            /visual_slam/vis/localizer
-            /visual_slam/vis/localizer_map_cloud
-        )
-    fi
-}
-
-build_source_play_topics() {
-    SOURCE_PLAY_TOPICS=(
-        "${SCAN_TOPIC}"
-        "/tf"
-        "/tf_static"
-        "/camera/left/image_raw"
-        "/camera/left/camera_info"
-        "/camera/right/image_raw"
-        "/camera/right/camera_info"
-    )
-
-    if [ "${USE_IMU}" = true ]; then
-        SOURCE_PLAY_TOPICS+=("/camera/imu")
-    fi
-}
-
 build_online_source_play_topics() {
     SOURCE_PLAY_TOPICS=(
         "${SCAN_TOPIC}"
@@ -711,89 +601,13 @@ build_online_source_play_topics() {
         "/camera/right/camera_info"
     )
 
+    if [ -n "${ODOM_TOPIC}" ]; then
+        SOURCE_PLAY_TOPICS+=("${ODOM_TOPIC}")
+    fi
+
     if [ "${USE_IMU}" = true ]; then
         SOURCE_PLAY_TOPICS+=("/camera/imu")
     fi
-}
-
-build_vslam_set_pose_request_from_pose_cov_file() {
-    local pose_cov_path="$1"
-
-    python3 - "${pose_cov_path}" <<'PY'
-import sys
-
-try:
-    import yaml
-except Exception as exc:
-    raise SystemExit(f"PyYAML not available: {exc}")
-
-with open(sys.argv[1], "r", encoding="utf-8") as f:
-    docs = [doc for doc in yaml.safe_load_all(f) if doc]
-
-if not docs:
-    raise SystemExit("No YAML documents found in localization result")
-
-msg = None
-for doc in reversed(docs):
-    if isinstance(doc, dict) and ((doc.get("pose") or {}).get("pose")):
-        msg = doc
-        break
-
-if msg is None:
-    raise SystemExit("No pose-bearing YAML document found in localization result")
-
-pose = ((msg.get("pose") or {}).get("pose") or {})
-position = pose.get("position") or {}
-orientation = pose.get("orientation") or {}
-
-for key in ("x", "y", "z"):
-    if key not in position:
-        raise SystemExit(f"Missing pose.position.{key} in localization result")
-for key in ("x", "y", "z", "w"):
-    if key not in orientation:
-        raise SystemExit(f"Missing pose.orientation.{key} in localization result")
-
-print(
-    "{pose: {position: {x: %r, y: %r, z: %r}, orientation: {x: %r, y: %r, z: %r, w: %r}}}"
-    % (
-        position["x"],
-        position["y"],
-        position["z"],
-        orientation["x"],
-        orientation["y"],
-        orientation["z"],
-        orientation["w"],
-    )
-)
-PY
-}
-
-build_vslam_localization_param_file() {
-    local output_path="$1"
-    local base_param_path=""
-
-    if ! base_param_path="$(resolve_system_launch_config_file "localization/vslam.param.yaml")"; then
-        echo "Unable to locate system_launch/config/localization/vslam.param.yaml" >&2
-        return 1
-    fi
-
-    python3 - "${base_param_path}" "${output_path}" <<'PY'
-import sys
-
-try:
-    import yaml
-except Exception as exc:
-    raise SystemExit(f"PyYAML not available: {exc}")
-
-with open(sys.argv[1], "r", encoding="utf-8") as f:
-    data = yaml.safe_load(f) or {}
-
-params = data.setdefault("/**", {}).setdefault("ros__parameters", {})
-params["localize_on_startup"] = True
-
-with open(sys.argv[2], "w", encoding="utf-8") as f:
-    yaml.safe_dump(data, f, sort_keys=False)
-PY
 }
 
 select_rosbag_path_interactive() {
@@ -848,77 +662,6 @@ prompt_map_name_interactive() {
     done
 }
 
-prompt_pipeline_mode_interactive() {
-    local choice
-
-    if [ "${PIPELINE_MODE}" = "full" ] || \
-       [ "${PIPELINE_MODE}" = "fast" ] || \
-       [ "${PIPELINE_MODE}" = "online" ]; then
-        return 0
-    fi
-
-    if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
-        PIPELINE_MODE="full"
-        return 0
-    fi
-
-    echo ""
-    echo "既存の lightweight bag が見つかりました:"
-    printf "  1) full  source bag から VSLAM と 2D map を作り直す\n"
-    printf "  2) fast  既存の lightweight bag を使って 2D map から再開\n"
-    echo "      latest: ${LIGHTWEIGHT_BAG_CANDIDATES[0]}"
-    echo ""
-
-    while :; do
-        read -r -p "実行モードを選択 (1-2, Enterで fast): " choice
-        choice=${choice:-2}
-        case "${choice}" in
-            1)
-                PIPELINE_MODE="full"
-                return 0
-                ;;
-            2)
-                PIPELINE_MODE="fast"
-                return 0
-                ;;
-        esac
-        echo "無効な入力です。1 または 2 を選択してください。"
-    done
-}
-
-select_lightweight_bag_interactive() {
-    local choice
-    local i
-
-    if [ "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" -eq 0 ]; then
-        echo "No lightweight bag candidates found." >&2
-        return 1
-    fi
-
-    echo ""
-    echo "利用する lightweight bag を選択してください:"
-    for i in "${!LIGHTWEIGHT_BAG_CANDIDATES[@]}"; do
-        if [ "$i" -eq 0 ]; then
-            printf "  %2d) %s (latest, Enterのデフォルト)\n" "$((i + 1))" "${LIGHTWEIGHT_BAG_CANDIDATES[$i]}"
-        else
-            printf "  %2d) %s\n" "$((i + 1))" "${LIGHTWEIGHT_BAG_CANDIDATES[$i]}"
-        fi
-    done
-    echo ""
-
-    while :; do
-        read -r -p "lightweight bag を番号で選択 (1-${#LIGHTWEIGHT_BAG_CANDIDATES[@]}, Enterで1): " choice
-        choice=${choice:-1}
-        if [[ "${choice}" =~ ^[0-9]+$ ]] && \
-           [ "${choice}" -ge 1 ] && \
-           [ "${choice}" -le "${#LIGHTWEIGHT_BAG_CANDIDATES[@]}" ]; then
-            LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_CANDIDATES[$((choice - 1))]}"
-            return 0
-        fi
-        echo "無効な入力です。番号で選択してください。"
-    done
-}
-
 if [ -z "${BAG_PATH}" ]; then
     select_rosbag_path_interactive
 fi
@@ -932,15 +675,13 @@ BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 SOURCE_BAG_PATH="${BAG_PATH}"
 
-if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
-    discover_lightweight_bag_candidates "${LIGHTWEIGHT_BAG_ROOT}" "${BAG_DIR_NAME}" "${MAP_NAME}" || true
-    prompt_pipeline_mode_interactive
-    if [ "${PIPELINE_MODE}" = "fast" ]; then
-        select_lightweight_bag_interactive
-        RUN_VSLAM=false
-        USING_LIGHTWEIGHT_BAG=true
-        BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
-    fi
+if [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
+    echo "VSLAM odometry is no longer supported in create_2d_map_from_bag.sh. Run VSLAM in parallel without --odom-topic." >&2
+    exit 1
+fi
+
+if [ "${RUN_VSLAM}" = true ] && [ "${PIPELINE_MODE}" = "auto" ]; then
+    PIPELINE_MODE="online"
 fi
 
 if [ "${PIPELINE_MODE}" = "online" ]; then
@@ -948,17 +689,6 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
         echo "--pipeline-mode online requires --run-vslam or --mode 2d_slam." >&2
         exit 1
     fi
-    if [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odometry" ]; then
-        echo "--pipeline-mode online requires odom topic /visual_slam/tracking/odometry." >&2
-        exit 1
-    fi
-fi
-
-if [ "${RUN_VSLAM}" = true ] && \
-   [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ] && \
-   [ "${USING_LIGHTWEIGHT_BAG}" != true ] && \
-   [ "${PIPELINE_MODE}" != "online" ]; then
-    USE_VSLAM_LOCALIZATION_REPLAY=true
 fi
 
 # output paths
@@ -1024,50 +754,6 @@ stop_vslam() {
     stop_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID"
 }
 
-stop_recorder() {
-    stop_background_process "RECORDER_PID" "RECORDER_USES_SETSID"
-}
-
-compute_wall_delay_from_bag_delay() {
-    local bag_delay_sec="$1"
-    local play_rate="$2"
-
-    awk -v bag_delay_sec="${bag_delay_sec}" -v play_rate="${play_rate}" '
-        BEGIN {
-            if (play_rate + 0 <= 0) {
-                exit 1
-            }
-            wall_delay = (bag_delay_sec + 0) / (play_rate + 0)
-            if (wall_delay < 0) {
-                wall_delay = 0
-            }
-            printf "%.6f\n", wall_delay
-        }
-    '
-}
-
-build_rosbag_seek_request_from_seconds() {
-    local bag_time_sec="$1"
-
-    python3 - "${bag_time_sec}" <<'PY'
-import sys
-from decimal import Decimal, ROUND_FLOOR
-
-value = Decimal(sys.argv[1])
-if value < 0:
-    value = Decimal("0")
-
-sec = int(value.to_integral_value(rounding=ROUND_FLOOR))
-nanosec = int(((value - Decimal(sec)) * Decimal("1000000000")).to_integral_value())
-
-if nanosec >= 1_000_000_000:
-    sec += 1
-    nanosec -= 1_000_000_000
-
-print(f"{{time: {{sec: {sec}, nanosec: {nanosec}}}}}")
-PY
-}
-
 play_rosbag() {
     local bag_path="$1"
     local log_path="$2"
@@ -1082,16 +768,6 @@ play_rosbag() {
     fi
 
     "${player_cmd[@]}" > "${log_path}" 2>&1
-}
-
-launch_lightweight_recorder_now() {
-    local output_dir="$1"
-    shift
-
-    launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
-        ros2 bag record \
-        -o "${output_dir}" \
-        "$@"
 }
 
 launch_background_process() {
@@ -1636,49 +1312,6 @@ wait_for_topic() {
     return 1
 }
 
-wait_for_topic_message() {
-    local topic_name="$1"
-    local timeout_sec="$2"
-    local output_path="$3"
-    local topic_echo_pid=""
-    local count=0
-
-    rm -f "${output_path}" 2>/dev/null || true
-
-    if command -v timeout >/dev/null 2>&1; then
-        timeout "${timeout_sec}s" ros2 topic echo --once "${topic_name}" > "${output_path}" 2>/dev/null
-        return $?
-    fi
-
-    ros2 topic echo --once "${topic_name}" > "${output_path}" 2>/dev/null &
-    topic_echo_pid="$!"
-
-    while kill -0 "${topic_echo_pid}" 2>/dev/null; do
-        if [ "${count}" -ge "${timeout_sec}" ]; then
-            kill "${topic_echo_pid}" 2>/dev/null || true
-            wait "${topic_echo_pid}" 2>/dev/null || true
-            return 1
-        fi
-        sleep 1
-        count=$((count + 1))
-    done
-
-    wait "${topic_echo_pid}" 2>/dev/null
-}
-
-call_rosbag_player_service() {
-    local service_suffix="$1"
-    local service_type="$2"
-    local request="${3-}"
-
-    if [ -z "${request}" ]; then
-        request='{}'
-    fi
-
-    ros2 service call "/rosbag2_player/${service_suffix}" "${service_type}" \
-        "${request}" > /dev/null
-}
-
 launch_cartographer_mapping() {
     local -a launch_args=(
         "use_sim_time:=true"
@@ -1750,380 +1383,11 @@ convert_pbstream_to_map() {
     if [ -d "${VSLAM_MAP_DIR}" ]; then
         echo "  - ${VSLAM_MAP_DIR}/"
     fi
-    if [ -d "${LIGHTWEIGHT_BAG_DIR}" ]; then
-        echo "  - ${LIGHTWEIGHT_BAG_DIR}"
-    fi
-}
-
-run_vslam_hint_remap_pass() {
-    local player_log_path="/tmp/offline_vslam_hint_player_$(date +%Y%m%d_%H%M%S).log"
-    local localization_log_path="/tmp/offline_vslam_hint_localization_$(date +%Y%m%d_%H%M%S).log"
-    local vslam_log_path="/tmp/offline_vslam_hint_vslam_$(date +%Y%m%d_%H%M%S).log"
-    local tf_log_path="/tmp/offline_vslam_hint_tf_$(date +%Y%m%d_%H%M%S).log"
-    local localization_result_log=""
-    local post_trigger_flatscan_log=""
-    local tracker_init_odom_log="/tmp/offline_vslam_hint_tracker_init_odom_$(date +%Y%m%d_%H%M%S).log"
-    local localization_wait_pid=""
-    local flatscan_wait_pid=""
-    local tracker_wait_pid=""
-    local set_slam_pose_request=""
-    local set_slam_pose_output=""
-    local remap_seek_request=""
-    local localization_attempt=""
-    local localization_attempts=3
-    local localization_attempt_succeeded=false
-    local localization_retry_bag_step_sec="1.0"
-    local localization_retry_wall_step_sec=""
-    local localization_result_wait_sec=10
-    local localization_post_trigger_settle_sec="0.5"
-
-    if [ "${RUN_VSLAM_HINT_REMAP}" != true ]; then
-        return 0
-    fi
-
-    if [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odometry" ]; then
-        echo "[hint-remap] Skip: odom topic is not VSLAM odometry (${ODOM_TOPIC:-<empty>})"
-        return 0
-    fi
-
-    if [ ! -f "${MAP_YAML_PATH}" ]; then
-        echo "[hint-remap] Skip: provisional map yaml not found: ${MAP_YAML_PATH}" >&2
-        return 0
-    fi
-
-    mkdir -p "${VSLAM_MAP_DIR}"
-
-    if ! remap_seek_request="$(build_rosbag_seek_request_from_seconds "0.0")"; then
-        echo "[hint-remap] Skip: failed to build rosbag seek request from the source bag start" >&2
-        return 0
-    fi
-    if ! localization_retry_wall_step_sec="$(
-        compute_wall_delay_from_bag_delay "${localization_retry_bag_step_sec}" "${PLAY_RATE}"
-    )"; then
-        echo "[hint-remap] Skip: failed to compute localization retry delay from bag=${localization_retry_bag_step_sec}s at rate=${PLAY_RATE}" >&2
-        return 0
-    fi
-
-    echo "[hint-remap] Launch 2D map publisher + scan global localization"
-
-    build_system_launch_cmd "offline_sensor_tf.launch.xml"
-    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        > "${tf_log_path}" 2>&1
-    sleep 2
-
-    launch_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID" \
-        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${LOCALIZATION_CONTAINER_NAME}"
-    sleep 2
-
-    build_system_launch_cmd "localization.launch.xml"
-    launch_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        "lidar_container_name:=${LOCALIZATION_CONTAINER_NAME}" \
-        "map_yaml_path:=${MAP_YAML_PATH}" \
-        "scan_topic:=${SCAN_TOPIC}" \
-        "use_sim_time:=true" \
-        "publish_map:=true" \
-        "use_localization_manager:=false" \
-        "publish_localization_tf:=false" \
-        > "${localization_log_path}" 2>&1
-
-    echo "[hint-remap] Wait for localization and rosbag-player services"
-    if ! wait_for_service "/trigger_grid_search_localization" 60; then
-        echo "Warning: hint remap skipped because /trigger_grid_search_localization was not ready. Check log: ${localization_log_path}" >&2
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    echo "[hint-remap] Start paused source rosbag player"
-    if [ "${PLAY_ALL_TOPICS}" = true ]; then
-        launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
-            ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused \
-            > "${player_log_path}" 2>&1
-    else
-        build_source_play_topics
-        launch_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID" \
-            ros2 bag play "${SOURCE_BAG_PATH}" --clock --rate "${PLAY_RATE}" --start-paused --topics "${SOURCE_PLAY_TOPICS[@]}" \
-            > "${player_log_path}" 2>&1
-    fi
-
-    if ! wait_for_service "/rosbag2_player/resume" 30 || \
-       ! wait_for_service "/rosbag2_player/pause" 30 || \
-       ! wait_for_service "/rosbag2_player/seek" 30; then
-        echo "Warning: hint remap skipped because rosbag2 player services were not ready. Check log: ${player_log_path}" >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    echo "[hint-remap] Seek to the source bag start, resume briefly to collect scan data, then pause"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
-        echo "Warning: failed to seek rosbag player to the source bag start for hint remap." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Warning: failed to resume paused rosbag player for hint remap." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    sleep 2
-    call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-
-    echo "[hint-remap] Seek back to the source bag start so the next scan arrives after trigger"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
-        echo "Warning: failed to seek rosbag player to the source bag start before scan global localization." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    echo "[hint-remap] Trigger scan global localization and wait for /localization_result"
-    for localization_attempt in $(seq 1 "${localization_attempts}"); do
-        local attempt_label="[hint-remap] Localization attempt ${localization_attempt}/${localization_attempts}"
-        local attempt_localization_result_log="/tmp/offline_vslam_hint_localization_result_attempt${localization_attempt}_$(date +%Y%m%d_%H%M%S).log"
-        local attempt_post_trigger_flatscan_log="/tmp/offline_vslam_hint_post_trigger_flatscan_attempt${localization_attempt}_$(date +%Y%m%d_%H%M%S).log"
-        local localization_poll_elapsed="0.0"
-
-        echo "${attempt_label}: arm trigger and advance up to ${localization_retry_bag_step_sec}s of bag time"
-        wait_for_topic_message "/localization_result" "${localization_result_wait_sec}" "${attempt_localization_result_log}" &
-        localization_wait_pid="$!"
-        wait_for_topic_message "/flatscan" 5 "${attempt_post_trigger_flatscan_log}" &
-        flatscan_wait_pid="$!"
-
-        if ! ros2 service call /trigger_grid_search_localization std_srvs/srv/Empty "{}" > /dev/null; then
-            echo "Warning: failed to trigger scan global localization for hint remap." >&2
-            kill "${localization_wait_pid}" 2>/dev/null || true
-            wait "${localization_wait_pid}" 2>/dev/null || true
-            kill "${flatscan_wait_pid}" 2>/dev/null || true
-            wait "${flatscan_wait_pid}" 2>/dev/null || true
-            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-            stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-            stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-            return 0
-        fi
-
-        if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-            echo "Warning: failed to resume rosbag player after arming scan global localization." >&2
-            kill "${localization_wait_pid}" 2>/dev/null || true
-            wait "${localization_wait_pid}" 2>/dev/null || true
-            kill "${flatscan_wait_pid}" 2>/dev/null || true
-            wait "${flatscan_wait_pid}" 2>/dev/null || true
-            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-            stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-            stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-            return 0
-        fi
-
-        if ! wait "${flatscan_wait_pid}"; then
-            echo "Warning: did not observe a post-trigger /flatscan during hint remap." >&2
-            kill "${localization_wait_pid}" 2>/dev/null || true
-            wait "${localization_wait_pid}" 2>/dev/null || true
-            call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-            stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-            stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-            stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-            return 0
-        fi
-
-        sleep "${localization_retry_wall_step_sec}"
-        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-
-        while kill -0 "${localization_wait_pid}" 2>/dev/null; do
-            if awk -v elapsed="${localization_poll_elapsed}" -v limit="${localization_post_trigger_settle_sec}" 'BEGIN { exit !(elapsed >= limit) }'; then
-                break
-            fi
-            sleep 0.1
-            localization_poll_elapsed="$(
-                awk -v value="${localization_poll_elapsed}" 'BEGIN { printf "%.1f", value + 0.1 }'
-            )"
-        done
-
-        if ! kill -0 "${localization_wait_pid}" 2>/dev/null; then
-            if wait "${localization_wait_pid}"; then
-                localization_attempt_succeeded=true
-                localization_result_log="${attempt_localization_result_log}"
-                post_trigger_flatscan_log="${attempt_post_trigger_flatscan_log}"
-                echo "${attempt_label}: received /localization_result"
-                break
-            fi
-        fi
-
-        kill "${localization_wait_pid}" 2>/dev/null || true
-        wait "${localization_wait_pid}" 2>/dev/null || true
-        echo "${attempt_label}: no /localization_result yet, keep advancing scans"
-    done
-
-    if [ "${localization_attempt_succeeded}" != true ]; then
-        echo "Warning: did not receive /localization_result during hint remap after ${localization_attempts} attempts. Keeping provisional map and original VSLAM map." >&2
-        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    if ! set_slam_pose_request="$(build_vslam_set_pose_request_from_pose_cov_file "${localization_result_log}")"; then
-        echo "Warning: failed to build VSLAM set_slam_pose request from ${localization_result_log}. Keeping provisional map and original VSLAM map." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    # Keep the 2D map server alive for RViz, but stop consuming scan after the
-    # one-shot global localization result has been captured.
-    stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-
-    echo "[hint-remap] Seek paused rosbag player back to the source bag start, then start VSLAM from the 2D global pose"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
-        echo "Warning: failed to seek rosbag player to the source bag start for hint remap. Keeping provisional map and original VSLAM map." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        return 0
-    fi
-
-    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-    sleep 2
-
-    build_system_launch_cmd "vslam.launch.xml"
-    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        "image_width:=${IMAGE_WIDTH}" \
-        "image_height:=${IMAGE_HEIGHT}" \
-        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-        "enable_localization_and_mapping:=true" \
-        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
-        "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
-        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
-        "save_map_path:=${VSLAM_MAP_DIR}" \
-        > "${vslam_log_path}" 2>&1
-
-    echo "[hint-remap] Wait for VSLAM services"
-    if ! wait_for_service "/visual_slam/set_slam_pose" 60 || \
-       ! wait_for_service "/visual_slam/save_map" 60; then
-        echo "Warning: hint remap skipped because VSLAM services were not ready. Check log: ${vslam_log_path}" >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-
-    echo "[hint-remap] Prime VSLAM tracker before set_slam_pose"
-    wait_for_topic_message "${ODOM_TOPIC}" 15 "${tracker_init_odom_log}" &
-    tracker_wait_pid="$!"
-
-    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Warning: failed to resume rosbag player while priming the VSLAM tracker." >&2
-        kill "${tracker_wait_pid}" 2>/dev/null || true
-        wait "${tracker_wait_pid}" 2>/dev/null || true
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-
-    if ! wait "${tracker_wait_pid}"; then
-        echo "Warning: VSLAM tracker did not publish ${ODOM_TOPIC} while priming set_slam_pose. Check log: ${vslam_log_path}" >&2
-        call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-
-    call_rosbag_player_service "pause" "rosbag2_interfaces/srv/Pause" "{}" || true
-
-    echo "[hint-remap] Rewind to the source bag start after tracker init"
-    if ! call_rosbag_player_service "seek" "rosbag2_interfaces/srv/Seek" "${remap_seek_request}"; then
-        echo "Warning: failed to rewind rosbag player to the source bag start after priming the VSLAM tracker. Keeping provisional map and original VSLAM map." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-
-    if ! set_slam_pose_output="$(
-        ros2 service call /visual_slam/set_slam_pose \
-            isaac_ros_visual_slam_interfaces/srv/SetSlamPose \
-            "${set_slam_pose_request}" 2>&1
-    )"; then
-        echo "Warning: visual_slam/set_slam_pose failed. Keeping provisional map and original VSLAM map." >&2
-        printf '%s\n' "${set_slam_pose_output}" >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-    if ! grep -Eiq 'success[[:space:]]*[:=][[:space:]]*true' <<<"${set_slam_pose_output}"; then
-        echo "Warning: visual_slam/set_slam_pose returned success=false. Keeping provisional map and original VSLAM map." >&2
-        printf '%s\n' "${set_slam_pose_output}" >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-
-    echo "[hint-remap] Resume rewound rosbag player for VSLAM remap"
-    if ! call_rosbag_player_service "resume" "rosbag2_interfaces/srv/Resume" "{}"; then
-        echo "Warning: failed to resume rewound rosbag player for hinted VSLAM remap." >&2
-        stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-        stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-        stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-        stop_vslam
-        return 0
-    fi
-
-    wait "${ROSBAG_PLAYER_PID}" 2>/dev/null || true
-    ROSBAG_PLAYER_PID=""
-    ROSBAG_PLAYER_USES_SETSID=false
-    echo "[hint-remap] Rewound rosbag player finished"
-
-    sleep 2
-
-    if ! ros2 service call /visual_slam/save_map \
-        isaac_ros_visual_slam_interfaces/srv/FilePath \
-        "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null; then
-        echo "Warning: failed to save VSLAM map initialized from 2D global pose." >&2
-    fi
-
-    stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-    stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
-    stop_vslam
-
-    echo ""
-    echo "✅ VSLAM map rebuilt from 2D global pose:"
-    echo "  - fixed 2D map (unchanged): ${MAP_YAML_PATH}"
-    echo "  - rebuilt VSLAM map: ${VSLAM_MAP_DIR}/"
 }
 
 cleanup_all() {
-    stop_background_process "ROSBAG_PLAYER_PID" "ROSBAG_PLAYER_USES_SETSID"
-    stop_recorder
-    stop_background_process "LOCALIZATION_LAUNCH_PID" "LOCALIZATION_LAUNCH_USES_SETSID"
-    stop_background_process "LIDAR_CONTAINER_PID" "LIDAR_CONTAINER_USES_SETSID"
     stop_vslam
     stop_cartographer
-    if [ -n "${VSLAM_LOCALIZATION_PARAM_PATH:-}" ]; then
-        rm -f "${VSLAM_LOCALIZATION_PARAM_PATH}" 2>/dev/null || true
-    fi
 }
 
 trap cleanup_all EXIT INT TERM
@@ -2131,36 +1395,20 @@ trap cleanup_all EXIT INT TERM
 if [ -z "${VSLAM_MAP_DIR}" ]; then
     VSLAM_MAP_DIR="${OUT_DIR}/cuvslam_map"
 fi
-if [ -z "${LIGHTWEIGHT_BAG_DIR}" ]; then
-    if [ "${VSLAM_VIS_ENABLED}" = true ]; then
-        LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_vis_$(date +%Y%m%d_%H%M%S)"
-    else
-        LIGHTWEIGHT_BAG_DIR="${LIGHTWEIGHT_BAG_ROOT%/}/${BAG_DIR_NAME}/${MAP_NAME}_2d_input_$(date +%Y%m%d_%H%M%S)"
-    fi
-fi
 VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
 TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_PLAYER_LOG_PATH="/tmp/offline_vslam_mapping_player_$(date +%Y%m%d_%H%M%S).log"
-VSLAM_LOCALIZATION_LOG_PATH="/tmp/offline_vslam_localization_$(date +%Y%m%d_%H%M%S).log"
-TF_LOCALIZATION_LOG_PATH="/tmp/offline_vslam_localization_tf_$(date +%Y%m%d_%H%M%S).log"
-VSLAM_LOCALIZATION_PLAYER_LOG_PATH="/tmp/offline_vslam_localization_player_$(date +%Y%m%d_%H%M%S).log"
-VSLAM_LOCALIZATION_PARAM_PATH="/tmp/offline_vslam_localization_param_$(date +%Y%m%d_%H%M%S).yaml"
 CARTOGRAPHER_PLAYER_LOG_PATH="/tmp/cartographer_player_$(date +%Y%m%d_%H%M%S).log"
 
 if [ "${RUN_VSLAM}" = true ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
-    mkdir -p "$(dirname "${LIGHTWEIGHT_BAG_DIR}")"
-fi
-
-if [ "${RUN_VSLAM}" = true ] && [ "${ODOM_TOPIC}" != "/visual_slam/tracking/odometry" ]; then
-    echo "Warning: --run-vslam is enabled but odom topic is '${ODOM_TOPIC}'. Cartographer may not consume vslam odometry." >&2
 fi
 
 # ==========================================
-# 1-3. Build maps
+# 1. Build maps
 # ==========================================
 if [ "${PIPELINE_MODE}" = "online" ]; then
-    echo "[1/8] Launch offline TF + VSLAM mapping (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+    echo "[1/5] Launch offline TF + VSLAM mapping (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
     build_system_launch_cmd "offline_sensor_tf.launch.xml"
     launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
         "${SYSTEM_LAUNCH_CMD[@]}" \
@@ -2186,16 +1434,12 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
         "save_map_path:=${VSLAM_MAP_DIR}" \
         > "${VSLAM_LOG_PATH}" 2>&1
 
-    echo "[2/8] Launch cartographer online (log: ${MAP_LOG_PATH})"
+    echo "[2/5] Launch cartographer online (log: ${MAP_LOG_PATH})"
     launch_cartographer_mapping
 
-    echo "[3/8] Wait for VSLAM odometry and cartographer services"
+    echo "[3/5] Wait for VSLAM and cartographer services"
     if ! wait_for_service "/visual_slam/save_map" 60; then
         echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
-        exit 1
-    fi
-    if ! wait_for_topic "${ODOM_TOPIC}" 60; then
-        echo "Visual SLAM odometry topic was not ready. Check log: ${VSLAM_LOG_PATH}" >&2
         exit 1
     fi
     if ! wait_for_service "/write_state" 60; then
@@ -2203,7 +1447,7 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
         exit 1
     fi
 
-    echo "[4/8] Play source rosbag for online VSLAM + Cartographer"
+    echo "[4/5] Play source rosbag for parallel VSLAM + Cartographer"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
         if ! play_rosbag \
@@ -2222,7 +1466,7 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
         fi
     fi
 
-    echo "[5/8] Save online VSLAM map and cartographer state"
+    echo "[5/5] Save VSLAM map and cartographer state"
     sleep 2
     ros2 service call /visual_slam/save_map \
         isaac_ros_visual_slam_interfaces/srv/FilePath \
@@ -2242,192 +1486,16 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
     stop_vslam
     stop_cartographer
 else
-    if [ "${RUN_VSLAM}" = true ]; then
-        echo "[1/8] Launch offline TF + VSLAM mapping (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
-        build_system_launch_cmd "offline_sensor_tf.launch.xml"
-        launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-            "${SYSTEM_LAUNCH_CMD[@]}" \
-            > "${TF_LOG_PATH}" 2>&1
-
-        sleep 2
-
-        launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-            ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-
-        sleep 2
-
-        build_system_launch_cmd "vslam.launch.xml"
-        launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-            "${SYSTEM_LAUNCH_CMD[@]}" \
-            "image_width:=${IMAGE_WIDTH}" \
-            "image_height:=${IMAGE_HEIGHT}" \
-            "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-            "enable_localization_and_mapping:=true" \
-            "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
-            "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
-            "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
-            "save_map_path:=${VSLAM_MAP_DIR}" \
-            > "${VSLAM_LOG_PATH}" 2>&1
-
-        echo "[2/8] Wait for /visual_slam/save_map service"
-        if ! wait_for_service "/visual_slam/save_map" 60; then
-            echo "Visual SLAM service not ready. Check log: ${VSLAM_LOG_PATH}" >&2
-            exit 1
-        fi
-
-        if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
-            echo "[3/8] Play source rosbag for the first VSLAM mapping pass"
-        else
-            echo "[3/8] Start lightweight rosbag record: ${LIGHTWEIGHT_BAG_DIR}"
-            build_lightweight_record_topics
-            echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
-            echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
-            launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
-            sleep 2
-            echo "[4/8] Play source rosbag for offline VSLAM"
-        fi
-
-        if [ "${PLAY_ALL_TOPICS}" = true ]; then
-            echo "  - mode: all topics"
-            if ! play_rosbag \
-                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}"; then
-                exit 1
-            fi
-        else
-            build_source_play_topics
-            PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
-
-            echo "  - mode: filtered topics"
-            echo "  - topics: ${PLAY_TOPICS[*]}"
-            if ! play_rosbag \
-                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
-                exit 1
-            fi
-        fi
-
-        echo "[5/8] Save the first VSLAM map and stop mapping-side processes"
-        sleep 2
-        ros2 service call /visual_slam/save_map \
-            isaac_ros_visual_slam_interfaces/srv/FilePath \
-            "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null
-
-        stop_recorder
-        stop_vslam
-
-        if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" != true ]; then
-            USING_LIGHTWEIGHT_BAG=true
-            BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
-        fi
-    else
-        echo "[1/8] Skip offline VSLAM"
-    fi
-
-    # ==========================================
-    # 2. Create a lightweight bag from saved VSLAM-map localization
-    # ==========================================
-    if [ "${USE_VSLAM_LOCALIZATION_REPLAY}" = true ]; then
-        echo "[6/8] Replay source rosbag with saved VSLAM map localization"
-        echo "  - source map: ${VSLAM_MAP_DIR}"
-        echo "  - lightweight bag: ${LIGHTWEIGHT_BAG_DIR}"
-        echo "  - logs: ${TF_LOCALIZATION_LOG_PATH}, ${VSLAM_LOCALIZATION_LOG_PATH}"
-
-        if ! build_vslam_localization_param_file "${VSLAM_LOCALIZATION_PARAM_PATH}"; then
-            echo "Failed to build temporary VSLAM localization param file." >&2
-            exit 1
-        fi
-
-        build_system_launch_cmd "offline_sensor_tf.launch.xml"
-        launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-            "${SYSTEM_LAUNCH_CMD[@]}" \
-            > "${TF_LOCALIZATION_LOG_PATH}" 2>&1
-
-        sleep 2
-
-        launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-            ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-
-        sleep 2
-
-        build_system_launch_cmd "vslam.launch.xml"
-        launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-            "${SYSTEM_LAUNCH_CMD[@]}" \
-            "image_width:=${IMAGE_WIDTH}" \
-            "image_height:=${IMAGE_HEIGHT}" \
-            "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-            "vslam_param:=${VSLAM_LOCALIZATION_PARAM_PATH}" \
-            "enable_localization_and_mapping:=true" \
-            "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
-            "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
-            "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
-            "load_map_path:=${VSLAM_MAP_DIR}" \
-            > "${VSLAM_LOCALIZATION_LOG_PATH}" 2>&1
-
-        if ! wait_for_topic "${ODOM_TOPIC}" 60; then
-            echo "Visual SLAM localization topic was not ready. Check log: ${VSLAM_LOCALIZATION_LOG_PATH}" >&2
-            exit 1
-        fi
-
-        build_lightweight_record_topics
-        echo "[7/8] Start lightweight rosbag record"
-        echo "  - record vslam vis: ${VSLAM_VIS_ENABLED}"
-        echo "  - topics: ${LIGHTWEIGHT_RECORD_TOPICS[*]}"
-        launch_lightweight_recorder_now "${LIGHTWEIGHT_BAG_DIR}" "${LIGHTWEIGHT_RECORD_TOPICS[@]}"
-        sleep 2
-
-        echo "  - replay source rosbag"
-        if [ "${PLAY_ALL_TOPICS}" = true ]; then
-            echo "  - mode: all topics"
-            if ! play_rosbag \
-                "${SOURCE_BAG_PATH}" "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}"; then
-                exit 1
-            fi
-        else
-            build_source_play_topics
-            PLAY_TOPICS=("${SOURCE_PLAY_TOPICS[@]}")
-
-            echo "  - mode: filtered topics"
-            echo "  - topics: ${PLAY_TOPICS[*]}"
-            if ! play_rosbag \
-                "${SOURCE_BAG_PATH}" "${VSLAM_LOCALIZATION_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
-                exit 1
-            fi
-        fi
-
-        stop_recorder
-        stop_vslam
-
-        if [ ! -f "${LIGHTWEIGHT_BAG_DIR}/metadata.yaml" ]; then
-            echo "Lightweight bag was not recorded: ${LIGHTWEIGHT_BAG_DIR}" >&2
-            exit 1
-        fi
-
-        USING_LIGHTWEIGHT_BAG=true
-        BAG_PATH="${LIGHTWEIGHT_BAG_DIR}"
-    fi
-
-    # ==========================================
-    # 3. Launch cartographer with finalized odom bag
-    # ==========================================
-    if [ ! -d "${BAG_PATH}" ] || [ ! -f "${BAG_PATH}/metadata.yaml" ]; then
-        echo "Invalid finalized BAG_PATH for Cartographer: ${BAG_PATH}" >&2
-        echo "metadata.yaml not found." >&2
-        exit 1
-    fi
-
-    echo "[8/8] Launch cartographer (log: ${MAP_LOG_PATH})"
+    echo "[1/3] Launch cartographer (log: ${MAP_LOG_PATH})"
     launch_cartographer_mapping
 
-    echo "[8/8] Wait for /write_state service"
+    echo "[2/3] Wait for /write_state service"
     if ! wait_for_service "/write_state" 60; then
         echo "Cartographer service not ready. Check log: ${MAP_LOG_PATH}" >&2
         exit 1
     fi
 
-    echo "[8/8] Build the provisional 2D map"
-    if [ "${USING_LIGHTWEIGHT_BAG}" = true ]; then
-        echo "  - using lightweight bag: ${BAG_PATH}"
-    fi
-
+    echo "[3/3] Build the provisional 2D map"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
         if ! play_rosbag \
@@ -2469,13 +1537,8 @@ if ! convert_pbstream_to_map "✅ Provisional map generated:"; then
     exit 1
 fi
 
-if [ "${RUN_VSLAM_HINT_REMAP}" = true ] && \
-   [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
-    run_vslam_hint_remap_pass
-fi
-
 # ==========================================
-# 5. Centerline
+# 2. Centerline
 # ==========================================
 prompt_centerline_generation
 CENTERLINE_INPUT_MAP="${MAP_PGM_PATH}"
@@ -2487,18 +1550,18 @@ run_map_edit "${CENTERLINE_INPUT_MAP}"
 generate_centerline "${CENTERLINE_INPUT_MAP}"
 
 # ==========================================
-# 6. Raceline
+# 3. Raceline
 # ==========================================
 prompt_raceline_generation
 generate_raceline "${CENTERLINE_OUTPUT_PATH}"
 
 # ==========================================
-# 7. Line preview
+# 4. Line preview
 # ==========================================
 generate_line_preview "${CENTERLINE_INPUT_MAP}"
 
 # ==========================================
-# 8. Transfer by scp
+# 5. Transfer by scp
 # ==========================================
 echo ""
 if [ "${ENABLE_SCP}" != true ]; then
