@@ -354,7 +354,7 @@ python data_analysis/visualize_race_lines.py \
 
 `scripts/create_2d_map_from_bag.sh` では、centerline / raceline 生成後に preview画像も生成します。スキップしたい場合は `--no-raceline` または `--no-line-preview` を指定してください。
 
-`race_stacks` 寄せで map 生成を試したい場合は、`create_2d_map_from_bag.sh` に `--line-preset race-stacks` を付けると、centerline の前処理と global-opt の spline/stepsize 設定をまとめて近づけられます。これは `race_stacks` の GUI map editing や watershed 境界抽出そのものを完全再現するものではありませんが、まず比較実験を回すには扱いやすい入口です。
+`create_2d_map_from_bag.sh` は現在 `race-stacks` 寄せの line preset を既定で使います。従来の軽量寄り設定に戻したい場合だけ `--line-preset default` を付けてください。これは `race_stacks` の GUI map editing や watershed 境界抽出そのものを完全再現するものではありませんが、まず比較実験を回すには扱いやすい入口です。
 
 global optimizerを使う場合は `python_ws/requirements_global_opt.txt` の依存をDockerへ入れてください。現在のglobal-opt backendは `shortest_path` / `mincurv` / `mincurv_iqp` を対象にしており、古い `casadi` 依存を避けるため `mintime` はまだ扱いません。
 
