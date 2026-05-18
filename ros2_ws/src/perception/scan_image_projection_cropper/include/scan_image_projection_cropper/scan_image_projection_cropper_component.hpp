@@ -72,6 +72,13 @@ private:
       const sensor_msgs::msg::CameraInfo &camera_info,
       const sensor_msgs::msg::RegionOfInterest &roi,
       const std_msgs::msg::Header &header) const;
+  sensor_msgs::msg::CameraInfo BuildResizedPaddedCameraInfo(
+      const sensor_msgs::msg::CameraInfo &camera_info, int input_width,
+      int input_height, const sensor_msgs::msg::RegionOfInterest &content_roi,
+      const std_msgs::msg::Header &header) const;
+  cv::Mat ResizeAndPadCrop(
+      const cv::Mat &cropped_image,
+      sensor_msgs::msg::RegionOfInterest &content_roi) const;
   void DebugImageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
   void DebugCameraInfoCallback(
       const sensor_msgs::msg::CameraInfo::SharedPtr msg);
@@ -118,6 +125,9 @@ private:
   int bottom_padding_px_ = 0;
   int min_crop_width_px_ = 0;
   int max_crop_width_px_ = 0;
+  int output_image_width_px_ = 0;
+  int output_image_height_px_ = 0;
+  double output_padding_value_ = 0.0;
   bool debug_enabled_ = false;
   std::string candidate_selection_mode_;
 };

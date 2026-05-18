@@ -9,6 +9,11 @@
 
   <exec_depend>nav2_lifecycle_manager</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>isaac_ros_dnn_image_encoder</exec_depend>
+  <exec_depend>isaac_ros_image_proc</exec_depend>
+  <exec_depend>isaac_ros_triton</exec_depend>
+  <exec_depend>isaac_ros_scan_image_classifier</exec_depend>
+  <exec_depend>scan_image_projection_cropper</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -1,0 +1,33 @@
+<launch>
+  <arg name="scan_image_classifier_decoder_param"
+       default="$(find-pkg-share isaac_ros_scan_image_classifier)/config/scan_image_classifier_decoder.param.yaml" />
+  <arg name="inference_output_topic" default="/perception/classifier/output_tensor" />
+  <arg name="label_topic" default="/perception/classification/label" />
+  <arg name="class_id_topic" default="/perception/classification/class_id" />
+  <arg name="confidence_topic" default="/perception/classification/confidence" />
+  <arg name="scores_topic" default="/perception/classification/scores" />
+  <arg name="target_detected_topic" default="/perception/classification/target_detected" />
+  <arg name="container_name" default="camera_container" />
+  <arg name="create_container" default="false" />
+
+  <group if="$(var create_container)">
+    <node pkg="rclcpp_components"
+          exec="component_container_mt"
+          name="$(var container_name)"
+          output="screen" />
+  </group>
+
+  <load_composable_node target="$(var container_name)">
+    <composable_node pkg="isaac_ros_scan_image_classifier"
+                     plugin="isaac_ros_scan_image_classifier::ScanImageClassifierDecoderNode"
+                     name="scan_image_classifier_decoder_node">
+      <param from="$(var scan_image_classifier_decoder_param)" />
+      <remap from="inference_output" to="$(var inference_output_topic)" />
+      <remap from="classification/label" to="$(var label_topic)" />
+      <remap from="classification/class_id" to="$(var class_id_topic)" />
+      <remap from="classification/confidence" to="$(var confidence_topic)" />
+      <remap from="classification/scores" to="$(var scores_topic)" />
+      <remap from="classification/target_detected" to="$(var target_detected_topic)" />
+    </composable_node>
+  </load_composable_node>
+</launch>

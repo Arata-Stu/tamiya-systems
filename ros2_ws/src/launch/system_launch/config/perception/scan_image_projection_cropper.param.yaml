@@ -15,6 +15,9 @@ scan_image_projection_cropper_node:
     bottom_padding_px: 8
     min_crop_width_px: 32
     max_crop_width_px: 0
+    output_image_width_px: 64
+    output_image_height_px: 64
+    output_padding_value: 0.0
     debug: true
     candidate_selection_mode: "closest"
     publish_debug_image: true

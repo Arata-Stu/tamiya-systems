@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>isaac_ros_scan_image_classifier</name>
+  <version>0.0.1</version>
+  <description>Composable decoder node for Triton-based image classification in the perception pipeline.</description>
+
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
+  <depend>isaac_ros_managed_nitros</depend>
+  <depend>isaac_ros_nitros_tensor_list_type</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

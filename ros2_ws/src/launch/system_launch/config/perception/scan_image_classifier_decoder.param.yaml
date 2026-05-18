@@ -1,0 +1,10 @@
+scan_image_classifier_decoder_node:
+  ros__parameters:
+    output_tensor_name: "output_logits"
+    labels:
+      - "rc_car"
+      - "duct_tube"
+      - "background"
+    apply_softmax: true
+    target_class_id: 0
+    target_confidence_threshold: 0.50

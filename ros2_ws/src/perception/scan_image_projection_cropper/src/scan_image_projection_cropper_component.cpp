@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "opencv2/calib3d.hpp"
+#include "opencv2/imgproc.hpp"
 #include "cv_bridge/cv_bridge.h"
 #include "rclcpp_components/register_node_macro.hpp"
 #include "sensor_msgs/image_encodings.hpp"
@@ -89,6 +90,12 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
       PositiveOr(declare_parameter<int>("min_crop_width_px", 32), 32);
   max_crop_width_px_ = ClampNonNegativeInt(
       declare_parameter<int>("max_crop_width_px", 0));
+  output_image_width_px_ = ClampNonNegativeInt(
+      declare_parameter<int>("output_image_width_px", 64));
+  output_image_height_px_ = ClampNonNegativeInt(
+      declare_parameter<int>("output_image_height_px", 64));
+  output_padding_value_ = ClampNonNegative(
+      declare_parameter<double>("output_padding_value", 0.0));
   const bool publish_debug_image =
       declare_parameter<bool>("publish_debug_image", true);
   debug_enabled_ = declare_parameter<bool>("debug", publish_debug_image);
@@ -133,8 +140,9 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
 
   RCLCPP_INFO(
       get_logger(),
-      "ScanImageProjectionCropper initialized (height=%d px, selection=%s)",
-      fixed_crop_height_px_, candidate_selection_mode_.c_str());
+      "ScanImageProjectionCropper initialized (height=%d px, output=%dx%d, selection=%s)",
+      fixed_crop_height_px_, output_image_width_px_, output_image_height_px_,
+      candidate_selection_mode_.c_str());
 }
 
 void ScanImageProjectionCropperComponent::ScanCallback(
@@ -480,6 +488,98 @@ ScanImageProjectionCropperComponent::BuildCroppedCameraInfo(
   return cropped;
 }
 
+sensor_msgs::msg::CameraInfo
+ScanImageProjectionCropperComponent::BuildResizedPaddedCameraInfo(
+    const sensor_msgs::msg::CameraInfo &camera_info, int input_width,
+    int input_height, const sensor_msgs::msg::RegionOfInterest &content_roi,
+    const std_msgs::msg::Header &header) const {
+  sensor_msgs::msg::CameraInfo resized = camera_info;
+  resized.header = header;
+  resized.width = static_cast<uint32_t>(output_image_width_px_);
+  resized.height = static_cast<uint32_t>(output_image_height_px_);
+  resized.roi = content_roi;
+
+  if (input_width <= 0 || input_height <= 0) {
+    return resized;
+  }
+
+  const double scale_x =
+      static_cast<double>(content_roi.width) / static_cast<double>(input_width);
+  const double scale_y = static_cast<double>(content_roi.height) /
+                         static_cast<double>(input_height);
+  const double pad_x = static_cast<double>(content_roi.x_offset);
+  const double pad_y = static_cast<double>(content_roi.y_offset);
+
+  resized.k[0] *= scale_x;
+  resized.k[1] *= scale_x;
+  resized.k[2] = resized.k[2] * scale_x + pad_x;
+  resized.k[3] *= scale_y;
+  resized.k[4] *= scale_y;
+  resized.k[5] = resized.k[5] * scale_y + pad_y;
+
+  resized.p[0] *= scale_x;
+  resized.p[1] *= scale_x;
+  resized.p[2] = resized.p[2] * scale_x + pad_x;
+  resized.p[3] *= scale_x;
+  resized.p[4] *= scale_y;
+  resized.p[5] *= scale_y;
+  resized.p[6] = resized.p[6] * scale_y + pad_y;
+  resized.p[7] *= scale_y;
+
+  return resized;
+}
+
+cv::Mat ScanImageProjectionCropperComponent::ResizeAndPadCrop(
+    const cv::Mat &cropped_image,
+    sensor_msgs::msg::RegionOfInterest &content_roi) const {
+  content_roi = sensor_msgs::msg::RegionOfInterest{};
+  content_roi.do_rectify = false;
+
+  if (cropped_image.empty() || output_image_width_px_ <= 0 ||
+      output_image_height_px_ <= 0) {
+    content_roi.width = static_cast<uint32_t>(cropped_image.cols);
+    content_roi.height = static_cast<uint32_t>(cropped_image.rows);
+    return cropped_image.clone();
+  }
+
+  const double scale = std::min(
+      static_cast<double>(output_image_width_px_) /
+          static_cast<double>(cropped_image.cols),
+      static_cast<double>(output_image_height_px_) /
+          static_cast<double>(cropped_image.rows));
+
+  const int resized_width = std::max(
+      1, std::min(output_image_width_px_,
+                  static_cast<int>(std::lround(
+                      static_cast<double>(cropped_image.cols) * scale))));
+  const int resized_height = std::max(
+      1, std::min(output_image_height_px_,
+                  static_cast<int>(std::lround(
+                      static_cast<double>(cropped_image.rows) * scale))));
+
+  cv::Mat resized_image;
+  const int interpolation =
+      scale < 1.0 ? cv::INTER_AREA : cv::INTER_LINEAR;
+  cv::resize(cropped_image, resized_image, cv::Size(resized_width, resized_height),
+             0.0, 0.0, interpolation);
+
+  const int x_offset = (output_image_width_px_ - resized_width) / 2;
+  const int y_offset = (output_image_height_px_ - resized_height) / 2;
+
+  cv::Mat padded_image(
+      output_image_height_px_, output_image_width_px_, cropped_image.type(),
+      cv::Scalar::all(output_padding_value_));
+  resized_image.copyTo(
+      padded_image(cv::Rect(x_offset, y_offset, resized_width, resized_height)));
+
+  content_roi.x_offset = static_cast<uint32_t>(x_offset);
+  content_roi.y_offset = static_cast<uint32_t>(y_offset);
+  content_roi.width = static_cast<uint32_t>(resized_width);
+  content_roi.height = static_cast<uint32_t>(resized_height);
+
+  return padded_image;
+}
+
 void ScanImageProjectionCropperComponent::PublishDebugImage(
     const sensor_msgs::msg::Image &image_msg,
     const sensor_msgs::msg::CameraInfo &camera_info,
@@ -724,13 +824,22 @@ void ScanImageProjectionCropperComponent::ImageCallback(
   }
 
   cv::Mat cropped_image = cv_ptr->image(crop_rect).clone();
-  auto cropped_image_msg =
-      cv_bridge::CvImage(msg->header, msg->encoding, cropped_image).toImageMsg();
-  crop_image_pub_->publish(*cropped_image_msg);
-
   auto cropped_camera_info =
       BuildCroppedCameraInfo(*camera_info_msg, roi, msg->header);
-  crop_camera_info_pub_->publish(cropped_camera_info);
+
+  sensor_msgs::msg::RegionOfInterest output_content_roi;
+  cv::Mat output_image = ResizeAndPadCrop(cropped_image, output_content_roi);
+  auto output_image_msg =
+      cv_bridge::CvImage(msg->header, msg->encoding, output_image).toImageMsg();
+  crop_image_pub_->publish(*output_image_msg);
+
+  auto output_camera_info = cropped_camera_info;
+  if (output_image_width_px_ > 0 && output_image_height_px_ > 0) {
+    output_camera_info = BuildResizedPaddedCameraInfo(
+        cropped_camera_info, cropped_image.cols, cropped_image.rows,
+        output_content_roi, msg->header);
+  }
+  crop_camera_info_pub_->publish(output_camera_info);
   roi_pub_->publish(roi);
 
   if (debug_enabled_ && debug_image_msg && debug_camera_info_msg) {

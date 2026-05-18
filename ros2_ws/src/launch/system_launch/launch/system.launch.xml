@@ -9,6 +9,7 @@
     <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
     <arg name="use_emergency" default="false" description="run emergency override controller"/>
     <arg name="use_perception" default="false" description="run lidar-camera perception cropper"/>
+    <arg name="use_perception_classifier" default="false" description="run Triton-based crop classifier"/>
     <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
     <arg name="magp_rl_run_pure_pursuit" default="false" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
@@ -73,6 +74,29 @@
     <arg name="perception_crop_camera_info_topic" default="/perception/crop/camera_info" />
     <arg name="perception_crop_roi_topic" default="/perception/crop/roi" />
     <arg name="perception_debug_image_topic" default="/perception/debug/image" />
+    <arg name="perception_classifier_decoder_param" default="$(find-pkg-share system_launch)/config/perception/scan_image_classifier_decoder.param.yaml" />
+    <arg name="perception_classifier_input_image_topic" default="" />
+    <arg name="perception_classifier_input_camera_info_topic" default="" />
+    <arg name="perception_classifier_input_image_width" default="64" />
+    <arg name="perception_classifier_input_image_height" default="64" />
+    <arg name="perception_classifier_network_image_width" default="64" />
+    <arg name="perception_classifier_network_image_height" default="64" />
+    <arg name="perception_classifier_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
+    <arg name="perception_classifier_model_name" default="scan_image_classifier" />
+    <arg name="perception_classifier_use_rgb_format_converter" default="true" />
+    <arg name="perception_classifier_rgb_image_topic" default="/perception/classifier/image_rgb" />
+    <arg name="perception_classifier_tensor_topic" default="/perception/classifier/tensor" />
+    <arg name="perception_classifier_triton_output_topic" default="/perception/classifier/output_tensor" />
+    <arg name="perception_classifier_encoder_output_tensor_name" default="input_tensor" />
+    <arg name="perception_classifier_triton_input_tensor_names" default="input_tensor" />
+    <arg name="perception_classifier_triton_output_tensor_names" default="output_logits" />
+    <arg name="perception_classifier_triton_input_binding_name" default="input_tensor" />
+    <arg name="perception_classifier_triton_output_binding_name" default="output_logits" />
+    <arg name="perception_classifier_label_topic" default="/perception/classification/label" />
+    <arg name="perception_classifier_class_id_topic" default="/perception/classification/class_id" />
+    <arg name="perception_classifier_confidence_topic" default="/perception/classification/confidence" />
+    <arg name="perception_classifier_scores_topic" default="/perception/classification/scores" />
+    <arg name="perception_classifier_target_detected_topic" default="/perception/classification/target_detected" />
 
     <!-- Operation tools -->
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
@@ -265,6 +289,30 @@
             <arg name="crop_camera_info_topic" value="$(var perception_crop_camera_info_topic)"/>
             <arg name="crop_roi_topic" value="$(var perception_crop_roi_topic)"/>
             <arg name="debug_image_topic" value="$(var perception_debug_image_topic)"/>
+            <arg name="use_classifier" value="$(var use_perception_classifier)"/>
+            <arg name="classifier_decoder_param" value="$(var perception_classifier_decoder_param)"/>
+            <arg name="classifier_input_image_topic" value="$(var perception_classifier_input_image_topic)"/>
+            <arg name="classifier_input_camera_info_topic" value="$(var perception_classifier_input_camera_info_topic)"/>
+            <arg name="classifier_input_image_width" value="$(var perception_classifier_input_image_width)"/>
+            <arg name="classifier_input_image_height" value="$(var perception_classifier_input_image_height)"/>
+            <arg name="classifier_network_image_width" value="$(var perception_classifier_network_image_width)"/>
+            <arg name="classifier_network_image_height" value="$(var perception_classifier_network_image_height)"/>
+            <arg name="classifier_model_repository_path" value="$(var perception_classifier_model_repository_path)"/>
+            <arg name="classifier_model_name" value="$(var perception_classifier_model_name)"/>
+            <arg name="classifier_use_rgb_format_converter" value="$(var perception_classifier_use_rgb_format_converter)"/>
+            <arg name="classifier_rgb_image_topic" value="$(var perception_classifier_rgb_image_topic)"/>
+            <arg name="classifier_tensor_topic" value="$(var perception_classifier_tensor_topic)"/>
+            <arg name="classifier_triton_output_topic" value="$(var perception_classifier_triton_output_topic)"/>
+            <arg name="classifier_encoder_output_tensor_name" value="$(var perception_classifier_encoder_output_tensor_name)"/>
+            <arg name="classifier_triton_input_tensor_names" value="$(var perception_classifier_triton_input_tensor_names)"/>
+            <arg name="classifier_triton_output_tensor_names" value="$(var perception_classifier_triton_output_tensor_names)"/>
+            <arg name="classifier_triton_input_binding_name" value="$(var perception_classifier_triton_input_binding_name)"/>
+            <arg name="classifier_triton_output_binding_name" value="$(var perception_classifier_triton_output_binding_name)"/>
+            <arg name="classifier_label_topic" value="$(var perception_classifier_label_topic)"/>
+            <arg name="classifier_class_id_topic" value="$(var perception_classifier_class_id_topic)"/>
+            <arg name="classifier_confidence_topic" value="$(var perception_classifier_confidence_topic)"/>
+            <arg name="classifier_scores_topic" value="$(var perception_classifier_scores_topic)"/>
+            <arg name="classifier_target_detected_topic" value="$(var perception_classifier_target_detected_topic)"/>
             <arg name="container_name" value="$(var camera_container_name)"/>
             <arg name="create_container" value="false"/>
         </include>

@@ -23,6 +23,32 @@
   <arg name="crop_roi_topic" default="/perception/crop/roi" />
   <arg name="debug_image_topic" default="/perception/debug/image" />
 
+  <arg name="use_classifier" default="false" />
+  <arg name="classifier_decoder_param"
+       default="$(find-pkg-share system_launch)/config/perception/scan_image_classifier_decoder.param.yaml" />
+  <arg name="classifier_input_image_topic" default="" />
+  <arg name="classifier_input_camera_info_topic" default="" />
+  <arg name="classifier_input_image_width" default="64" />
+  <arg name="classifier_input_image_height" default="64" />
+  <arg name="classifier_network_image_width" default="64" />
+  <arg name="classifier_network_image_height" default="64" />
+  <arg name="classifier_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
+  <arg name="classifier_model_name" default="scan_image_classifier" />
+  <arg name="classifier_use_rgb_format_converter" default="true" />
+  <arg name="classifier_rgb_image_topic" default="/perception/classifier/image_rgb" />
+  <arg name="classifier_tensor_topic" default="/perception/classifier/tensor" />
+  <arg name="classifier_triton_output_topic" default="/perception/classifier/output_tensor" />
+  <arg name="classifier_encoder_output_tensor_name" default="input_tensor" />
+  <arg name="classifier_triton_input_tensor_names" default="input_tensor" />
+  <arg name="classifier_triton_output_tensor_names" default="output_logits" />
+  <arg name="classifier_triton_input_binding_name" default="input_tensor" />
+  <arg name="classifier_triton_output_binding_name" default="output_logits" />
+  <arg name="classifier_label_topic" default="/perception/classification/label" />
+  <arg name="classifier_class_id_topic" default="/perception/classification/class_id" />
+  <arg name="classifier_confidence_topic" default="/perception/classification/confidence" />
+  <arg name="classifier_scores_topic" default="/perception/classification/scores" />
+  <arg name="classifier_target_detected_topic" default="/perception/classification/target_detected" />
+
   <arg name="container_name" default="camera_container" />
   <arg name="create_container" default="false" />
 
@@ -86,6 +112,34 @@
        value="$(var stereo_image_height)"
        if="$(eval '\'$(var rectified_image_height)\'.strip() == \'\' and \'$(var camera_source)\' in [\'left\', \'right\']')" />
 
+  <let name="resolved_classifier_input_image_topic"
+       value="$(var classifier_input_image_topic)"
+       if="$(eval '\'$(var classifier_input_image_topic)\'.strip() != \'\'' )" />
+  <let name="resolved_classifier_input_image_topic"
+       value="$(var crop_image_topic)"
+       unless="$(eval '\'$(var classifier_input_image_topic)\'.strip() != \'\'' )" />
+
+  <let name="resolved_classifier_input_camera_info_topic"
+       value="$(var classifier_input_camera_info_topic)"
+       if="$(eval '\'$(var classifier_input_camera_info_topic)\'.strip() != \'\'' )" />
+  <let name="resolved_classifier_input_camera_info_topic"
+       value="$(var crop_camera_info_topic)"
+       unless="$(eval '\'$(var classifier_input_camera_info_topic)\'.strip() != \'\'' )" />
+
+  <let name="resolved_classifier_input_image_width"
+       value="$(var classifier_input_image_width)"
+       if="$(eval '\'$(var classifier_input_image_width)\'.strip() != \'\'' )" />
+  <let name="resolved_classifier_input_image_width"
+       value="$(var resolved_rectified_image_width)"
+       unless="$(eval '\'$(var classifier_input_image_width)\'.strip() != \'\'' )" />
+
+  <let name="resolved_classifier_input_image_height"
+       value="$(var classifier_input_image_height)"
+       if="$(eval '\'$(var classifier_input_image_height)\'.strip() != \'\'' )" />
+  <let name="resolved_classifier_input_image_height"
+       value="$(var resolved_rectified_image_height)"
+       unless="$(eval '\'$(var classifier_input_image_height)\'.strip() != \'\'' )" />
+
   <let name="perception_image_topic"
        value="$(var rectified_image_topic)"
        if="$(var use_rectify)" />
@@ -135,4 +189,34 @@
     <arg name="container_name" value="$(var container_name)" />
     <arg name="create_container" value="false" />
   </include>
+
+  <group if="$(var use_classifier)">
+    <include file="$(find-pkg-share system_launch)/launch/perception_classifier.launch.xml">
+      <arg name="classifier_decoder_param" value="$(var classifier_decoder_param)" />
+      <arg name="input_image_topic" value="$(var resolved_classifier_input_image_topic)" />
+      <arg name="input_camera_info_topic" value="$(var resolved_classifier_input_camera_info_topic)" />
+      <arg name="input_image_width" value="$(var resolved_classifier_input_image_width)" />
+      <arg name="input_image_height" value="$(var resolved_classifier_input_image_height)" />
+      <arg name="network_image_width" value="$(var classifier_network_image_width)" />
+      <arg name="network_image_height" value="$(var classifier_network_image_height)" />
+      <arg name="model_repository_path" value="$(var classifier_model_repository_path)" />
+      <arg name="model_name" value="$(var classifier_model_name)" />
+      <arg name="use_rgb_format_converter" value="$(var classifier_use_rgb_format_converter)" />
+      <arg name="rgb_image_topic" value="$(var classifier_rgb_image_topic)" />
+      <arg name="tensor_topic" value="$(var classifier_tensor_topic)" />
+      <arg name="triton_output_topic" value="$(var classifier_triton_output_topic)" />
+      <arg name="encoder_output_tensor_name" value="$(var classifier_encoder_output_tensor_name)" />
+      <arg name="triton_input_tensor_names" value="$(var classifier_triton_input_tensor_names)" />
+      <arg name="triton_output_tensor_names" value="$(var classifier_triton_output_tensor_names)" />
+      <arg name="triton_input_binding_name" value="$(var classifier_triton_input_binding_name)" />
+      <arg name="triton_output_binding_name" value="$(var classifier_triton_output_binding_name)" />
+      <arg name="label_topic" value="$(var classifier_label_topic)" />
+      <arg name="class_id_topic" value="$(var classifier_class_id_topic)" />
+      <arg name="confidence_topic" value="$(var classifier_confidence_topic)" />
+      <arg name="scores_topic" value="$(var classifier_scores_topic)" />
+      <arg name="target_detected_topic" value="$(var classifier_target_detected_topic)" />
+      <arg name="container_name" value="$(var container_name)" />
+      <arg name="create_container" value="false" />
+    </include>
+  </group>
 </launch>
