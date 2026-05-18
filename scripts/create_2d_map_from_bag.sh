@@ -248,6 +248,16 @@ GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
 PIPELINE_MODE="auto"
+# ==============================================================================
+# カメラ解像度設定
+# デフォルト値はここで変更できます。--image-width / --image-height で都度上書きも可能。
+# launch_system.sh の SENSOR_IMAGE_WIDTH/HEIGHT と必ず共通の値に展開すること。
+# RealSense D435 stereo gray (infra) のサポート解像度例:
+#   424x240 (デフォルト, 最大 90fps)
+#   640x480 (最大 90fps)
+#   848x480 (最大 90fps)
+#   1280x720 (最大 30fps)
+# ==============================================================================
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"

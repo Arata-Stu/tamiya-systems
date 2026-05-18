@@ -1,4 +1,5 @@
 <launch>
+    <!-- 解像度は system.launch.xml から伝播されます。直接呼び出す場合は system.launch.xmlと整合すること。 -->
     <arg name="image_width" default="424" />
     <arg name="image_height" default="240" />
     <arg name="camera_container_name" default="camera_container" />

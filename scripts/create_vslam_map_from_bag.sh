@@ -67,6 +67,15 @@ MODE="default"
 RECORD_ROOT="/record"
 MAP_ROOT="/map"
 BAG_ROOT="/record/2d_input"
+# ==============================================================================
+# カメラ解像度設定
+# デフォルト値はここで変更できます。--image-width / --image-height で都度上書きも可能。
+# RealSense D435 stereo gray (infra) のサポート解像度例:
+#   424x240 (デフォルト, 最大 90fps)
+#   640x480 (最大 90fps)
+#   848x480 (最大 90fps)
+#   1280x720 (最大 30fps)
+# ==============================================================================
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
@@ -89,6 +98,8 @@ apply_mode() {
         default)
             ;;
         vslam|vslam_map)
+            # vslam_map プリセット: launch_system.sh の sensor_data_recording と
+            # 同じ解像度/FPS で揃えること。上記 IMAGE_WIDTH/IMAGE_HEIGHT に合わせて変更する。
             IMAGE_WIDTH="424"
             IMAGE_HEIGHT="240"
             IMAGE_FPS="30.0"

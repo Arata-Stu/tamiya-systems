@@ -9,6 +9,8 @@
 
     <arg name="input_image_topic" default="/camera/left/image_raw" />
     <arg name="input_camera_info_topic" default="/camera/left/camera_info" />
+    <!-- カメラ入力解像度: system.launch.xml の image_width/height と必ず整合すること。      -->
+    <!-- network_image_width/height はエンコーダのリサイズ先であり、モデル再学習まで固定です。-->
     <arg name="original_image_width" default="424" />
     <arg name="original_image_height" default="240" />
     <arg name="network_image_width" default="212" />

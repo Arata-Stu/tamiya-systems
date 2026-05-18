@@ -8,6 +8,45 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SYSTEM_LAUNCH_SOURCE_SHARE="$REPO_ROOT/ros2_ws/src/launch/system_launch"
 SETUP_SOURCED="false"
 
+# ==============================================================================
+# カメラ解像度設定 (全プリセット共通)
+# 解像度を変更する場合はここを書き換えるだけで全プリセットに反映されます。
+# または起動時に-iフラグでインタラクティブに選択できます。
+#
+# RealSense D435 stereo gray (infra) のサポート解像度例:
+#   424x240  (デフォルト, 最大 90fps)
+#   640x480  (最大 90fps)
+#   848x480  (最大 90fps)
+#   1280x720 (最大 30fps)
+# ==============================================================================
+SENSOR_IMAGE_WIDTH="424"
+SENSOR_IMAGE_HEIGHT="240"
+SENSOR_IMAGE_FPS="90.0"
+
+# --- 解像度プリセット定義 ---
+# CAMERA_RES_LABELS  : 表示用ラベル
+# CAMERA_RES_WIDTHS  : W
+# CAMERA_RES_HEIGHTS : H
+# CAMERA_RES_FPS_LIST: 利用可能な FPS選択肢 (スペース区切り)
+CAMERA_RES_LABELS=(
+  "1280x720  [ 6/15/30      fps] Depth最高解像度(負荷大, 90fps不可)"
+  "848x480   [ 6/15/30/60/90fps] D435i推奨・ネイティブバランス"
+  "640x480   [ 6/15/30/60/90fps] 4:3設定, SLAM等で多用"
+  "640x360   [ 6/15/30/60/90fps] 16:9軽量設定"
+  "480x270   [ 6/15/30/60/90fps] 低解像度"
+  "424x240   [ 6/15/30/60/90fps] 最小クラス, 計算資源の節約用"
+)
+CAMERA_RES_WIDTHS=(1280 848 640 640 480 424)
+CAMERA_RES_HEIGHTS=(720 480 480 360 270 240)
+CAMERA_RES_FPS_LIST=(
+  "6 15 30"
+  "6 15 30 60 90"
+  "6 15 30 60 90"
+  "6 15 30 60 90"
+  "6 15 30 60 90"
+  "6 15 30 60 90"
+)
+
 # shellcheck source=scripts/common/tui.sh
 source "$SCRIPT_DIR/common/tui.sh"
 
@@ -234,11 +273,12 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
-      # Initial mapping runs keep the stereo-gray left/right sensors at 424x240x90
+      # Initial mapping runs keep the stereo-gray left/right sensors at
+      # ${SENSOR_IMAGE_WIDTH}x${SENSOR_IMAGE_HEIGHT}x${SENSOR_IMAGE_FPS%%.*}
       # and enable crop perception so recorded bags already contain /perception/crop/*.
-      set_extra_arg_value "image_width" "424"
-      set_extra_arg_value "image_height" "240"
-      set_extra_arg_value "image_fps" "90.0"
+      set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
+      set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+      set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
       ;;
     localization_eval)
       ARG_record="false"
@@ -263,9 +303,9 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      set_extra_arg_value "image_width" "424"
-      set_extra_arg_value "image_height" "240"
-      set_extra_arg_value "image_fps" "90.0"
+      set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
+      set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+      set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
       ;;
     perception_eval)
       ARG_record="false"
@@ -290,9 +330,9 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      set_extra_arg_value "image_width" "424"
-      set_extra_arg_value "image_height" "240"
-      set_extra_arg_value "image_fps" "90.0"
+      set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
+      set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+      set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
       ;;
     vslam_eval)
       ARG_record="false"
@@ -317,9 +357,9 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      set_extra_arg_value "image_width" "424"
-      set_extra_arg_value "image_height" "240"
-      set_extra_arg_value "image_fps" "90.0"
+      set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
+      set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+      set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
       ;;
     *)
       echo "Unknown mode: $1" >&2
@@ -532,37 +572,61 @@ choose_bag_manager_interactive() {
 }
 
 choose_mode_interactive() {
-  local answer
+  # モード定義: 表示ラベルと内部名
+  local -a MODE_LABELS=(
+    "production       (= base)              本番走行: VSLAM + 自己位置推定 + セクションローカライザ"
+    "mapping          (= sensor_data_recording, vslam_map)  センサ録画: マッピング用rosbag収集"
+    "localization_eval                       自己位置推定の精度検証 (VSLAM + 全体位置推定)"
+    "perception_eval                         LiDAR/カメラ知覚の評価"
+    "vslam_eval                              VSLAM単体の評価"
+  )
+  local -a MODE_VALUES=(
+    "production"
+    "sensor_data_recording"
+    "localization_eval"
+    "perception_eval"
+    "vslam_eval"
+  )
+  local n_modes="${#MODE_LABELS[@]}"
+  local cursor=0
+  local key
+  local idx
 
-  echo "Mode:"
-  echo "  1) production"
-  echo "  2) sensor_data_recording"
-  echo "  3) localization_eval"
-  echo "  4) perception_eval"
-  echo "  5) vslam_eval"
-  read -r -p "Select mode [${MODE}]: " answer
+  # 現在の MODE にカーソルを合わせる
+  for idx in "${!MODE_VALUES[@]}"; do
+    if [[ "${MODE_VALUES[$idx]}" == "$MODE" ]]; then
+      cursor="$idx"
+      break
+    fi
+  done
 
-  case "${answer:-$MODE}" in
-    1|production|base)
-      MODE="production"
-      ;;
-    2|sensor_data_recording|mapping|vslam_map)
-      MODE="sensor_data_recording"
-      ;;
-    3|localization_eval)
-      MODE="localization_eval"
-      ;;
-    4|perception_eval)
-      MODE="perception_eval"
-      ;;
-    5|vslam_eval)
-      MODE="vslam_eval"
-      ;;
-    *)
-      echo "Invalid mode: $answer" >&2
-      exit 1
-      ;;
-  esac
+  while true; do
+    tui_clear_screen
+    echo "モードの選択"
+    echo ""
+    for idx in "${!MODE_LABELS[@]}"; do
+      local marker=" "
+      if [[ "$idx" -eq "$cursor" ]]; then marker=">"; fi
+      printf " %s  %s\n" "$marker" "${MODE_LABELS[$idx]}"
+    done
+    echo ""
+    echo "j/k または ↑↓: 移動  Enter: 決定  q: 終了"
+
+    key="$(tui_read_key)"
+    case "$key" in
+      j|$'\033[B') cursor=$(( (cursor + 1) % n_modes )) ;;
+      k|$'\033[A') cursor=$(( (cursor + n_modes - 1) % n_modes )) ;;
+      ""|$'\n'|$'\r')
+        MODE="${MODE_VALUES[$cursor]}"
+        tui_clear_screen
+        return 0
+        ;;
+      q|Q)
+        tui_clear_screen
+        return 0
+        ;;
+    esac
+  done
 }
 
 toggle_interactive_legacy() {
@@ -642,6 +706,114 @@ prompt_set_arg_interactive() {
 render_launch_extra_interactive() {
   printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
   printf "   %-38s %s\n" "map_dir" "$(map_dir_label)"
+  printf "   %-38s %s\n" "camera_resolution" "$(camera_resolution_label)"
+}
+
+camera_resolution_label() {
+  printf '%s x %s @ %s fps' "$SENSOR_IMAGE_WIDTH" "$SENSOR_IMAGE_HEIGHT" "$SENSOR_IMAGE_FPS"
+}
+
+choose_camera_resolution_interactive() {
+  local res_cursor=0
+  local fps_cursor=0
+  local n_res="${#CAMERA_RES_LABELS[@]}"
+  local key
+  local idx
+  local fps_arr
+  local n_fps
+  local phase="res"  # res | fps
+
+  # 現在値にカーソルを合わせる
+  for idx in "${!CAMERA_RES_WIDTHS[@]}"; do
+    if [[ "${CAMERA_RES_WIDTHS[$idx]}" == "$SENSOR_IMAGE_WIDTH" \
+       && "${CAMERA_RES_HEIGHTS[$idx]}" == "$SENSOR_IMAGE_HEIGHT" ]]; then
+      res_cursor="$idx"
+      break
+    fi
+  done
+
+  while true; do
+    if [[ "$phase" == "res" ]]; then
+      # --- 解像度選択画面 ---
+      tui_clear_screen
+      echo "カメラ解像度の選択"
+      echo ""
+      echo "現在: ${SENSOR_IMAGE_WIDTH}x${SENSOR_IMAGE_HEIGHT} @ ${SENSOR_IMAGE_FPS} fps"
+      echo ""
+      for idx in "${!CAMERA_RES_LABELS[@]}"; do
+        local marker=" "
+        if [[ "$idx" -eq "$res_cursor" ]]; then marker=">"; fi
+        printf " %s  %s\n" "$marker" "${CAMERA_RES_LABELS[$idx]}"
+      done
+      echo ""
+      echo "j/k または ↑↓: 移動  Enter: FPS選択へ  q: キャンセル"
+
+      key="$(tui_read_key)"
+      case "$key" in
+        j|$'\033[B') res_cursor=$(( (res_cursor + 1) % n_res )) ;;
+        k|$'\033[A') res_cursor=$(( (res_cursor + n_res - 1) % n_res )) ;;
+        ""|$'\n'|$'\r')
+          phase="fps"
+          # 選択解像度の FPS リストを決定
+          read -r -a fps_arr <<< "${CAMERA_RES_FPS_LIST[$res_cursor]}"
+          n_fps="${#fps_arr[@]}"
+          # 現在の FPS に最も近い候補にカーソルを合わせる
+          fps_cursor=$(( n_fps - 1 ))
+          local cur_fps_int="${SENSOR_IMAGE_FPS%%.*}"
+          for idx in "${!fps_arr[@]}"; do
+            if [[ "${fps_arr[$idx]}" == "$cur_fps_int" ]]; then
+              fps_cursor="$idx"
+              break
+            fi
+          done
+          ;;
+        q|Q)
+          tui_clear_screen
+          return 0
+          ;;
+      esac
+
+    else
+      # --- FPS 選択画面 ---
+      read -r -a fps_arr <<< "${CAMERA_RES_FPS_LIST[$res_cursor]}"
+      n_fps="${#fps_arr[@]}"
+
+      tui_clear_screen
+      echo "FPSの選択  [解像度: ${CAMERA_RES_WIDTHS[$res_cursor]}x${CAMERA_RES_HEIGHTS[$res_cursor]}]"
+      echo ""
+      echo "現在: ${SENSOR_IMAGE_WIDTH}x${SENSOR_IMAGE_HEIGHT} @ ${SENSOR_IMAGE_FPS} fps"
+      echo ""
+      for idx in "${!fps_arr[@]}"; do
+        local marker=" "
+        if [[ "$idx" -eq "$fps_cursor" ]]; then marker=">"; fi
+        printf " %s  %s fps\n" "$marker" "${fps_arr[$idx]}"
+      done
+      echo ""
+      echo "j/k または ↑↓: 移動  Enter: 決定  b: 解像度選択に戻る  q: キャンセル"
+
+      key="$(tui_read_key)"
+      case "$key" in
+        j|$'\033[B') fps_cursor=$(( (fps_cursor + 1) % n_fps )) ;;
+        k|$'\033[A') fps_cursor=$(( (fps_cursor + n_fps - 1) % n_fps )) ;;
+        b|B) phase="res" ;;
+        ""|$'\n'|$'\r')
+          SENSOR_IMAGE_WIDTH="${CAMERA_RES_WIDTHS[$res_cursor]}"
+          SENSOR_IMAGE_HEIGHT="${CAMERA_RES_HEIGHTS[$res_cursor]}"
+          SENSOR_IMAGE_FPS="${fps_arr[$fps_cursor]}.0"
+          # プリセットの EXTRA_ARGS に反映
+          set_extra_arg_value "image_width"  "$SENSOR_IMAGE_WIDTH"
+          set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+          set_extra_arg_value "image_fps"    "$SENSOR_IMAGE_FPS"
+          tui_clear_screen
+          return 0
+          ;;
+        q|Q)
+          tui_clear_screen
+          return 0
+          ;;
+      esac
+    fi
+  done
 }
 
 apply_mode_derived_args() {
@@ -901,6 +1073,8 @@ for override in "${OVERRIDES[@]}"; do
 done
 
 if [[ "$INTERACTIVE" == "true" ]]; then
+  # 解像度・ FPS をインタラクティブに選択
+  choose_camera_resolution_interactive
   toggle_interactive
 fi
 
