@@ -35,7 +35,9 @@ target_link_libraries(scan_image_projection_cropper_node
   scan_image_projection_cropper_component
 )
 
-ament_auto_package(INSTALL_TO_SHARE
+ament_auto_package(
+  USE_SCOPED_HEADER_INSTALL_DIR
+  INSTALL_TO_SHARE
   config
   launch
 )

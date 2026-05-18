@@ -8,7 +8,7 @@
 #include <utility>
 
 #include "opencv2/calib3d.hpp"
-#include "cv_bridge/cv_bridge.hpp"
+#include "cv_bridge/cv_bridge.h"
 #include "rclcpp_components/register_node_macro.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "tf2/LinearMath/Matrix3x3.h"
