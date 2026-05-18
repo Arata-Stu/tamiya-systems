@@ -13,7 +13,7 @@
 
     out_of_range_threshold: 12.5
     invalid_range_threshold: 0.05
-    min_scan_fov_degrees: 250.0
+    min_scan_fov_degrees: 180.0
     use_closest_beam: true
 
     max_points: 512
