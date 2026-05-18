@@ -18,6 +18,22 @@ REQUIRED_MODULES = (
 )
 
 
+def hint_for_import_error(module_name: str, exc: Exception) -> str:
+    message = str(exc)
+    if (
+        module_name in {"quadprog", "trajectory_planning_helpers", "helper_funcs_glob"}
+        and "quadprog" in message
+        and "undefined symbol" in message
+    ):
+        return (
+            " Hint: quadprog native extension looks ABI-incompatible. "
+            "Try reinstalling with quadprog==0.1.6 and "
+            "trajectory-planning-helpers==0.79 --no-deps, "
+            "or run /python_ws/setup_global_opt_env.sh."
+        )
+    return ""
+
+
 def version_of(module_name: str) -> str:
     module = importlib.import_module(module_name)
     return str(getattr(module, "__version__", "ok"))
@@ -45,7 +61,7 @@ def main() -> None:
             print(f"OK {module_name}: {version_of(module_name)}")
         except Exception as exc:
             ok = False
-            print(f"NG {module_name}: {type(exc).__name__}: {exc}")
+            print(f"NG {module_name}: {type(exc).__name__}: {exc}{hint_for_import_error(module_name, exc)}")
 
     if args.optimizer_root:
         for module_name in ("helper_funcs_glob",):
@@ -54,7 +70,7 @@ def main() -> None:
                 print(f"OK {module_name}: importable")
             except Exception as exc:
                 ok = False
-                print(f"NG {module_name}: {type(exc).__name__}: {exc}")
+                print(f"NG {module_name}: {type(exc).__name__}: {exc}{hint_for_import_error(module_name, exc)}")
 
     if not ok:
         raise SystemExit(1)
