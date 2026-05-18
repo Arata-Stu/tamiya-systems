@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <utility>
@@ -36,7 +37,9 @@ int PositiveOr(int value, int fallback) {
 
 double ClampNonNegative(double value) { return std::max(0.0, value); }
 
-int ClampNonNegative(int value) { return std::max(0, value); }
+int ClampNonNegativeInt(std::int64_t value) {
+  return static_cast<int>(std::max<std::int64_t>(0, value));
+}
 
 tf2::Transform ToTfTransform(const geometry_msgs::msg::TransformStamped &transform) {
   const auto &translation = transform.transform.translation;
@@ -78,14 +81,14 @@ ScanImageProjectionCropperComponent::ScanImageProjectionCropperComponent(
       PositiveOr(declare_parameter<double>("tf_timeout_sec", 0.05), 0.05);
   fixed_crop_height_px_ =
       PositiveOr(declare_parameter<int>("fixed_crop_height_px", 160), 160);
-  horizontal_padding_px_ = ClampNonNegative(
+  horizontal_padding_px_ = ClampNonNegativeInt(
       declare_parameter<int>("horizontal_padding_px", 12));
   bottom_padding_px_ =
       declare_parameter<int>("bottom_padding_px", 8);
   min_crop_width_px_ =
       PositiveOr(declare_parameter<int>("min_crop_width_px", 32), 32);
-  max_crop_width_px_ =
-      ClampNonNegative(declare_parameter<int>("max_crop_width_px", 0));
+  max_crop_width_px_ = ClampNonNegativeInt(
+      declare_parameter<int>("max_crop_width_px", 0));
   const bool publish_debug_image =
       declare_parameter<bool>("publish_debug_image", true);
   debug_enabled_ = declare_parameter<bool>("debug", publish_debug_image);
@@ -490,9 +493,8 @@ void ScanImageProjectionCropperComponent::PublishDebugImage(
   try {
     cv_ptr = cv_bridge::toCvCopy(image_msg, image_msg.encoding);
   } catch (const cv_bridge::Exception &exception) {
-    RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "Failed to build debug image via cv_bridge: %s", exception.what());
+    RCLCPP_WARN(get_logger(), "Failed to build debug image via cv_bridge: %s",
+                exception.what());
     return;
   }
 
