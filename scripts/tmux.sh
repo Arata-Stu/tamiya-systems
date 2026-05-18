@@ -2,43 +2,101 @@
 
 set -euo pipefail
 
-# --- 設定項目 ---
 MODE_TAMIYA="tamiya"
 MODE_PYTHON="python"
 MODE_MAP="map"
+MODE_LOCALIZATION_EVAL="localization_eval"
+MODE_PERCEPTION_EVAL="perception_eval"
+MODE_VSLAM_EVAL="vslam_eval"
 MODE_SIMULATOR="simulator"
 
 DEFAULT_SESSION_TAMIYA="tamiya"
 DEFAULT_SESSION_PYTHON="python"
 DEFAULT_SESSION_MAP="map"
+DEFAULT_SESSION_LOCALIZATION_EVAL="localization_eval"
+DEFAULT_SESSION_PERCEPTION_EVAL="perception_eval"
+DEFAULT_SESSION_VSLAM_EVAL="vslam_eval"
 DEFAULT_SESSION_SIMULATOR="simulator"
 
 WINDOW_MAIN="main"
 WINDOW_DATA="data"
-WINDOW_LOCALIZATION_EVAL="localization_eval"
+WINDOW_EVAL="eval"
+WINDOW_VISUAL="visual"
 
-SETUP_SCRIPT="source /workspaces/install/setup.bash"
-CMD_BASE="bash /scripts/launch_system.sh production -- map_dir:=<map_dir>"
-CMD_MONITOR="bash /scripts/monitor.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+resolve_existing_dir() {
+  local candidate
+
+  for candidate in "$@"; do
+    if [[ -n "$candidate" && -d "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+resolve_setup_command() {
+  local candidate
+
+  for candidate in \
+    "${TMUX_WORKSPACE_SETUP:-}" \
+    "${REPO_ROOT}/install/setup.bash" \
+    "/workspaces/install/setup.bash" \
+    "install/setup.bash"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+      printf 'source %s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '\n'
+}
+
+SETUP_SCRIPT="$(resolve_setup_command)"
+ROS_SETUP="export ROS_LOCALHOST_ONLY=0"
+if [[ -n "$SETUP_SCRIPT" ]]; then
+  ROS_SETUP="${ROS_SETUP} && ${SETUP_SCRIPT}"
+fi
+
+WORK_DIR="$(resolve_existing_dir "$REPO_ROOT" /workspaces)"
+RECORD_DIR="$(resolve_existing_dir /record "${REPO_ROOT}/record" "$WORK_DIR")"
+PYTHON_DIR="$(resolve_existing_dir "${REPO_ROOT}/python_ws" /python_ws "$WORK_DIR")"
+SCRIPTS_DIR="$SCRIPT_DIR"
+
+LAUNCH_SYSTEM_SH="${SCRIPT_DIR}/launch_system.sh"
+MONITOR_SH="${SCRIPT_DIR}/monitor.sh"
+CREATE_VSLAM_MAP_SH="${SCRIPT_DIR}/create_vslam_map_from_bag.sh"
+CREATE_MAP_SH="${SCRIPT_DIR}/create_2d_map_from_bag.sh"
+TERMINAL_DASHBOARD_PY="${SCRIPT_DIR}/terminal_viewers/ros2_terminal_dashboard.py"
+TERMINAL_IMAGE_VIEWER_PY="${SCRIPT_DIR}/terminal_viewers/ros2_terminal_image_viewer.py"
+
+CMD_PRODUCTION="bash ${LAUNCH_SYSTEM_SH} production --set map_dir=<map_dir>"
+CMD_MONITOR="bash ${MONITOR_SH}"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
-CMD_CREATE_VSLAM_MAP="bash /scripts/create_vslam_map_from_bag.sh --mode vslam --rate 1.0"
-CMD_CREATE_MAP="bash /scripts/create_2d_map_from_bag.sh --mode 2d_slam --rate 1.0"
+CMD_CREATE_VSLAM_MAP="bash ${CREATE_VSLAM_MAP_SH} --mode vslam --rate 1.0"
+CMD_CREATE_MAP="bash ${CREATE_MAP_SH} --mode 2d_slam --rate 1.0"
 CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
-CMD_LOCALIZATION_EVAL="bash /scripts/launch_system.sh production -- map_dir:=<map_dir>"
-CMD_LIDAR_CONTAINER="ros2 run rclcpp_components component_container --ros-args -r __node:=lidar_container"
+CMD_LOCALIZATION_EVAL="bash ${LAUNCH_SYSTEM_SH} localization_eval --set map_dir=<map_dir>"
+CMD_PERCEPTION_EVAL="bash ${LAUNCH_SYSTEM_SH} perception_eval"
+CMD_VSLAM_EVAL="bash ${LAUNCH_SYSTEM_SH} vslam_eval --set map_dir=<map_dir>"
 CMD_SIMULATOR="ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
+CMD_DASHBOARD_LOCALIZATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic /map --localization-topic /localization_result --scan-topic /scan --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
+CMD_LEFT_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /camera/left/image_raw --best-effort --max-fps 10"
+CMD_DEBUG_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/debug/image --best-effort --max-fps 10"
+CMD_PERCEPTION_LABEL="ros2 topic echo /perception/classification/label"
+CMD_PERCEPTION_CONFIDENCE="ros2 topic echo /perception/classification/confidence"
 RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz'
 RVIZ_VSLAM_DEBUG='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.rviz'
-
-PYTHON_PANE1_DIR="/python_ws"
-PYTHON_PANE2_DIR="/record/"
 
 PANE_WINDOWS=()
 PANE_DIRS=()
 PANE_SETUPS=()
 PANE_PREPARES=()
 
-# --- ヘルパー関数 ---
 reset_panes() {
   PANE_WINDOWS=()
   PANE_DIRS=()
@@ -132,7 +190,6 @@ build_init_cmd() {
   echo "$cmd"
 }
 
-# ペインの初期化（cd/source などを実行してEnter）
 init_pane() {
   local target="$1"
   local cmd="$2"
@@ -140,16 +197,13 @@ init_pane() {
   tmux send-keys -t "$target" "$cmd" C-m
 }
 
-# ペインに準備コマンドを流し込む（表示崩れ対策済み）
 prepare_cmd() {
   local target="$1"
   local cmd="$2"
-  
-  # bashのショートカット(Ctrl+L)で画面をクリア＆プロンプトを綺麗に再描画
+
   tmux send-keys -t "$target" C-l
   sleep 0.2
-  
-  # コマンドを文字入力（Enterは押さない）
+
   if [[ -n "$cmd" ]]; then
     tmux send-keys -t "$target" "$cmd"
   fi
@@ -169,7 +223,6 @@ create_layout_from_panes() {
     exit 1
   fi
 
-  # ターミナル幅が狭いと判断されないよう、初期仮想サイズを大きく設定 (-x 250 -y 80)
   tmux new-session -d -x 250 -y 80 -s "$SESSION_NAME" -n "${PANE_WINDOWS[0]}"
 
   for window in "${PANE_WINDOWS[@]}"; do
@@ -220,10 +273,12 @@ create_layout_from_panes() {
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map|simulator]
-  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map|simulator]
+  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map|localization_eval|perception_eval|vslam_eval|simulator]
+  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map|localization_eval|perception_eval|vslam_eval|simulator]
 
-If mode is omitted, you can choose interactively.
+Notes:
+  - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
+  - map mode keeps the old map-creation workspace and also prepares a lean localization-eval window.
 EOF
 }
 
@@ -237,11 +292,14 @@ choose_mode_interactive() {
 
   while true; do
     echo "Select mode:" >&2
-    echo "  1) $MODE_TAMIYA (current setup)" >&2
-    echo "  2) $MODE_PYTHON (study setup)" >&2
-    echo "  3) $MODE_MAP (map creation setup)" >&2
-    echo "  4) $MODE_SIMULATOR (simulator setup)" >&2
-    read -r -p "Enter 1, 2, 3, or 4: " answer
+    echo "  1) $MODE_TAMIYA (production + monitor)" >&2
+    echo "  2) $MODE_PYTHON (python workspace)" >&2
+    echo "  3) $MODE_MAP (map creation + localization eval)" >&2
+    echo "  4) $MODE_LOCALIZATION_EVAL (bag replay + localization eval)" >&2
+    echo "  5) $MODE_PERCEPTION_EVAL (bag replay + perception eval)" >&2
+    echo "  6) $MODE_VSLAM_EVAL (bag replay + VSLAM eval)" >&2
+    echo "  7) $MODE_SIMULATOR (simulator setup)" >&2
+    read -r -p "Enter 1-7: " answer
 
     case "$answer" in
       1|"$MODE_TAMIYA")
@@ -256,7 +314,19 @@ choose_mode_interactive() {
         echo "$MODE_MAP"
         return
         ;;
-      4|"$MODE_SIMULATOR")
+      4|"$MODE_LOCALIZATION_EVAL")
+        echo "$MODE_LOCALIZATION_EVAL"
+        return
+        ;;
+      5|"$MODE_PERCEPTION_EVAL")
+        echo "$MODE_PERCEPTION_EVAL"
+        return
+        ;;
+      6|"$MODE_VSLAM_EVAL")
+        echo "$MODE_VSLAM_EVAL"
+        return
+        ;;
+      7|"$MODE_SIMULATOR")
         echo "$MODE_SIMULATOR"
         return
         ;;
@@ -269,38 +339,68 @@ choose_mode_interactive() {
 
 create_tamiya_layout() {
   reset_panes
-  # add_pane <window> <cd directory> <setup command> <prepared command>
-  # 同じ window に add_pane を足すと、pane 分割は自動で増える。
-  add_pane "$WINDOW_MAIN" "" "export ROS_LOCALHOST_ONLY=0 && $SETUP_SCRIPT" "$CMD_BASE"
-  add_pane "$WINDOW_MAIN" "" "export ROS_LOCALHOST_ONLY=0 && $SETUP_SCRIPT" "$CMD_MONITOR"
-  add_pane "$WINDOW_DATA" "/record" "" ""
-  add_pane "$WINDOW_DATA" "/scripts/" "" ""
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PRODUCTION"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  add_pane "$WINDOW_DATA" "$RECORD_DIR" "" ""
+  add_pane "$WINDOW_DATA" "$SCRIPTS_DIR" "" ""
   create_layout_from_panes "$WINDOW_MAIN" 0
 }
 
 create_python_layout() {
   reset_panes
-  add_pane "$WINDOW_MAIN" "$PYTHON_PANE1_DIR" "$SETUP_SCRIPT" ""
-  add_pane "$WINDOW_MAIN" "$PYTHON_PANE2_DIR" "$SETUP_SCRIPT" ""
+  add_pane "$WINDOW_MAIN" "$PYTHON_DIR" "$ROS_SETUP" ""
+  add_pane "$WINDOW_MAIN" "$RECORD_DIR" "$ROS_SETUP" ""
   create_layout_from_panes "$WINDOW_MAIN" 0
 }
 
 create_map_layout() {
   reset_panes
-  add_pane "$WINDOW_MAIN" "/workspaces" "$SETUP_SCRIPT" "$CMD_CREATE_MAP"
-  add_pane "$WINDOW_MAIN" "" "$SETUP_SCRIPT" "$RVIZ_VSLAM_DEBUG"
-  add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_PLAY_BAG"
-  add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_LOCALIZATION_EVAL"
-  add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_LOCALIZATION_TRIGGER"
-  add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$CMD_LIDAR_CONTAINER"
-  add_pane "$WINDOW_LOCALIZATION_EVAL" "/workspaces" "$SETUP_SCRIPT" "$RVIZ_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_CREATE_MAP"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_VSLAM_DEBUG"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
   create_layout_from_panes "$WINDOW_MAIN" 0
+}
+
+create_localization_eval_layout() {
+  reset_panes
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_LOCALIZATION"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  create_layout_from_panes "$WINDOW_MAIN" 1
+}
+
+create_perception_eval_layout() {
+  reset_panes
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_EVAL"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DEBUG_IMAGE_VIEWER"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_LABEL"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_CONFIDENCE"
+  create_layout_from_panes "$WINDOW_MAIN" 1
+}
+
+create_vslam_eval_layout() {
+  reset_panes
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_VSLAM_EVAL"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_VSLAM_DEBUG"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
+  create_layout_from_panes "$WINDOW_MAIN" 1
 }
 
 create_simulator_layout() {
   reset_panes
-  add_pane "$WINDOW_MAIN" "/workspaces" "$SETUP_SCRIPT" "$CMD_SIMULATOR"
-  add_pane "$WINDOW_MAIN" "/workspaces" "$SETUP_SCRIPT" "$CMD_LOCALIZATION_TRIGGER"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_SIMULATOR"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
   create_layout_from_panes "$WINDOW_MAIN" 0
 }
 
@@ -329,7 +429,7 @@ while [[ $# -gt 0 ]]; do
       SESSION_NAME="$2"
       shift 2
       ;;
-    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_SIMULATOR")
+    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_SIMULATOR")
       if [[ -z "$MODE" ]]; then
         MODE="$1"
       elif [[ -z "$SESSION_NAME" ]]; then
@@ -359,25 +459,39 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_SIMULATOR")
+  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_SIMULATOR")
     ;;
   *)
     echo "Invalid mode: $MODE" >&2
-    echo "Use --mode tamiya, --mode python, --mode map, or --mode simulator" >&2
+    echo "Use --mode tamiya, python, map, localization_eval, perception_eval, vslam_eval, or simulator" >&2
     exit 1
     ;;
 esac
 
 if [[ -z "$SESSION_NAME" ]]; then
-  if [[ "$MODE" == "$MODE_TAMIYA" ]]; then
-    SESSION_NAME="$DEFAULT_SESSION_TAMIYA"
-  elif [[ "$MODE" == "$MODE_PYTHON" ]]; then
-    SESSION_NAME="$DEFAULT_SESSION_PYTHON"
-  elif [[ "$MODE" == "$MODE_MAP" ]]; then
-    SESSION_NAME="$DEFAULT_SESSION_MAP"
-  else
-    SESSION_NAME="$DEFAULT_SESSION_SIMULATOR"
-  fi
+  case "$MODE" in
+    "$MODE_TAMIYA")
+      SESSION_NAME="$DEFAULT_SESSION_TAMIYA"
+      ;;
+    "$MODE_PYTHON")
+      SESSION_NAME="$DEFAULT_SESSION_PYTHON"
+      ;;
+    "$MODE_MAP")
+      SESSION_NAME="$DEFAULT_SESSION_MAP"
+      ;;
+    "$MODE_LOCALIZATION_EVAL")
+      SESSION_NAME="$DEFAULT_SESSION_LOCALIZATION_EVAL"
+      ;;
+    "$MODE_PERCEPTION_EVAL")
+      SESSION_NAME="$DEFAULT_SESSION_PERCEPTION_EVAL"
+      ;;
+    "$MODE_VSLAM_EVAL")
+      SESSION_NAME="$DEFAULT_SESSION_VSLAM_EVAL"
+      ;;
+    *)
+      SESSION_NAME="$DEFAULT_SESSION_SIMULATOR"
+      ;;
+  esac
 fi
 
 if ! command -v tmux >/dev/null 2>&1; then
@@ -386,15 +500,29 @@ if ! command -v tmux >/dev/null 2>&1; then
 fi
 
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  if [[ "$MODE" == "$MODE_TAMIYA" ]]; then
-    create_tamiya_layout
-  elif [[ "$MODE" == "$MODE_PYTHON" ]]; then
-    create_python_layout
-  elif [[ "$MODE" == "$MODE_MAP" ]]; then
-    create_map_layout
-  elif [[ "$MODE" == "$MODE_SIMULATOR" ]]; then
-    create_simulator_layout
-  fi
+  case "$MODE" in
+    "$MODE_TAMIYA")
+      create_tamiya_layout
+      ;;
+    "$MODE_PYTHON")
+      create_python_layout
+      ;;
+    "$MODE_MAP")
+      create_map_layout
+      ;;
+    "$MODE_LOCALIZATION_EVAL")
+      create_localization_eval_layout
+      ;;
+    "$MODE_PERCEPTION_EVAL")
+      create_perception_eval_layout
+      ;;
+    "$MODE_VSLAM_EVAL")
+      create_vslam_eval_layout
+      ;;
+    "$MODE_SIMULATOR")
+      create_simulator_layout
+      ;;
+  esac
 fi
 
 tmux attach-session -t "$SESSION_NAME"

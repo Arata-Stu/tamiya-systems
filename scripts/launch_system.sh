@@ -99,6 +99,9 @@ Usage:
 Modes:
   production              Full production run with VSLAM + localization + section localizer
   sensor_data_recording   Sensor-recording preset for initial mapping runs
+  localization_eval       Lean localization evaluation preset (VSLAM ref + global localization)
+  perception_eval         Lean LiDAR-camera perception evaluation preset
+  vslam_eval              Lean VSLAM-only evaluation preset
   base                    Alias of production
   mapping                 Alias of sensor_data_recording
   vslam_map               Alias of sensor_data_recording
@@ -114,6 +117,9 @@ Options:
 Examples:
   ${SCRIPT_NAME} production -- map_dir:=/map/mybag/mycourse
   ${SCRIPT_NAME} sensor_data_recording
+  ${SCRIPT_NAME} localization_eval --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} perception_eval
+  ${SCRIPT_NAME} vslam_eval --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} sensor_data_recording -i
   ${SCRIPT_NAME} sensor_data_recording --bag-manager mapping
   ${SCRIPT_NAME} sensor_data_recording --set record=false --dry-run
@@ -230,6 +236,87 @@ apply_mode() {
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
       # Initial mapping runs keep the stereo-gray left/right sensors at 424x240x90
       # and enable crop perception so recorded bags already contain /perception/crop/*.
+      set_extra_arg_value "image_width" "424"
+      set_extra_arg_value "image_height" "240"
+      set_extra_arg_value "image_fps" "90.0"
+      ;;
+    localization_eval)
+      ARG_record="false"
+      ARG_use_vehicle="false"
+      ARG_vslam="true"
+      ARG_localization="true"
+      ARG_use_lidar="true"
+      ARG_use_camera="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="true"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="true"
+      ARG_publish_localization_tf="true"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="false"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
+      set_extra_arg_value "image_width" "424"
+      set_extra_arg_value "image_height" "240"
+      set_extra_arg_value "image_fps" "90.0"
+      ;;
+    perception_eval)
+      ARG_record="false"
+      ARG_use_vehicle="false"
+      ARG_vslam="false"
+      ARG_localization="false"
+      ARG_use_lidar="true"
+      ARG_use_camera="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_perception="true"
+      ARG_use_perception_classifier="true"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="false"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
+      set_extra_arg_value "image_width" "424"
+      set_extra_arg_value "image_height" "240"
+      set_extra_arg_value "image_fps" "90.0"
+      ;;
+    vslam_eval)
+      ARG_record="false"
+      ARG_use_vehicle="false"
+      ARG_vslam="true"
+      ARG_localization="false"
+      ARG_use_lidar="false"
+      ARG_use_camera="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="true"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
       set_extra_arg_value "image_width" "424"
       set_extra_arg_value "image_height" "240"
       set_extra_arg_value "image_fps" "90.0"
@@ -450,6 +537,9 @@ choose_mode_interactive() {
   echo "Mode:"
   echo "  1) production"
   echo "  2) sensor_data_recording"
+  echo "  3) localization_eval"
+  echo "  4) perception_eval"
+  echo "  5) vslam_eval"
   read -r -p "Select mode [${MODE}]: " answer
 
   case "${answer:-$MODE}" in
@@ -458,6 +548,15 @@ choose_mode_interactive() {
       ;;
     2|sensor_data_recording|mapping|vslam_map)
       MODE="sensor_data_recording"
+      ;;
+    3|localization_eval)
+      MODE="localization_eval"
+      ;;
+    4|perception_eval)
+      MODE="perception_eval"
+      ;;
+    5|vslam_eval)
+      MODE="vslam_eval"
       ;;
     *)
       echo "Invalid mode: $answer" >&2
@@ -550,7 +649,7 @@ apply_mode_derived_args() {
   local section_csv
   local gate_csv
 
-  if [[ "$MODE" != "production" && "$MODE" != "base" ]]; then
+  if [[ "$MODE" != "production" && "$MODE" != "base" && "$(get_arg use_section_localizer)" != "true" ]]; then
     return
   fi
 
@@ -572,9 +671,9 @@ apply_mode_derived_args() {
 }
 
 warn_if_mode_incomplete() {
-  if [[ "$MODE" == "production" || "$MODE" == "base" ]]; then
+  if [[ "$MODE" == "production" || "$MODE" == "base" || "$MODE" == "localization_eval" ]]; then
     if [[ -z "$(current_map_dir)" ]]; then
-      echo "Warning: production mode expects map_dir to be set." >&2
+      echo "Warning: ${MODE} mode expects map_dir to be set." >&2
     fi
   fi
 }
@@ -775,7 +874,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    production|base|sensor_data_recording|mapping|vslam_map)
+    production|base|sensor_data_recording|mapping|vslam_map|localization_eval|perception_eval|vslam_eval)
       MODE="$1"
       shift
       ;;
