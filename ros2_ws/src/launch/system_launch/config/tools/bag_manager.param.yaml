@@ -10,8 +10,8 @@
       - /camera/left/camera_info
       - /camera/right/image_raw
       - /camera/right/camera_info
-      - /realsense2_camera/color/camera_info
-      - /realsense2_camera/color/image_raw
+      # - /realsense2_camera/color/camera_info
+      # - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
       - /autonomous/cmd_drive
       - /autonomous/trajectory
@@ -32,3 +32,6 @@
       - /localization/section_markers
       - /localization_result
       - /initialpose
+      - /perception/crop/image
+      - /perception/crop/camera_info
+      - /perception/crop/roi

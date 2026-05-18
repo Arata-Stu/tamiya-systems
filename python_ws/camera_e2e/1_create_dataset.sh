@@ -37,7 +37,7 @@ show_help() {
 
 BASE_DIR=""
 OUTDIR=""
-IMAGE_TOPIC="/realsense2_camera/color/image_raw"
+IMAGE_TOPIC="/camera/left/image_raw"
 CMD_TOPIC="/jetracer/cmd_drive"
 IMAGE_STORAGE="npy"
 WORKERS=""

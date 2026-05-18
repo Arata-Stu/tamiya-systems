@@ -17,3 +17,5 @@ ros2 launch isaac_ros_camera_trajectory isaac_ros_camera_trajectory.launch.xml \
   model_repository_path:=/workspaces/isaac_ros_assets/models/ \
   model_name:=pilotnet_trajectory
 ```
+
+デフォルト入力は RealSense の `left gray 424x240` です。mono 入力は launch 内で `rgb8` に変換してから encoder に渡します。

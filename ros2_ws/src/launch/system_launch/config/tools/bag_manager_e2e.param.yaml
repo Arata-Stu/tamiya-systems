@@ -6,12 +6,12 @@
     topics:
       - /scan
       - /scan_raw
-      # - /camera/left/image_raw
-      # - /camera/left/camera_info
+      - /camera/left/image_raw
+      - /camera/left/camera_info
       # - /camera/right/image_raw
       # - /camera/right/camera_info
-      - /realsense2_camera/color/camera_info
-      - /realsense2_camera/color/image_raw
+      # - /realsense2_camera/color/camera_info
+      # - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
       - /autonomous/cmd_drive
       - /autonomous/trajectory
@@ -33,3 +33,6 @@
       # - /localization_result
       # - /amcl_pose
       # - /initialpose
+      - /perception/crop/image
+      - /perception/crop/camera_info
+      - /perception/crop/roi

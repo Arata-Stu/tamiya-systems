@@ -25,7 +25,7 @@ show_help() {
     echo "Options:"
     echo "  -b, --base_dir              Base directory to search for rosbag2 sequences"
     echo "  -o, --outdir                Output root directory for datasets (e.g., ./datasets)"
-    echo "  --image_topic               Image topic name (default: /realsense2_camera/color/image_raw)"
+    echo "  --image_topic               Image topic name (default: /camera/left/image_raw)"
     echo "  --pose_topic                Pose/path topic (default: /visual_slam/tracking/odometry)"
     echo "                              Useful candidates:"
     echo "                                /visual_slam/tracking/slam_path"
@@ -44,7 +44,7 @@ show_help() {
 
 BASE_DIR=""
 OUTDIR=""
-IMAGE_TOPIC="/realsense2_camera/color/image_raw"
+IMAGE_TOPIC="/camera/left/image_raw"
 POSE_TOPIC="/visual_slam/tracking/odometry"
 IMAGE_STORAGE="npy"
 NUM_POINTS="20"

@@ -14,10 +14,10 @@ ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e.launch.xml \
   model_name:=pilotnet \
   input_image_topic:=/camera/left/image_raw \
   input_camera_info_topic:=/camera/left/camera_info \
-  original_image_width:=320 \
+  original_image_width:=424 \
   original_image_height:=240 \
-  network_image_width:=320 \
-  network_image_height:=240
+  network_image_width:=212 \
+  network_image_height:=120
 ```
 
 Precision-specific presets:

@@ -34,8 +34,8 @@ python3 2_train.py
 python3 export_onnx.py \
   --checkpoint ./ckpts/train/<date>/<time>/best_model.pth \
   --channels 3 \
-  --height 240 \
-  --width 320 \
+  --height 120 \
+  --width 212 \
   --input_normalization external
 ```
 
@@ -64,13 +64,14 @@ export は成功しても推論時に古い version や互換性のない plan �
 
 まずは `npy` で学習速度を優先し、必要なら別途 `png` をサンプル保存して確認する運用が実用的です。
 
-## 解像度方針 (ELP合わせ)
+## 解像度方針 (Left Gray)
 
-デフォルトは ELP の典型入力に合わせて `320x240`（`W x H`）にしています。
+デフォルトは `left gray 424x240` を入力にし、その半分スケールの `212x120`（`W x H`）で学習する前提です。
 
 - `config/train.yaml`:
-  - `image_width: 320`
-  - `image_height: 240`
+  - `image_width: 212`
+  - `image_height: 120`
+  - `force_grayscale_3ch: true`
   - `crop_top_ratio: 0.0`（画角スケール維持）
 
 ## ROS2 推論時の正規化

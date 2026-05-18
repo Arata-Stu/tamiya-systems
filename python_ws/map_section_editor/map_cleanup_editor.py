@@ -153,31 +153,64 @@ class MapCleanupEditor:
         self.brush_radius = max(1, min(512, self.brush_radius + delta))
 
     def _hud_toggle_rect(self) -> Tuple[int, int, int, int]:
-        width = 116
-        height = 34
-        margin = 10
-        return (self.window_width - width - margin, margin, width, height)
+        _, _, _, _, _, help_rect = self._top_control_rects()
+        return help_rect
 
     def _brush_minus_rect(self) -> Tuple[int, int, int, int]:
-        width = 34
-        height = 34
-        margin = 10
-        x = self.window_width - 116 - 34 - 146 - margin - 8
-        return (x, margin, width, height)
+        _, _, minus_rect, _, _, _ = self._top_control_rects()
+        return minus_rect
 
     def _brush_value_rect(self) -> Tuple[int, int, int, int]:
-        width = 104
-        height = 34
-        margin = 10
-        x = self.window_width - 116 - 104 - 34 - margin - 4
-        return (x, margin, width, height)
+        _, _, _, value_rect, _, _ = self._top_control_rects()
+        return value_rect
 
     def _brush_plus_rect(self) -> Tuple[int, int, int, int]:
-        width = 34
-        height = 34
+        _, _, _, _, plus_rect, _ = self._top_control_rects()
+        return plus_rect
+
+    def _mode_black_rect(self) -> Tuple[int, int, int, int]:
+        black_rect, _, _, _, _, _ = self._top_control_rects()
+        return black_rect
+
+    def _mode_white_rect(self) -> Tuple[int, int, int, int]:
+        _, white_rect, _, _, _, _ = self._top_control_rects()
+        return white_rect
+
+    def _top_control_rects(
+        self,
+    ) -> Tuple[
+        Tuple[int, int, int, int],
+        Tuple[int, int, int, int],
+        Tuple[int, int, int, int],
+        Tuple[int, int, int, int],
+        Tuple[int, int, int, int],
+        Tuple[int, int, int, int],
+    ]:
         margin = 10
-        x = self.window_width - 116 - 34 - margin
-        return (x, margin, width, height)
+        gap = 8
+        height = 34
+        black_w = 76
+        white_w = 76
+        minus_w = 34
+        value_w = 104
+        plus_w = 34
+        help_w = 116
+
+        x = self.window_width - margin
+
+        help_rect = (x - help_w, margin, help_w, height)
+        x = help_rect[0] - gap
+        plus_rect = (x - plus_w, margin, plus_w, height)
+        x = plus_rect[0] - gap
+        value_rect = (x - value_w, margin, value_w, height)
+        x = value_rect[0] - gap
+        minus_rect = (x - minus_w, margin, minus_w, height)
+        x = minus_rect[0] - gap
+        white_rect = (x - white_w, margin, white_w, height)
+        x = white_rect[0] - gap
+        black_rect = (x - black_w, margin, black_w, height)
+
+        return black_rect, white_rect, minus_rect, value_rect, plus_rect, help_rect
 
     def _brush_value(self) -> int:
         return 0 if self.mode == "paint_black" else 255
@@ -282,6 +315,18 @@ class MapCleanupEditor:
         self._draw_text_with_outline(frame, label, (text_x, text_y), 0.55, (255, 255, 255), 2)
 
     def _draw_controls(self, frame: np.ndarray) -> None:
+        self._draw_button(
+            frame,
+            self._mode_black_rect(),
+            "Black",
+            self.mode == "paint_black",
+        )
+        self._draw_button(
+            frame,
+            self._mode_white_rect(),
+            "White",
+            self.mode == "paint_white",
+        )
         self._draw_button(frame, self._brush_minus_rect(), "-", False)
         self._draw_button(frame, self._brush_value_rect(), f"{self._brush_diameter_px()} px", False)
         self._draw_button(frame, self._brush_plus_rect(), "+", False)
@@ -409,6 +454,12 @@ class MapCleanupEditor:
             if self._point_in_rect(x, y, self._hud_toggle_rect()):
                 self.show_hud = not self.show_hud
                 return
+            if self._point_in_rect(x, y, self._mode_black_rect()):
+                self.mode = "paint_black"
+                return
+            if self._point_in_rect(x, y, self._mode_white_rect()):
+                self.mode = "paint_white"
+                return
             if self._point_in_rect(x, y, self._brush_minus_rect()):
                 self._change_brush_radius(-1)
                 return
@@ -443,6 +494,7 @@ class MapCleanupEditor:
     def run(self) -> None:
         print("[INFO] Launching map cleanup editor.")
         print("[INFO] Paint black to remove branches/noise, or white to reopen track areas.")
+        print("[INFO] Use keyboard 'b'/'e' or the top-right Black/White buttons to switch brush color.")
         print("[INFO] Press 's' to save the cleaned PNG before closing.")
         print("[INFO] Press 'i' or click the Help button to toggle the instruction panel.")
         print("[INFO] Use '[' / ']' or ',' / '.' or the +/- buttons to change brush size.")

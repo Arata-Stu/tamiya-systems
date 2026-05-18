@@ -214,7 +214,7 @@ apply_mode() {
       ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
-      ARG_use_perception="false"
+      ARG_use_perception="true"
       ARG_use_perception_classifier="false"
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
@@ -228,10 +228,11 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
-      # Initial mapping runs record only lidar + camera sensor data at 424x240x30.
+      # Initial mapping runs keep the stereo-gray left/right sensors at 424x240x90
+      # and enable crop perception so recorded bags already contain /perception/crop/*.
       set_extra_arg_value "image_width" "424"
       set_extra_arg_value "image_height" "240"
-      set_extra_arg_value "image_fps" "30.0"
+      set_extra_arg_value "image_fps" "90.0"
       ;;
     *)
       echo "Unknown mode: $1" >&2

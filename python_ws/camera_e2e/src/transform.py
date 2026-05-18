@@ -79,6 +79,41 @@ class ResizeImage:
         return sample
 
 
+class ConvertToGray3Channel:
+    """RGB/mono入力を 3ch grayscale に正規化する。"""
+
+    def __init__(self, enabled: bool = True):
+        self.enabled = bool(enabled)
+
+    def __call__(self, sample):
+        if not self.enabled:
+            return sample
+
+        image = sample["image"]  # (S,H,W,C) or (S,C,H,W)
+        if image.dim() != 4:
+            return sample
+
+        if image.shape[-1] in (1, 3, 4):  # NHWC
+            if image.shape[-1] == 1:
+                image = image.repeat(1, 1, 1, 3)
+            else:
+                rgb = image[..., :3].to(torch.float32)
+                gray = 0.2989 * rgb[..., 0] + 0.5870 * rgb[..., 1] + 0.1140 * rgb[..., 2]
+                image = gray.unsqueeze(-1).repeat(1, 1, 1, 3)
+            sample["image"] = image.to(sample["image"].dtype)
+            return sample
+
+        # NCHW
+        if image.shape[1] == 1:
+            image = image.repeat(1, 3, 1, 1)
+        else:
+            rgb = image[:, :3, :, :].to(torch.float32)
+            gray = 0.2989 * rgb[:, 0, :, :] + 0.5870 * rgb[:, 1, :, :] + 0.1140 * rgb[:, 2, :, :]
+            image = gray.unsqueeze(1).repeat(1, 3, 1, 1)
+        sample["image"] = image.to(sample["image"].dtype)
+        return sample
+
+
 class NormalizeImage:
     """uint8画像を [0,1] に正規化し、NCHW に変換して標準化する。"""
 

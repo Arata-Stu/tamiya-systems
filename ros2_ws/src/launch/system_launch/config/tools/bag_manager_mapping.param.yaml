@@ -33,3 +33,6 @@
       # - /localization_result
       # - /amcl_pose
       # - /initialpose
+      - /perception/crop/image
+      - /perception/crop/camera_info
+      - /perception/crop/roi

@@ -20,8 +20,8 @@ class PilotNetControl(nn.Module):
         self,
         num_outputs: int = 2,
         input_channels: int = 3,
-        input_height: int = 240,  # 今回の学習サイズをデフォルトに設定
-        input_width: int = 320,
+        input_height: int = 120,
+        input_width: int = 212,
     ):
         super().__init__()
         self.conv1 = nn.Conv2d(input_channels, 24, kernel_size=5, stride=2)

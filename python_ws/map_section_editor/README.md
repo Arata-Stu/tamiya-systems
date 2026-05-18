@@ -20,8 +20,8 @@ python3 map_section_editor/map_cleanup_editor.py \
 操作:
 
 - 左ドラッグ: 現在のブラシ色で描画
-- `b`: 黒で塗る
-- `e`: 白で戻す
+- `b` または上部 `Black` ボタン: 黒で塗る
+- `e` または上部 `White` ボタン: 白で戻す
 - `i` または右上の `Help` ボタン: 説明パネルの表示/非表示
 - `u`: undo
 - `r`: 今回開いた状態に戻す

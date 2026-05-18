@@ -11,7 +11,7 @@ from tqdm import tqdm
 from src.dataset import MultiImageSequenceDataset
 from src.loss import ControlLoss
 from src.model import PilotNetControl
-from src.transform import AddImageNoise, Compose, CropImage, NormalizeImage, ResizeImage
+from src.transform import AddImageNoise, Compose, ConvertToGray3Channel, CropImage, NormalizeImage, ResizeImage
 
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device):
@@ -58,6 +58,7 @@ def main(cfg: DictConfig) -> None:
         [
             CropImage(top_ratio=cfg.dataset.crop_top_ratio, bottom_ratio=cfg.dataset.crop_bottom_ratio),
             ResizeImage(height=cfg.dataset.image_height, width=cfg.dataset.image_width),
+            ConvertToGray3Channel(enabled=cfg.dataset.force_grayscale_3ch),
             NormalizeImage(mean=cfg.dataset.pixel_mean, std=cfg.dataset.pixel_std),
             AddImageNoise(std=cfg.dataset.image_noise_std),
         ]
@@ -66,6 +67,7 @@ def main(cfg: DictConfig) -> None:
         [
             CropImage(top_ratio=cfg.dataset.crop_top_ratio, bottom_ratio=cfg.dataset.crop_bottom_ratio),
             ResizeImage(height=cfg.dataset.image_height, width=cfg.dataset.image_width),
+            ConvertToGray3Channel(enabled=cfg.dataset.force_grayscale_3ch),
             NormalizeImage(mean=cfg.dataset.pixel_mean, std=cfg.dataset.pixel_std),
         ]
     )
@@ -150,4 +152,3 @@ def main(cfg: DictConfig) -> None:
 
 if __name__ == "__main__":
     main()
-

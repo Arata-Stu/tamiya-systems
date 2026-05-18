@@ -100,8 +100,8 @@ if __name__ == "__main__":
     parser.add_argument("-c", "--checkpoint", type=str, required=True)
     parser.add_argument("-o", "--output", type=str, default=None)
     parser.add_argument("--channels", type=int, default=3)
-    parser.add_argument("--height", type=int, default=240)
-    parser.add_argument("--width", type=int, default=320)
+    parser.add_argument("--height", type=int, default=120)
+    parser.add_argument("--width", type=int, default=212)
     parser.add_argument("--num_outputs", type=int, default=2)
     parser.add_argument(
         "--mean",

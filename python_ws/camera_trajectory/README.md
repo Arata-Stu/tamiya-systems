@@ -9,9 +9,11 @@ cd python_ws/camera_trajectory
 ./1_create_dataset.sh \
   -b /path/to/rosbags \
   -o ./datasets \
-  --image_topic /realsense2_camera/color/image_raw \
+  --image_topic /camera/left/image_raw \
   --pose_topic /visual_slam/tracking/odometry
 ```
+
+システム既定の構成では、RealSense の `left gray 424x240` を入力に使う想定です。
 
 `--pose_topic` は以下を想定しています。
 

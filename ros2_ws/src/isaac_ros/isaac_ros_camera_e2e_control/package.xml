@@ -39,6 +39,7 @@ SPDX-License-Identifier: Apache-2.0
 
   <build_depend>isaac_ros_common</build_depend>
   <exec_depend>isaac_ros_dnn_image_encoder</exec_depend>
+  <exec_depend>isaac_ros_image_proc</exec_depend>
   <exec_depend>isaac_ros_triton</exec_depend>
   <exec_depend>control_filter</exec_depend>
 

@@ -247,7 +247,7 @@ def main() -> None:
     group.add_argument("--seq_dirs", nargs="+", help="List of specific sequence directories to process")
 
     parser.add_argument("--outdir", required=True, help="Output root directory")
-    parser.add_argument("--image_topic", default="/realsense2_camera/color/image_raw", help="Image topic name")
+    parser.add_argument("--image_topic", default="/camera/left/image_raw", help="Image topic name")
     parser.add_argument(
         "--pose_topic",
         default="/visual_slam/tracking/odometry",

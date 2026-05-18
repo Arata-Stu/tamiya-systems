@@ -3,7 +3,7 @@
        default="$(find-pkg-share system_launch)/config/perception/scan_image_projection_cropper.param.yaml" />
   <arg name="scan_topic" default="/scan" />
 
-  <arg name="camera_source" default="color" />
+  <arg name="camera_source" default="left" />
   <arg name="input_image_topic" default="" />
   <arg name="input_camera_info_topic" default="" />
   <arg name="use_rectify" default="true" />

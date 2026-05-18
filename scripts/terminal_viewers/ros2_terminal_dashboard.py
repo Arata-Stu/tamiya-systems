@@ -23,7 +23,7 @@ from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
-from sensor_msgs.msg import CompressedImage, Image, LaserScan
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image, LaserScan
 from std_msgs.msg import String
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -39,6 +39,41 @@ except ImportError:  # pragma: no cover
 Color = tuple[int, int, int]
 
 
+def derive_camera_info_topic(image_topic: str) -> str:
+    topic = image_topic.rstrip("/")
+    if topic.endswith("/compressed"):
+        topic = topic[: -len("/compressed")]
+    for suffix in ("/image_rect_raw", "/image_rect", "/image_raw", "/image_color", "/image_mono", "/image"):
+        if topic.endswith(suffix):
+            return topic[: -len(suffix)] + "/camera_info"
+    return topic + "/camera_info"
+
+
+def transform_xyz(x: float, y: float, z: float, transform: object) -> tuple[float, float, float]:
+    tx = float(transform.translation.x)
+    ty = float(transform.translation.y)
+    tz = float(transform.translation.z)
+    qx = float(transform.rotation.x)
+    qy = float(transform.rotation.y)
+    qz = float(transform.rotation.z)
+    qw = float(transform.rotation.w)
+
+    xx = qx * qx
+    yy = qy * qy
+    zz = qz * qz
+    xy = qx * qy
+    xz = qx * qz
+    yz = qy * qz
+    wx = qw * qx
+    wy = qw * qy
+    wz = qw * qz
+
+    rx = (1.0 - 2.0 * (yy + zz)) * x + 2.0 * (xy - wz) * y + 2.0 * (xz + wy) * z
+    ry = 2.0 * (xy + wz) * x + (1.0 - 2.0 * (xx + zz)) * y + 2.0 * (yz - wx) * z
+    rz = 2.0 * (xz - wy) * x + 2.0 * (yz + wx) * y + (1.0 - 2.0 * (xx + yy)) * z
+    return tx + rx, ty + ry, tz + rz
+
+
 @dataclass
 class DashboardState:
     map_state: Optional[MapState] = None
@@ -47,11 +82,15 @@ class DashboardState:
     initial_pose: Optional[Pose2D] = None
     scan: Optional[LaserScan] = None
     image_rgb: Optional[np.ndarray] = None
+    camera_info: Optional[CameraInfo] = None
     particles: Optional[PoseArray] = None
     path: Optional[Path] = None
     current_section: str = "-"
     frames: int = 0
+    image_frame_id: str = ""
+    image_stamp: Optional[object] = None
     last_image_error: str = ""
+    last_projection_error: str = ""
 
 
 class TerminalDashboard(Node):
@@ -125,6 +164,8 @@ class TerminalDashboard(Node):
                 self.create_subscription(CompressedImage, args.image_topic, self.on_compressed_image, sensor_qos)
             else:
                 self.create_subscription(Image, args.image_topic, self.on_image, sensor_qos)
+        if args.image_topic and args.camera_info_topic:
+            self.create_subscription(CameraInfo, args.camera_info_topic, self.on_camera_info, sensor_qos)
         if args.particles_topic:
             self.create_subscription(PoseArray, args.particles_topic, self.on_particles, sensor_qos)
         if args.path_topic:
@@ -177,9 +218,15 @@ class TerminalDashboard(Node):
     def on_scan(self, msg: LaserScan) -> None:
         self.state.scan = msg
 
+    def on_camera_info(self, msg: CameraInfo) -> None:
+        self.state.camera_info = msg
+        self.state.last_projection_error = ""
+
     def on_image(self, msg: Image) -> None:
         try:
             self.state.image_rgb = raw_image_to_rgb(msg)
+            self.state.image_frame_id = msg.header.frame_id
+            self.state.image_stamp = msg.header.stamp
             self.state.last_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_image_error = str(exc)
@@ -187,6 +234,8 @@ class TerminalDashboard(Node):
     def on_compressed_image(self, msg: CompressedImage) -> None:
         try:
             self.state.image_rgb = compressed_image_to_rgb(msg)
+            self.state.image_frame_id = msg.header.frame_id
+            self.state.image_stamp = msg.header.stamp
             self.state.last_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_image_error = str(exc)
@@ -226,14 +275,13 @@ class TerminalDashboard(Node):
         else:
             self.section_markers[(marker.ns, marker.id)] = marker
 
-    def lookup_transform(self, source_frame: str, stamp: object) -> Optional[object]:
-        map_state = self.state.map_state
-        if map_state is None or not source_frame or source_frame == map_state.frame_id or self.tf_buffer is None:
+    def lookup_transform_between(self, target_frame: str, source_frame: str, stamp: object) -> Optional[object]:
+        if not target_frame or not source_frame or source_frame == target_frame or self.tf_buffer is None:
             return None
         try:
             when = Time.from_msg(stamp) if stamp is not None else Time()
             return self.tf_buffer.lookup_transform(
-                map_state.frame_id,
+                target_frame,
                 source_frame,
                 when,
                 timeout=Duration(seconds=self.args.tf_timeout),
@@ -241,13 +289,19 @@ class TerminalDashboard(Node):
         except Exception:
             try:
                 return self.tf_buffer.lookup_transform(
-                    map_state.frame_id,
+                    target_frame,
                     source_frame,
                     Time(),
                     timeout=Duration(seconds=self.args.tf_timeout),
                 ).transform
             except Exception:
                 return None
+
+    def lookup_transform(self, source_frame: str, stamp: object) -> Optional[object]:
+        map_state = self.state.map_state
+        if map_state is None:
+            return None
+        return self.lookup_transform_between(map_state.frame_id, source_frame, stamp)
 
     def pose_in_map(self, pose: Optional[Pose2D]) -> Optional[Pose2D]:
         map_state = self.state.map_state
@@ -452,12 +506,100 @@ class TerminalDashboard(Node):
             return
         x0, y0, w, h = rect
         canvas[y0 : y0 + h, x0 : x0 + w] = (18, 19, 22)
+        if self.toggles["scan"]:
+            image = self.draw_scan_on_image(image)
         rgb = resize_to_fit(image, w, h)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         ih, iw = bgr.shape[:2]
         ox = x0 + (w - iw) // 2
         oy = y0 + (h - ih) // 2
         canvas[oy : oy + ih, ox : ox + iw] = bgr
+
+    def draw_scan_on_image(self, image_rgb: np.ndarray) -> np.ndarray:
+        scan = self.state.scan
+        if scan is None:
+            return image_rgb
+
+        overlay = image_rgb.copy()
+
+        def draw_status(text: str, color: Color) -> np.ndarray:
+            cv2.putText(overlay, text[:48], (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+            cv2.putText(overlay, text[:48], (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1, cv2.LINE_AA)
+            return overlay
+
+        camera_info = self.state.camera_info
+        if camera_info is None:
+            self.state.last_projection_error = "camera_info missing"
+            return draw_status("scan proj: camera_info missing", (255, 120, 120))
+
+        camera_frame = camera_info.header.frame_id or self.state.image_frame_id
+        if not camera_frame:
+            self.state.last_projection_error = "camera frame unavailable"
+            return draw_status("scan proj: camera frame unavailable", (255, 120, 120))
+
+        tf = self.lookup_transform_between(camera_frame, scan.header.frame_id, scan.header.stamp)
+        if tf is None and scan.header.frame_id != camera_frame and not self.args.assume_same_frame:
+            self.state.last_projection_error = f"no TF {scan.header.frame_id}->{camera_frame}"
+            return draw_status("scan proj: TF unavailable", (255, 120, 120))
+
+        if len(camera_info.p) >= 12 and (abs(float(camera_info.p[0])) > 1e-9 or abs(float(camera_info.p[5])) > 1e-9):
+            fx = float(camera_info.p[0])
+            fy = float(camera_info.p[5])
+            cx = float(camera_info.p[2])
+            cy = float(camera_info.p[6])
+        elif len(camera_info.k) >= 9:
+            fx = float(camera_info.k[0])
+            fy = float(camera_info.k[4])
+            cx = float(camera_info.k[2])
+            cy = float(camera_info.k[5])
+        else:
+            self.state.last_projection_error = "camera intrinsics unavailable"
+            return draw_status("scan proj: intrinsics unavailable", (255, 120, 120))
+
+        image_h, image_w = overlay.shape[:2]
+        visible = 0
+        sampled = 0
+        angle = float(scan.angle_min)
+        stride = max(1, self.args.scan_stride)
+        radius = max(1, self.args.scan_radius)
+
+        for idx, raw in enumerate(scan.ranges):
+            if idx % stride != 0:
+                angle += scan.angle_increment
+                continue
+
+            sampled += 1
+            r = float(raw)
+            if not math.isfinite(r) or r < scan.range_min or r > scan.range_max:
+                angle += scan.angle_increment
+                continue
+
+            x = math.cos(angle) * r
+            y = math.sin(angle) * r
+            z = 0.0
+            if tf is not None:
+                x, y, z = transform_xyz(x, y, z, tf)
+
+            if z <= 1e-6:
+                angle += scan.angle_increment
+                continue
+
+            u = fx * (x / z) + cx
+            v = fy * (y / z) + cy
+            if 0.0 <= u < image_w and 0.0 <= v < image_h:
+                depth_alpha = min(1.0, max(0.0, z / max(scan.range_max, 1e-3)))
+                color = (
+                    255,
+                    int(round(220.0 - 120.0 * depth_alpha)),
+                    int(round(60.0 + 120.0 * depth_alpha)),
+                )
+                cv2.circle(overlay, (int(round(u)), int(round(v))), radius, color, -1, cv2.LINE_AA)
+                visible += 1
+            angle += scan.angle_increment
+
+        self.state.last_projection_error = ""
+        status = f"scan proj {visible}/{sampled}"
+        return draw_status(status, (255, 255, 255))
 
     def draw_empty_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int], text: str) -> None:
         x0, y0, w, h = rect
@@ -527,9 +669,10 @@ class TerminalDashboard(Node):
         init = self.pose_status(self.state.initial_pose)
         scan = self.state.scan.header.frame_id if self.state.scan is not None else "-"
         image = "yes" if self.state.image_rgb is not None else "-"
+        camera_info = "yes" if self.state.camera_info is not None else "-"
         flags = " ".join(f"{k[0]}:{'1' if v else '0'}" for k, v in self.toggles.items())
         text = (
-            f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} image={image} "
+            f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} image={image} caminfo={camera_info} "
             f"section={self.state.current_section} {flags} keys: m/l/a/u/s/i/c/g/p/t, space, q {self.last_key_status}"
         )
         cv2.putText(canvas, text[:210], (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (235, 235, 235), 1, cv2.LINE_AA)
@@ -566,7 +709,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--amcl-pose-topic", default="/amcl_pose")
     parser.add_argument("--initial-pose-topic", default="/initialpose")
     parser.add_argument("--scan-topic", default="/scan")
-    parser.add_argument("--image-topic", default="/realsense2_camera/color/image_raw")
+    parser.add_argument("--image-topic", default="/camera/left/image_raw")
+    parser.add_argument("--camera-info-topic", default=None)
     parser.add_argument("--compressed-image", action="store_true")
     parser.add_argument("--particles-topic", default="/particle_cloud")
     parser.add_argument("--path-topic", default="/visual_slam/tracking/slam_path")
@@ -586,7 +730,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--particle-stride", type=int, default=1)
     parser.add_argument("--image-panel-ratio", type=float, default=0.34)
     parser.add_argument("--png-compression", type=int, default=3)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.camera_info_topic is None and args.image_topic:
+        args.camera_info_topic = derive_camera_info_topic(args.image_topic)
+    return args
 
 
 def main() -> int:

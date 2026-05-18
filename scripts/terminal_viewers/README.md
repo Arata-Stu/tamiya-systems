@@ -6,7 +6,7 @@ Kitty-compatible terminal visualization tools for SSH-first ROS debugging.
 - `ros2_terminal_image_viewer.py`: `sensor_msgs/Image` and `CompressedImage` viewer.
 - `ros2_terminal_scan_viewer.py`: simple `sensor_msgs/LaserScan` viewer.
 - `ros2_terminal_map_viewer.py`: 2D map, localization result, scan, path, particles, and section markers.
-- `ros2_terminal_dashboard.py`: custom rviz-like dashboard with keyboard toggles for map, localization, scan, image, sections, gates, particles, and path.
+- `ros2_terminal_dashboard.py`: custom rviz-like dashboard with keyboard toggles for map, localization, scan, image, sections, gates, particles, and path. `camera_info` があれば image panel にも scan 投影を重ねます。
 
 ## Dashboard
 
@@ -19,7 +19,8 @@ python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py \
   --amcl-pose-topic /amcl_pose \
   --initial-pose-topic /initialpose \
   --scan-topic /scan \
-  --image-topic /camera/image_raw \
+  --image-topic /camera/left/image_raw \
+  --camera-info-topic /camera/left/camera_info \
   --best-effort
 ```
 
@@ -30,7 +31,8 @@ python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py \
   --map-topic /map \
   --localization-topic /localization_result \
   --scan-topic /scan \
-  --image-topic /camera/image_raw/compressed \
+  --image-topic /camera/left/image_raw/compressed \
+  --camera-info-topic /camera/left/camera_info \
   --compressed-image \
   --best-effort
 ```
@@ -41,7 +43,7 @@ Keyboard controls:
 - `l`: localization result
 - `a`: AMCL pose
 - `u`: AMCL initial pose
-- `s`: scan
+- `s`: scan。map overlay と image projection の両方を切り替え
 - `i`: image
 - `c`: sections
 - `g`: section gates

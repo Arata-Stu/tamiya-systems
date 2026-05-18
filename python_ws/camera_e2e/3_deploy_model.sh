@@ -22,8 +22,8 @@ KEEP_VERSIONS="false"
 PYTHON_CONVERT_SCRIPT="${SCRIPT_DIR}/export_onnx.py"
 
 CHANNELS="3"
-HEIGHT="240"
-WIDTH="320"
+HEIGHT="120"
+WIDTH="212"
 
 show_help() {
   cat <<EOF

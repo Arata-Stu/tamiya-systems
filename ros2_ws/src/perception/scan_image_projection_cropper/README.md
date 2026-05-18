@@ -23,15 +23,15 @@
 
 ## 使い方
 
-この node の後段に `isaac_ros_image_proc` の `ResizeNode` や `PadNode` をつないで、分類器入力サイズへ揃える想定です。
+この node 自体で、scan から決めた ROI を固定サイズへ `resize + pad` して publish できます。
 
 ```xml
 <include file="$(find-pkg-share scan_image_projection_cropper)/launch/scan_image_projection_cropper.launch.xml">
   <arg name="scan_topic" value="/scan"/>
   <arg name="image_topic" value="/camera/left/image_rect"/>
   <arg name="camera_info_topic" value="/camera/left/camera_info_rect"/>
-  <arg name="debug_input_image_topic" value="/realsense2_camera/color/image_raw"/>
-  <arg name="debug_input_camera_info_topic" value="/realsense2_camera/color/camera_info"/>
+  <arg name="debug_input_image_topic" value="/camera/left/image_raw"/>
+  <arg name="debug_input_camera_info_topic" value="/camera/left/camera_info"/>
 </include>
 ```
 
@@ -42,5 +42,7 @@
 - `min_cluster_width_m`, `max_cluster_width_m`: 対象クラスタの物理幅レンジ
 - `horizontal_padding_px`: 横方向の余白
 - `bottom_padding_px`: scan で見えた高さから下側へ足す余白
+- `output_image_width_px`, `output_image_height_px`: 出力 crop の固定サイズ
+- `output_padding_value`: pad 部分の画素値
 - `candidate_selection_mode`: `closest` または `widest`
 - `debug`: debug overlay publish の on/off

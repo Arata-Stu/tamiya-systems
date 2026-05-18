@@ -13,7 +13,7 @@
     tf_publish_rate: 0.0
     
     # センサーの有効/無効
-    enable_color: true
+    enable_color: false
     enable_depth: false
     enable_rgbd: false
     enable_infra1: true
