@@ -52,9 +52,9 @@ install_default_stack() {
 install_compat_stack() {
     "${PIP_BIN}" uninstall -y trajectory-planning-helpers quadprog || true
     "${PIP_BIN}" install --no-cache-dir "Cython<3" wheel
-    if ! "${PIP_BIN}" install --no-cache-dir --no-build-isolation "quadprog==0.1.6"; then
+    if ! "${PIP_BIN}" install --no-cache-dir --no-build-isolation "quadprog==0.1.7"; then
         cat >&2 <<'EOF'
-[global-opt] Failed to build quadprog==0.1.6.
+[global-opt] Failed to build quadprog==0.1.7.
 If the error mentions Python.h or missing compiler headers, install python3-dev/build-essential in the image first.
 EOF
         return 1
