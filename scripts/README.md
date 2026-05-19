@@ -47,6 +47,7 @@ keyboard. `--camera-info-topic` を与えると image panel にも LaserScan を
 
 ```bash
 ./scripts/launch_system.sh identification
+./scripts/launch_system.sh production --set use_map_controller=true
 ./scripts/launch_system.sh localization_eval --set map_dir=/map/course_a
 ./scripts/launch_system.sh perception_eval
 ./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a

@@ -1,0 +1,38 @@
+/**:
+  ros__parameters:
+    expected_frame_id: base_link
+    wheelbase: 0.26
+    min_kinematic_speed_for_steer: 0.20
+    min_forward_distance: 0.02
+
+    m_l1: 0.60
+    q_l1: 0.20
+    t_clip_min: 0.35
+    t_clip_max: 1.20
+
+    speed_lookahead: 0.25
+    speed_lookahead_for_steer: 0.00
+
+    min_speed: 0.10
+    max_speed: 0.30
+    fallback_speed: 0.25
+    lat_err_coeff: 1.00
+    lateral_error_clip_m: 0.50
+    curvature_normalization: 0.80
+    curvature_window_points: 20
+
+    steering_limit: 0.45
+    max_steering_delta: 0.12
+
+    acc_scaler_for_steer: 1.00
+    dec_scaler_for_steer: 1.00
+    accel_scale_threshold: 1.00
+    decel_scale_threshold: -1.00
+    start_scale_speed: 10.00
+    end_scale_speed: 11.00
+    downscale_factor: 0.00
+
+    lookup_table_csv_path: ""
+    use_lookup_table: true
+    stop_on_invalid_reference: true
+    debug: false

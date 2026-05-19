@@ -64,6 +64,7 @@ BOOL_KEYS=(
   use_magp_rl_trajectory
   magp_rl_run_pure_pursuit
   use_pure_pursuit
+  use_map_controller
   use_sim_time
   publish_map
   map_server_use_sim_time
@@ -87,6 +88,7 @@ ARG_use_perception_classifier="false"
 ARG_use_magp_rl_trajectory="false"
 ARG_magp_rl_run_pure_pursuit="false"
 ARG_use_pure_pursuit="false"
+ARG_use_map_controller="false"
 ARG_use_sim_time="false"
 ARG_publish_map="false"
 ARG_map_server_use_sim_time="false"
@@ -209,7 +211,7 @@ set_arg() {
   fi
 
   case "$key" in
-    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_perception|use_perception_classifier|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
+    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_perception|use_perception_classifier|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_map_controller|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|section_localizer_debug_mode|enable_localization_and_mapping)
       value="$(normalize_bool "$value")"
       var_name="ARG_${key}"
       printf -v "$var_name" '%s' "$value"
@@ -244,6 +246,7 @@ apply_mode() {
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
       ARG_use_sim_time="false"
       ARG_publish_map="true"
       ARG_map_server_use_sim_time="false"
@@ -268,6 +271,7 @@ apply_mode() {
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -298,6 +302,7 @@ apply_mode() {
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -325,6 +330,7 @@ apply_mode() {
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
       ARG_use_sim_time="false"
       ARG_publish_map="true"
       ARG_map_server_use_sim_time="false"
@@ -352,6 +358,7 @@ apply_mode() {
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -379,6 +386,7 @@ apply_mode() {
       ARG_use_magp_rl_trajectory="false"
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"

@@ -13,6 +13,7 @@
     <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
     <arg name="magp_rl_run_pure_pursuit" default="false" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
+    <arg name="use_map_controller" default="false" description="run MAP controller for trajectory_reference"/>
     <arg name="use_sim_time" default="false" />
     <arg name="publish_map" default="false" />
     <arg name="map_server_use_sim_time" default="false" />
@@ -59,6 +60,9 @@
     <arg name="magp_rl_decoder_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/rl_trajectory_decoder_node.param.yaml" />
     <arg name="magp_rl_scan_topic" default="/scan" />
     <arg name="magp_rl_scan_tensor_topic" default="/encoder/scan_tensor" />
+    <arg name="map_controller_param" default="$(find-pkg-share system_launch)/config/control/map_controller.param.yaml" />
+    <arg name="map_controller_reference_topic" default="/autonomous/trajectory_reference" />
+    <arg name="map_controller_odometry_topic" default="/visual_slam/tracking/odometry" />
     <arg name="pure_pursuit_param" default="$(find-pkg-share system_launch)/config/control/pure_pursuit_controller.param.yaml" />
     <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
     <arg name="pure_pursuit_velocity_topic" default="/current_velocity" />
@@ -267,6 +271,16 @@
             <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
             <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)"/>
             <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)"/>
+        </include>
+    </group>
+
+    <!-- MAP Controller for local trajectory reference -->
+    <group if="$(var use_map_controller)">
+        <include file="$(find-pkg-share map_controller)/launch/map_controller.launch.xml">
+            <arg name="map_controller_param" value="$(var map_controller_param)"/>
+            <arg name="trajectory_reference_topic" value="$(var map_controller_reference_topic)"/>
+            <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="odometry_topic" value="$(var map_controller_odometry_topic)"/>
         </include>
     </group>
 

@@ -1,0 +1,17 @@
+<launch>
+  <arg name="map_controller_param"
+       default="$(find-pkg-share map_controller)/config/map_controller.param.yaml"/>
+  <arg name="trajectory_reference_topic" default="/autonomous/trajectory_reference"/>
+  <arg name="drive_topic" default="/autonomous/cmd_drive"/>
+  <arg name="odometry_topic" default="/visual_slam/tracking/odometry"/>
+
+  <node pkg="map_controller"
+        exec="map_controller_node"
+        name="map_controller_node"
+        output="screen">
+    <param from="$(var map_controller_param)"/>
+    <remap from="trajectory_reference" to="$(var trajectory_reference_topic)"/>
+    <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
+    <remap from="odometry" to="$(var odometry_topic)"/>
+  </node>
+</launch>

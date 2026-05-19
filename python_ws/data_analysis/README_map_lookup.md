@@ -57,6 +57,19 @@ ros2 service call /bag_manager_node/stop_recording std_srvs/srv/Trigger "{}"
 
 bag は通常 `/record/<session_timestamp>/<take_timestamp>/` 以下に保存されます。
 
+## offline VSLAM について
+
+はい、offline でも進められます。最低限
+
+- stereo camera image
+- camera_info
+- tf / tf_static
+- cmd_drive
+
+が bag に入っていれば、あとから rosbag 再生で VSLAM を動かして odometry を生成し、その odom を使って lookup を作る流れは成立します。
+
+今回の `build_map_steering_lookup.py` 自体は `odom + cmd_drive` を入力にするので、offline でやる場合は「先に VSLAM を再実行して odom を得る」段階が 1 回増える、というイメージです。
+
 ## 収録のしかた
 
 LUT 品質を上げるコツは「速度」と「操舵」を一度に大きく振らず、なるべく定常状態のサンプルを増やすことです。
