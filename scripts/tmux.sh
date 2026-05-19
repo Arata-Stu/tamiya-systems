@@ -80,7 +80,7 @@ CMD_PRODUCTION="bash ${LAUNCH_SYSTEM_SH} production --set map_dir=<map_dir>"
 CMD_MONITOR="bash ${MONITOR_SH}"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 CMD_CREATE_VSLAM_MAP="bash ${CREATE_VSLAM_MAP_SH} --mode vslam --rate 1.0"
-CMD_CREATE_MAP="bash ${CREATE_MAP_SH} --mode 2d_slam --rate 1.0"
+CMD_CREATE_MAP="bash ${CREATE_MAP_SH} --mode no_odom_online_vslam --rate 1.0"
 CMD_IDENTIFICATION="bash ${LAUNCH_SYSTEM_SH} identification"
 CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
 CMD_LOCALIZATION_EVAL="bash ${LAUNCH_SYSTEM_SH} localization_eval --set map_dir=<map_dir>"

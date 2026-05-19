@@ -135,24 +135,28 @@ Usage:
   create_2d_map_from_bag.sh [OPTIONS]
 
 Options:
-  --mode NAME         default|2d_slam (default: default)
+  --mode NAME         no_odom_offline_vslam|no_odom_online_vslam|
+                      with_odom_offline_vslam|with_odom_online_vslam
+                      aliases: default=no_odom_offline_vslam,
+                               2d_slam=no_odom_online_vslam
   --bag-path DIR      input rosbag2 directory (skip interactive selection)
   --map-name NAME     output map name (skip interactive prompt)
   --scan-topic TOPIC  scan topic for cartographer (default: /scan)
   --rate RATE         ros2 bag play rate (default: 1.0)
-  --odom-topic TOPIC  use odometry topic and enable odometry in cartographer
-                      /visual_slam/tracking/odometry is no longer supported
-  --run-vslam         run VSLAM in parallel and save a VSLAM map during 2D map creation
-  --no-vslam          do not launch VSLAM unless implied by --mode 2d_slam
+  --odom-topic TOPIC  enable odometry in cartographer and set the odom topic
+                      default for with_odom_* modes: /visual_slam/tracking/odometry
+  --run-vslam         compatibility override: force online_vslam execution
+  --no-vslam          compatibility override: force offline_vslam execution
   --vslam-vis         enable VSLAM visualization topics during parallel VSLAM execution
   --no-vslam-vis      disable VSLAM visualization topics (default)
-  --image-width PX    camera width for offline vslam launch (default: 424)
-  --image-height PX   camera height for offline vslam launch (default: 240)
-  --image-fps FPS     camera fps for offline vslam launch (default: 90.0)
+  --image-width PX    camera width for parallel VSLAM launch (default: 424)
+  --image-height PX   camera height for parallel VSLAM launch (default: 240)
+  --image-fps FPS     camera fps for parallel VSLAM launch (default: 90.0)
   --with-imu          replay /camera/imu as well (default: disabled)
   --vslam-map-dir DIR visual slam map output directory
   --pipeline-mode MODE
-                      online|auto (default: auto; auto becomes online when VSLAM is enabled)
+                      offline|online|auto
+                      compatibility override for VSLAM execution mode
   --play-all-topics   play all topics in bag (default: play only needed topics)
   --record-root DIR   rosbag探索ルート (default: /record)
   --no-scp            skip interactive scp transfer step
@@ -190,11 +194,26 @@ Options:
                       path to visualize_race_lines.py (auto-detect by default)
   -h, --help          show this help
 
+When --mode is omitted:
+  the script interactively prompts you to choose one of the 4 mode presets
+
+Mode presets:
+  no_odom_offline_vslam:
+      Cartographer は scan-only。VSLAM はこのスクリプトでは起動しない
+  no_odom_online_vslam:
+      Cartographer は scan-only。bag replay と同時に VSLAM も起動する
+  with_odom_offline_vslam:
+      先に VSLAM map を作り、その map で odom bag を生成してから Cartographer に渡す
+  with_odom_online_vslam:
+      Cartographer は replay 中に起動した VSLAM の live odom を使う
+
 Outputs:
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pbstream
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.yaml
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
+  /map/<bag_name>/<MAP_NAME>/cuvslam_map/ (optional; generated in online VSLAM or offline odom modes)
+  /map/<bag_name>/<MAP_NAME>/offline_vslam_odom_input_<timestamp>/ (optional; generated in with_odom_offline_vslam)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline_input.png (optional; hand-edited map cleanup result)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_raceline.csv (optional; generated unless --no-raceline)
@@ -204,15 +223,16 @@ After map creation:
   optionally transfer /map/<bag_name>/<MAP_NAME>/ to remote host by scp
 
 Interactive flow:
-  1) /record を再帰探索して metadata.yaml を持つ rosbag2 ディレクトリを一覧表示
-  2) 番号で rosbag を選択
-  3) map 名を入力
-  4) Cartographer -> PNG変換
-  5) centerline 生成の可否を確認（debug はデフォルト有効）
-  6) 必要なら GUI で map PNG/PGM を黒塗り修正して保存
-  7) raceline 生成の可否を確認
-  8) centerline / raceline preview画像を生成
-  9) 転送前メニューで section edit / scp / 終了 を選択
+  1) mode を選択（--mode 省略時）
+  2) /record を再帰探索して metadata.yaml を持つ rosbag2 ディレクトリを一覧表示
+  3) 番号で rosbag を選択
+  4) map 名を入力
+  5) 選択した mode に応じて Cartographer / VSLAM を実行して map を生成
+  6) centerline 生成の可否を確認（debug はデフォルト有効）
+  7) 必要なら GUI で map PNG/PGM を黒塗り修正して保存
+  8) raceline 生成の可否を確認
+  9) centerline / raceline preview画像を生成
+  10) 転送前メニューで section edit / scp / 終了 を選択
 EOF
 }
 
@@ -223,8 +243,11 @@ SCAN_TOPIC="/scan"
 PLAY_RATE="1.0"
 ODOM_TOPIC=""
 CONFIG_BASENAME="cartographer_2d.lua"
-MODE="default"
-RUN_VSLAM=false
+DEFAULT_VSLAM_ODOM_TOPIC="/visual_slam/tracking/odometry"
+MODE="no_odom_offline_vslam"
+MODE_SET_BY_USER=false
+CARTOGRAPHER_USE_ODOM=false
+RUN_VSLAM_OVERRIDE="auto"
 VSLAM_VIS_ENABLED=false
 PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
@@ -247,7 +270,11 @@ RACELINE_DIRECTION="forward"
 GLOBAL_OPTIMIZER_ROOT=""
 LINE_PREVIEW_SCRIPT_PATH=""
 RECORD_ROOT="/record"
-PIPELINE_MODE="auto"
+PIPELINE_MODE="offline"
+PIPELINE_MODE_OVERRIDE="auto"
+BAG_PATH=""
+MAP_NAME=""
+ODOM_TOPIC_SET_BY_USER=false
 # ==============================================================================
 # カメラ解像度設定
 # デフォルト値はここで変更できます。--image-width / --image-height で都度上書きも可能。
@@ -279,18 +306,31 @@ CAMERA_CONTAINER_PID=""
 CAMERA_CONTAINER_USES_SETSID=false
 VSLAM_LAUNCH_PID=""
 VSLAM_LAUNCH_USES_SETSID=false
+RECORDER_PID=""
+RECORDER_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 SOURCE_PLAY_TOPICS=()
+OFFLINE_ODOM_BAG_DIR=""
+OFFLINE_ODOM_BAG_CREATED=false
+VSLAM_LOCALIZATION_PARAM_PATH=""
 
 apply_mode() {
     case "$1" in
-        default)
+        default|no_odom_offline_vslam)
+            CARTOGRAPHER_USE_ODOM=false
+            PIPELINE_MODE="offline"
             ;;
-        2d_slam)
-            ODOM_TOPIC=""
-            CONFIG_BASENAME="cartographer_2d.lua"
-            RUN_VSLAM=true
+        2d_slam|no_odom_online_vslam)
+            CARTOGRAPHER_USE_ODOM=false
+            PIPELINE_MODE="online"
+            ;;
+        with_odom_offline_vslam)
+            CARTOGRAPHER_USE_ODOM=true
+            PIPELINE_MODE="offline"
+            ;;
+        with_odom_online_vslam)
+            CARTOGRAPHER_USE_ODOM=true
             PIPELINE_MODE="online"
             ;;
         *)
@@ -299,6 +339,116 @@ apply_mode() {
             exit 1
             ;;
     esac
+}
+
+prompt_mode_interactive() {
+    local choice
+
+    echo ""
+    echo "2D map 作成 mode を選択してください:"
+    echo "  1) no_odom_offline_vslam   Cartographer=scan-only / VSLAMは別実行"
+    echo "  2) no_odom_online_vslam    Cartographer=scan-only / 今回の実行でVSLAMも起動"
+    echo "  3) with_odom_offline_vslam 先にVSLAM map + odom bagを作ってからCartographer"
+    echo "  4) with_odom_online_vslam  Cartographer=live VSLAM odom使用 / 今回の実行でVSLAMも起動"
+    echo ""
+
+    while :; do
+        read -r -p "番号で選択してください (1-4, Enterで '1'): " choice
+        choice="${choice:-1}"
+        case "${choice}" in
+            1)
+                MODE="no_odom_offline_vslam"
+                return 0
+                ;;
+            2)
+                MODE="no_odom_online_vslam"
+                return 0
+                ;;
+            3)
+                MODE="with_odom_offline_vslam"
+                return 0
+                ;;
+            4)
+                MODE="with_odom_online_vslam"
+                return 0
+                ;;
+            *)
+                echo "無効な入力です。1-4 を選択してください。"
+                ;;
+        esac
+    done
+}
+
+resolve_vslam_param_file() {
+    resolve_system_launch_config_file "localization/vslam.param.yaml"
+}
+
+create_vslam_localization_param() {
+    local base_param
+    local temp_param
+
+    base_param="$(resolve_vslam_param_file || true)"
+    if [ -z "${base_param}" ] || [ ! -f "${base_param}" ]; then
+        echo "Failed to resolve vslam.param.yaml for offline localization." >&2
+        return 1
+    fi
+
+    temp_param="$(mktemp /tmp/create_2d_map_vslam_param_XXXXXX.yaml)"
+    sed 's/^\([[:space:]]*localize_on_startup:\).*/\1 true/' "${base_param}" > "${temp_param}"
+
+    if ! grep -Eq '^[[:space:]]*localize_on_startup:[[:space:]]*true[[:space:]]*$' "${temp_param}"; then
+        echo "Failed to enable localize_on_startup in ${temp_param}." >&2
+        return 1
+    fi
+
+    VSLAM_LOCALIZATION_PARAM_PATH="${temp_param}"
+}
+
+launch_vslam_stack() {
+    local tf_log_path="$1"
+    local vslam_log_path="$2"
+    local save_map_path="${3:-}"
+    local load_map_path="${4:-}"
+    local vslam_param_path="${5:-}"
+    local -a launch_args=(
+        "image_width:=${IMAGE_WIDTH}"
+        "image_height:=${IMAGE_HEIGHT}"
+        "camera_container_name:=${CAMERA_CONTAINER_NAME}"
+        "enable_localization_and_mapping:=true"
+        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}"
+        "enable_observations_view:=${VSLAM_VIS_ENABLED}"
+        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}"
+    )
+
+    if [ -n "${save_map_path}" ]; then
+        launch_args+=("save_map_path:=${save_map_path}")
+    fi
+
+    if [ -n "${load_map_path}" ]; then
+        launch_args+=("load_map_path:=${load_map_path}")
+    fi
+
+    if [ -n "${vslam_param_path}" ]; then
+        launch_args+=("vslam_param:=${vslam_param_path}")
+    fi
+
+    build_system_launch_cmd "offline_sensor_tf.launch.xml"
+    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+        "${SYSTEM_LAUNCH_CMD[@]}" \
+        > "${tf_log_path}" 2>&1
+
+    sleep 2
+
+    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
+        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
+
+    sleep 2
+
+    build_system_launch_cmd "vslam.launch.xml"
+    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
+        "${SYSTEM_LAUNCH_CMD[@]}" \
+        "${launch_args[@]}" \
+        > "${vslam_log_path}" 2>&1
 }
 
 list_cartographer_pids() {
@@ -367,6 +517,7 @@ while (($#)); do
     case "$1" in
         --mode)
             MODE="$2"
+            MODE_SET_BY_USER=true
             shift 2
             ;;
         --bag-path)
@@ -387,15 +538,15 @@ while (($#)); do
             ;;
         --odom-topic)
             ODOM_TOPIC="$2"
-            CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+            ODOM_TOPIC_SET_BY_USER=true
             shift 2
             ;;
         --run-vslam)
-            RUN_VSLAM=true
+            RUN_VSLAM_OVERRIDE="online"
             shift
             ;;
         --no-vslam)
-            RUN_VSLAM=false
+            RUN_VSLAM_OVERRIDE="offline"
             shift
             ;;
         --vslam-vis)
@@ -427,7 +578,7 @@ while (($#)); do
             shift 2
             ;;
         --pipeline-mode)
-            PIPELINE_MODE="$2"
+            PIPELINE_MODE_OVERRIDE="$2"
             shift 2
             ;;
         --play-all-topics)
@@ -539,23 +690,28 @@ while (($#)); do
     esac
 done
 
+if [ "${MODE_SET_BY_USER}" != true ]; then
+    prompt_mode_interactive
+fi
+
 apply_mode "${MODE}"
 
-case "${PIPELINE_MODE}" in
-    auto|online)
+case "${PIPELINE_MODE_OVERRIDE}" in
+    auto)
+        ;;
+    offline|online)
+        PIPELINE_MODE="${PIPELINE_MODE_OVERRIDE}"
         ;;
     full|fast)
-        echo "Legacy --pipeline-mode ${PIPELINE_MODE} has been removed. Use simultaneous VSLAM + 2D SLAM via --mode 2d_slam or --run-vslam." >&2
+        echo "Legacy --pipeline-mode ${PIPELINE_MODE_OVERRIDE} has been removed. Use one of the explicit --mode presets instead." >&2
         exit 1
         ;;
     *)
-        echo "Invalid --pipeline-mode: ${PIPELINE_MODE}" >&2
+        echo "Invalid --pipeline-mode: ${PIPELINE_MODE_OVERRIDE}" >&2
         exit 1
         ;;
 esac
 
-BAG_PATH=""
-MAP_NAME=""
 BAG_DIR_NAME=""
 BAG_OUT_DIR=""
 OUT_DIR=""
@@ -574,6 +730,89 @@ LINE_PREVIEW_CREATED=false
 MAP_LOG_PATH=""
 VSLAM_LOG_PATH=""
 TF_LOG_PATH=""
+OFFLINE_VSLAM_MAP_LOG_PATH=""
+OFFLINE_VSLAM_MAP_TF_LOG_PATH=""
+OFFLINE_VSLAM_MAP_PLAYER_LOG_PATH=""
+OFFLINE_VSLAM_ODOM_LOG_PATH=""
+OFFLINE_VSLAM_ODOM_TF_LOG_PATH=""
+OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH=""
+OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH=""
+
+if [ "${ODOM_TOPIC_SET_BY_USER}" = true ]; then
+    CARTOGRAPHER_USE_ODOM=true
+fi
+
+case "${RUN_VSLAM_OVERRIDE}" in
+    auto)
+        ;;
+    offline|online)
+        PIPELINE_MODE="${RUN_VSLAM_OVERRIDE}"
+        ;;
+    *)
+        echo "Invalid VSLAM override: ${RUN_VSLAM_OVERRIDE}" >&2
+        exit 1
+        ;;
+esac
+
+if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
+    if [ -z "${ODOM_TOPIC}" ]; then
+        ODOM_TOPIC="${DEFAULT_VSLAM_ODOM_TOPIC}"
+    fi
+    CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+else
+    ODOM_TOPIC=""
+    CONFIG_BASENAME="cartographer_2d.lua"
+fi
+
+if [ "${CARTOGRAPHER_USE_ODOM}" = true ] && [ "${ODOM_TOPIC}" != "${DEFAULT_VSLAM_ODOM_TOPIC}" ]; then
+    echo "Warning: with_odom modes assume VSLAM publishes odom on ${DEFAULT_VSLAM_ODOM_TOPIC}." >&2
+    echo "         current odom topic: ${ODOM_TOPIC}" >&2
+fi
+
+resolve_effective_mode() {
+    local odom_label="no_odom"
+    if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
+        odom_label="with_odom"
+    fi
+
+    echo "${odom_label}_${PIPELINE_MODE}_vslam"
+}
+
+describe_odom_source() {
+    if [ "${CARTOGRAPHER_USE_ODOM}" != true ]; then
+        echo "disabled"
+        return 0
+    fi
+
+    if [ "${PIPELINE_MODE}" = "online" ]; then
+        echo "live VSLAM output (${ODOM_TOPIC})"
+    elif [ "${OFFLINE_ODOM_BAG_CREATED}" = true ]; then
+        echo "offline-generated VSLAM odom bag (${ODOM_TOPIC})"
+    else
+        echo "pre-recorded odom bag (${ODOM_TOPIC})"
+    fi
+}
+
+print_mode_summary() {
+    local effective_mode
+    effective_mode="$(resolve_effective_mode)"
+
+    echo ""
+    echo "================ Map build mode ================"
+    echo "mode            : ${effective_mode}"
+    echo "source bag      : ${SOURCE_BAG_PATH}"
+    echo "cartographer bag: ${BAG_PATH}"
+    echo "scan topic      : ${SCAN_TOPIC}"
+    if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
+        echo "cartographer odom: enabled (${ODOM_TOPIC})"
+    else
+        echo "cartographer odom: disabled"
+    fi
+    echo "vslam execution : ${PIPELINE_MODE}"
+    echo "odom source     : $(describe_odom_source)"
+    echo "================================================"
+    echo ""
+}
 
 discover_rosbag_candidates() {
     local search_root="$1"
@@ -611,13 +850,100 @@ build_online_source_play_topics() {
         "/camera/right/camera_info"
     )
 
-    if [ -n "${ODOM_TOPIC}" ]; then
-        SOURCE_PLAY_TOPICS+=("${ODOM_TOPIC}")
-    fi
-
     if [ "${USE_IMU}" = true ]; then
         SOURCE_PLAY_TOPICS+=("/camera/imu")
     fi
+}
+
+prepare_offline_vslam_odom_bag() {
+    echo "[prep 1/2] Build offline VSLAM map (logs: ${OFFLINE_VSLAM_MAP_TF_LOG_PATH}, ${OFFLINE_VSLAM_MAP_LOG_PATH})"
+    mkdir -p "${VSLAM_MAP_DIR}"
+
+    launch_vslam_stack \
+        "${OFFLINE_VSLAM_MAP_TF_LOG_PATH}" \
+        "${OFFLINE_VSLAM_MAP_LOG_PATH}" \
+        "${VSLAM_MAP_DIR}"
+
+    if ! wait_for_service "/visual_slam/save_map" 60; then
+        echo "Visual SLAM service not ready for offline map build. Check log: ${OFFLINE_VSLAM_MAP_LOG_PATH}" >&2
+        exit 1
+    fi
+
+    echo "  - replay source bag to create VSLAM map"
+    if [ "${PLAY_ALL_TOPICS}" = true ]; then
+        echo "  - mode: all topics"
+        if ! play_rosbag \
+            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_MAP_PLAYER_LOG_PATH}"; then
+            exit 1
+        fi
+    else
+        build_online_source_play_topics
+        echo "  - mode: filtered topics"
+        echo "  - topics: ${SOURCE_PLAY_TOPICS[*]}"
+        if ! play_rosbag \
+            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_MAP_PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"; then
+            exit 1
+        fi
+    fi
+
+    sleep 2
+    if ! ros2 service call /visual_slam/save_map \
+        isaac_ros_visual_slam_interfaces/srv/FilePath \
+        "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null; then
+        echo "Failed to save offline VSLAM map. Check log: ${OFFLINE_VSLAM_MAP_LOG_PATH}" >&2
+        exit 1
+    fi
+
+    stop_vslam
+
+    echo "[prep 2/2] Create offline odom bag from saved VSLAM map"
+    create_vslam_localization_param
+
+    launch_vslam_stack \
+        "${OFFLINE_VSLAM_ODOM_TF_LOG_PATH}" \
+        "${OFFLINE_VSLAM_ODOM_LOG_PATH}" \
+        "" \
+        "${VSLAM_MAP_DIR}" \
+        "${VSLAM_LOCALIZATION_PARAM_PATH}"
+
+    if ! wait_for_service "/visual_slam/save_map" 60; then
+        echo "Visual SLAM service not ready for offline localization. Check log: ${OFFLINE_VSLAM_ODOM_LOG_PATH}" >&2
+        exit 1
+    fi
+
+    start_offline_odom_bag_recording "${OFFLINE_ODOM_BAG_DIR}" "${OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH}"
+    sleep 2
+
+    echo "  - replay source bag to record odom input bag"
+    if [ "${PLAY_ALL_TOPICS}" = true ]; then
+        echo "  - mode: all topics"
+        if ! play_rosbag \
+            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH}"; then
+            exit 1
+        fi
+    else
+        build_online_source_play_topics
+        echo "  - mode: filtered topics"
+        echo "  - topics: ${SOURCE_PLAY_TOPICS[*]}"
+        if ! play_rosbag \
+            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"; then
+            exit 1
+        fi
+    fi
+
+    sleep 2
+    stop_recorder
+    stop_vslam
+
+    if [ ! -f "${OFFLINE_ODOM_BAG_DIR}/metadata.yaml" ]; then
+        echo "Offline odom bag was not created correctly: ${OFFLINE_ODOM_BAG_DIR}" >&2
+        exit 1
+    fi
+
+    BAG_PATH="${OFFLINE_ODOM_BAG_DIR}"
+    OFFLINE_ODOM_BAG_CREATED=true
+
+    echo "✅ Offline odom bag generated: ${OFFLINE_ODOM_BAG_DIR}"
 }
 
 select_rosbag_path_interactive() {
@@ -685,20 +1011,10 @@ BAG_PATH_CLEAN="${BAG_PATH%/}"
 BAG_DIR_NAME="$(basename "${BAG_PATH_CLEAN}")"
 SOURCE_BAG_PATH="${BAG_PATH}"
 
-if [ "${ODOM_TOPIC}" = "/visual_slam/tracking/odometry" ]; then
-    echo "VSLAM odometry is no longer supported in create_2d_map_from_bag.sh. Run VSLAM in parallel without --odom-topic." >&2
+if [ "${PIPELINE_MODE}" = "online" ] && [ "${CARTOGRAPHER_USE_ODOM}" = true ] && [ "${PLAY_ALL_TOPICS}" = true ]; then
+    echo "--play-all-topics is not supported in with_odom_online_vslam mode." >&2
+    echo "Cartographer odom must come from the live VSLAM output, not from the replayed bag." >&2
     exit 1
-fi
-
-if [ "${RUN_VSLAM}" = true ] && [ "${PIPELINE_MODE}" = "auto" ]; then
-    PIPELINE_MODE="online"
-fi
-
-if [ "${PIPELINE_MODE}" = "online" ]; then
-    if [ "${RUN_VSLAM}" != true ]; then
-        echo "--pipeline-mode online requires --run-vslam or --mode 2d_slam." >&2
-        exit 1
-    fi
 fi
 
 # output paths
@@ -715,6 +1031,7 @@ CENTERLINE_OUTPUT_PATH="${MAP_STEM}_centerline.csv"
 RACELINE_OUTPUT_PATH="${MAP_STEM}_raceline.csv"
 LINE_PREVIEW_OUTPUT_PATH="${MAP_STEM}_lines.png"
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_ODOM_BAG_DIR="${OUT_DIR}/offline_vslam_odom_input_$(date +%Y%m%d_%H%M%S)"
 
 # validate input bags
 if [ ! -d "${SOURCE_BAG_PATH}" ] || [ ! -f "${SOURCE_BAG_PATH}/metadata.yaml" ]; then
@@ -762,6 +1079,23 @@ stop_vslam() {
     stop_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID"
     stop_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID"
     stop_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID"
+}
+
+stop_recorder() {
+    stop_background_process "RECORDER_PID" "RECORDER_USES_SETSID"
+}
+
+start_offline_odom_bag_recording() {
+    local bag_dir="$1"
+    local log_path="$2"
+
+    launch_background_process "RECORDER_PID" "RECORDER_USES_SETSID" \
+        ros2 bag record \
+        -o "${bag_dir}" \
+        "${ODOM_TOPIC}" \
+        "${SCAN_TOPIC}" \
+        /tf_static \
+        > "${log_path}" 2>&1
 }
 
 play_rosbag() {
@@ -1393,11 +1727,19 @@ convert_pbstream_to_map() {
     if [ -d "${VSLAM_MAP_DIR}" ]; then
         echo "  - ${VSLAM_MAP_DIR}/"
     fi
+    if [ "${OFFLINE_ODOM_BAG_CREATED}" = true ]; then
+        echo "  - ${OFFLINE_ODOM_BAG_DIR}/"
+    fi
 }
 
 cleanup_all() {
+    stop_recorder
     stop_vslam
     stop_cartographer
+    if [ -n "${VSLAM_LOCALIZATION_PARAM_PATH:-}" ] && [ -f "${VSLAM_LOCALIZATION_PARAM_PATH}" ]; then
+        rm -f "${VSLAM_LOCALIZATION_PARAM_PATH}"
+        VSLAM_LOCALIZATION_PARAM_PATH=""
+    fi
 }
 
 trap cleanup_all EXIT INT TERM
@@ -1405,46 +1747,43 @@ trap cleanup_all EXIT INT TERM
 if [ -z "${VSLAM_MAP_DIR}" ]; then
     VSLAM_MAP_DIR="${OUT_DIR}/cuvslam_map"
 fi
-VSLAM_LOG_PATH="/tmp/offline_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
-TF_LOG_PATH="/tmp/offline_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
-VSLAM_PLAYER_LOG_PATH="/tmp/offline_vslam_mapping_player_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_LOG_PATH="/tmp/create_2d_map_vslam_mapping_$(date +%Y%m%d_%H%M%S).log"
+TF_LOG_PATH="/tmp/create_2d_map_vslam_tf_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_PLAYER_LOG_PATH="/tmp/create_2d_map_vslam_player_$(date +%Y%m%d_%H%M%S).log"
 CARTOGRAPHER_PLAYER_LOG_PATH="/tmp/cartographer_player_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_MAP_LOG_PATH="/tmp/create_2d_map_offline_vslam_map_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_MAP_TF_LOG_PATH="/tmp/create_2d_map_offline_vslam_map_tf_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_MAP_PLAYER_LOG_PATH="/tmp/create_2d_map_offline_vslam_map_player_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_ODOM_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_ODOM_TF_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_tf_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_player_$(date +%Y%m%d_%H%M%S).log"
+OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_record_$(date +%Y%m%d_%H%M%S).log"
 
-if [ "${RUN_VSLAM}" = true ]; then
+if [ "${PIPELINE_MODE}" = "online" ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
 fi
+
+if [ "${PIPELINE_MODE}" = "offline" ] && [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
+    prepare_offline_vslam_odom_bag
+fi
+
+print_mode_summary
 
 # ==========================================
 # 1. Build maps
 # ==========================================
 if [ "${PIPELINE_MODE}" = "online" ]; then
-    echo "[1/5] Launch offline TF + VSLAM mapping (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
-    build_system_launch_cmd "offline_sensor_tf.launch.xml"
-    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        > "${TF_LOG_PATH}" 2>&1
+    echo "[1/5] Launch online VSLAM for map creation (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
+    launch_vslam_stack \
+        "${TF_LOG_PATH}" \
+        "${VSLAM_LOG_PATH}" \
+        "${VSLAM_MAP_DIR}"
 
-    sleep 2
-
-    launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
-        ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
-
-    sleep 2
-
-    build_system_launch_cmd "vslam.launch.xml"
-    launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        "image_width:=${IMAGE_WIDTH}" \
-        "image_height:=${IMAGE_HEIGHT}" \
-        "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
-        "enable_localization_and_mapping:=true" \
-        "enable_slam_visualization:=${VSLAM_VIS_ENABLED}" \
-        "enable_observations_view:=${VSLAM_VIS_ENABLED}" \
-        "enable_landmarks_view:=${VSLAM_VIS_ENABLED}" \
-        "save_map_path:=${VSLAM_MAP_DIR}" \
-        > "${VSLAM_LOG_PATH}" 2>&1
-
-    echo "[2/5] Launch cartographer online (log: ${MAP_LOG_PATH})"
+    if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
+        echo "[2/5] Launch cartographer with live VSLAM odom (log: ${MAP_LOG_PATH})"
+    else
+        echo "[2/5] Launch cartographer without odom (log: ${MAP_LOG_PATH})"
+    fi
     launch_cartographer_mapping
 
     echo "[3/5] Wait for VSLAM and cartographer services"
@@ -1457,7 +1796,7 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
         exit 1
     fi
 
-    echo "[4/5] Play source rosbag for parallel VSLAM + Cartographer"
+    echo "[4/5] Play source rosbag for online VSLAM + Cartographer"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
         if ! play_rosbag \
@@ -1496,7 +1835,15 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
     stop_vslam
     stop_cartographer
 else
-    echo "[1/3] Launch cartographer (log: ${MAP_LOG_PATH})"
+    if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
+        if [ "${OFFLINE_ODOM_BAG_CREATED}" = true ]; then
+            echo "[1/3] Launch cartographer with offline-generated VSLAM odom (log: ${MAP_LOG_PATH})"
+        else
+            echo "[1/3] Launch cartographer with replayed odom (log: ${MAP_LOG_PATH})"
+        fi
+    else
+        echo "[1/3] Launch cartographer without odom (log: ${MAP_LOG_PATH})"
+    fi
     launch_cartographer_mapping
 
     echo "[2/3] Wait for /write_state service"

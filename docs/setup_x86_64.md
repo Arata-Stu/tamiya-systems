@@ -231,13 +231,29 @@ bash /scripts/create_2d_map_from_bag.sh \
   --scan-topic /scan_filtered
 ```
 
-VSLAM map も同時に作る場合は、最初から VSLAM と 2D SLAM を同時実行します。
-Cartographer は `/visual_slam/tracking/odometry` を使わず、scan-only のまま動かします。
+mode は次の 4 つです。
+
+- `no_odom_offline_vslam`: Cartographer は scan-only。VSLAM はこの実行では起動しません
+- `no_odom_online_vslam`: Cartographer は scan-only。VSLAM を同時起動します
+- `with_odom_offline_vslam`: 先に VSLAM map を作り、その map で odom bag を生成してから Cartographer に渡します。source bag はこの mode では 2 回 replay されます
+- `with_odom_online_vslam`: Cartographer は同時起動した VSLAM の live odom を使います
+
+`--mode` を省略した場合は、実行時にこの 4 つから対話選択できます。
+
+VSLAM map も同時に作る場合は、`no_odom_online_vslam` か `with_odom_online_vslam` を使います。
 
 ```bash
 bash /scripts/create_2d_map_from_bag.sh \
   --record-root /workspaces/bags \
-  --mode 2d_slam
+  --mode no_odom_online_vslam
+```
+
+offline で `/visual_slam/tracking/odometry` を Cartographer に渡したい場合は次のようにします。
+
+```bash
+bash /scripts/create_2d_map_from_bag.sh \
+  --record-root /workspaces/bags \
+  --mode with_odom_offline_vslam
 ```
 
 ---
