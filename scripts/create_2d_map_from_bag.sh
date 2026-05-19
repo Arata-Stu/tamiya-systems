@@ -145,6 +145,15 @@ Options:
   --rate RATE         ros2 bag play rate (default: 1.0)
   --odom-topic TOPIC  enable odometry in cartographer and set the odom topic
                       default for with_odom_* modes: /visual_slam/tracking/odometry
+  --odom-ready-window N
+                      number of odom messages used for stability check (default: 10)
+  --odom-ready-min-rate HZ
+                      minimum average odom rate before recording starts
+                      default: 90% of --image-fps in with_odom modes
+  --odom-ready-timeout SEC
+                      timeout while waiting for odom rate stabilization (default: 45)
+  --no-odom-ready-wait
+                      disable odom-rate stabilization wait in with_odom modes
   --run-vslam         compatibility override: force online_vslam execution
   --no-vslam          compatibility override: force offline_vslam execution
   --vslam-vis         enable VSLAM visualization topics during parallel VSLAM execution
@@ -248,6 +257,10 @@ MODE="no_odom_offline_vslam"
 MODE_SET_BY_USER=false
 CARTOGRAPHER_USE_ODOM=false
 RUN_VSLAM_OVERRIDE="auto"
+ODOM_READY_WAIT_ENABLED=true
+ODOM_READY_WINDOW="10"
+ODOM_READY_MIN_RATE_HZ=""
+ODOM_READY_TIMEOUT_SEC="45"
 VSLAM_VIS_ENABLED=false
 PLAY_ALL_TOPICS=false
 ENABLE_CENTERLINE=true
@@ -263,8 +276,8 @@ CENTERLINE_SCRIPT_PATH=""
 CENTERLINE_PRESET="default"
 CENTERLINE_DIRECTION="forward"
 RACELINE_SCRIPT_PATH=""
-RACELINE_PRESET="default"
-RACELINE_BACKEND="auto"
+RACELINE_PRESET="race-stacks"
+RACELINE_BACKEND="global-opt"
 RACELINE_OPT_TYPE="mincurv_iqp"
 RACELINE_DIRECTION="forward"
 GLOBAL_OPTIMIZER_ROOT=""
@@ -308,6 +321,8 @@ VSLAM_LAUNCH_PID=""
 VSLAM_LAUNCH_USES_SETSID=false
 RECORDER_PID=""
 RECORDER_USES_SETSID=false
+ROSBAG_PLAY_PID=""
+ROSBAG_PLAY_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 SOURCE_PLAY_TOPICS=()
@@ -381,6 +396,30 @@ prompt_mode_interactive() {
 
 resolve_vslam_param_file() {
     resolve_system_launch_config_file "localization/vslam.param.yaml"
+}
+
+resolve_timeout_cmd() {
+    command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true
+}
+
+float_ge() {
+    local lhs="$1"
+    local rhs="$2"
+    awk -v lhs="${lhs}" -v rhs="${rhs}" 'BEGIN { exit !((lhs + 0.0) >= (rhs + 0.0)) }'
+}
+
+default_odom_ready_min_rate_hz() {
+    awk -v image_fps="${IMAGE_FPS}" 'BEGIN {
+        rate = image_fps * 0.90
+        if (rate < 1.0) {
+            rate = 1.0
+        }
+        printf "%.1f", rate
+    }'
+}
+
+odom_ready_wait_applicable() {
+    [ "${CARTOGRAPHER_USE_ODOM}" = true ] && [ "${PIPELINE_MODE}" = "offline" ]
 }
 
 create_vslam_localization_param() {
@@ -540,6 +579,22 @@ while (($#)); do
             ODOM_TOPIC="$2"
             ODOM_TOPIC_SET_BY_USER=true
             shift 2
+            ;;
+        --odom-ready-window)
+            ODOM_READY_WINDOW="$2"
+            shift 2
+            ;;
+        --odom-ready-min-rate)
+            ODOM_READY_MIN_RATE_HZ="$2"
+            shift 2
+            ;;
+        --odom-ready-timeout)
+            ODOM_READY_TIMEOUT_SEC="$2"
+            shift 2
+            ;;
+        --no-odom-ready-wait)
+            ODOM_READY_WAIT_ENABLED=false
+            shift
             ;;
         --run-vslam)
             RUN_VSLAM_OVERRIDE="online"
@@ -759,6 +814,9 @@ if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
         ODOM_TOPIC="${DEFAULT_VSLAM_ODOM_TOPIC}"
     fi
     CONFIG_BASENAME="cartographer_2d_with_odom.lua"
+    if odom_ready_wait_applicable && [ -z "${ODOM_READY_MIN_RATE_HZ}" ]; then
+        ODOM_READY_MIN_RATE_HZ="$(default_odom_ready_min_rate_hz)"
+    fi
 else
     ODOM_TOPIC=""
     CONFIG_BASENAME="cartographer_2d.lua"
@@ -805,6 +863,13 @@ print_mode_summary() {
     echo "scan topic      : ${SCAN_TOPIC}"
     if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
         echo "cartographer odom: enabled (${ODOM_TOPIC})"
+        if odom_ready_wait_applicable && [ "${ODOM_READY_WAIT_ENABLED}" = true ]; then
+            echo "odom ready wait : window=${ODOM_READY_WINDOW}, min_rate=${ODOM_READY_MIN_RATE_HZ} Hz, timeout=${ODOM_READY_TIMEOUT_SEC}s"
+        elif odom_ready_wait_applicable; then
+            echo "odom ready wait : disabled"
+        else
+            echo "odom ready wait : n/a for live online odom"
+        fi
     else
         echo "cartographer odom: disabled"
     fi
@@ -911,24 +976,41 @@ prepare_offline_vslam_odom_bag() {
         exit 1
     fi
 
-    start_offline_odom_bag_recording "${OFFLINE_ODOM_BAG_DIR}" "${OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH}"
-    sleep 2
-
     echo "  - replay source bag to record odom input bag"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
-        if ! play_rosbag \
-            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH}"; then
-            exit 1
-        fi
+        play_rosbag_background \
+            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH}"
     else
         build_online_source_play_topics
         echo "  - mode: filtered topics"
         echo "  - topics: ${SOURCE_PLAY_TOPICS[*]}"
-        if ! play_rosbag \
-            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"; then
+        play_rosbag_background \
+            "${SOURCE_BAG_PATH}" "${OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"
+    fi
+
+    if [ "${ODOM_READY_WAIT_ENABLED}" = true ]; then
+        echo "  - wait for ${ODOM_TOPIC} to stabilize before recording"
+        if ! wait_for_topic_rate_ready \
+            "${ODOM_TOPIC}" \
+            "${ODOM_READY_MIN_RATE_HZ}" \
+            "${ODOM_READY_WINDOW}" \
+            "${ODOM_READY_TIMEOUT_SEC}"; then
+            echo "Timed out waiting for ${ODOM_TOPIC} to reach ${ODOM_READY_MIN_RATE_HZ} Hz." >&2
+            stop_rosbag_playback
             exit 1
         fi
+    else
+        sleep 2
+    fi
+
+    echo "  - start odom bag recording"
+    start_offline_odom_bag_recording "${OFFLINE_ODOM_BAG_DIR}" "${OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH}"
+    sleep 1
+
+    if ! wait_for_rosbag_playback; then
+        echo "rosbag replay failed while recording offline odom input bag." >&2
+        exit 1
     fi
 
     sleep 2
@@ -1085,6 +1167,10 @@ stop_recorder() {
     stop_background_process "RECORDER_PID" "RECORDER_USES_SETSID"
 }
 
+stop_rosbag_playback() {
+    stop_background_process "ROSBAG_PLAY_PID" "ROSBAG_PLAY_USES_SETSID"
+}
+
 start_offline_odom_bag_recording() {
     local bag_dir="$1"
     local log_path="$2"
@@ -1112,6 +1198,35 @@ play_rosbag() {
     fi
 
     "${player_cmd[@]}" > "${log_path}" 2>&1
+}
+
+play_rosbag_background() {
+    local bag_path="$1"
+    local log_path="$2"
+    shift 2
+
+    local -a player_cmd=(
+        ros2 bag play "${bag_path}" --clock --rate "${PLAY_RATE}"
+    )
+
+    if [ "$#" -gt 0 ]; then
+        player_cmd+=(--topics "$@")
+    fi
+
+    launch_background_process "ROSBAG_PLAY_PID" "ROSBAG_PLAY_USES_SETSID" \
+        "${player_cmd[@]}" > "${log_path}" 2>&1
+}
+
+wait_for_rosbag_playback() {
+    local status=0
+
+    if [ -n "${ROSBAG_PLAY_PID:-}" ]; then
+        wait "${ROSBAG_PLAY_PID}" || status=$?
+        ROSBAG_PLAY_PID=""
+        ROSBAG_PLAY_USES_SETSID=false
+    fi
+
+    return "${status}"
 }
 
 launch_background_process() {
@@ -1656,6 +1771,81 @@ wait_for_topic() {
     return 1
 }
 
+measure_topic_rate_hz() {
+    local topic_name="$1"
+    local window_size="$2"
+    local sample_timeout_sec="$3"
+    local timeout_cmd
+    local hz_output
+
+    timeout_cmd="$(resolve_timeout_cmd)"
+    if [ -z "${timeout_cmd}" ]; then
+        return 1
+    fi
+
+    hz_output="$("${timeout_cmd}" "${sample_timeout_sec}s" \
+        ros2 topic hz "${topic_name}" -w "${window_size}" 2>/dev/null || true)"
+
+    printf '%s\n' "${hz_output}" | awk '/average rate:/ {print $3}' | tail -n1
+}
+
+wait_for_topic_rate_ready() {
+    local topic_name="$1"
+    local min_rate_hz="$2"
+    local window_size="$3"
+    local timeout_sec="$4"
+    local start_ts
+    local elapsed=0
+    local sample_timeout_sec
+    local current_timeout_sec
+    local measured_rate
+
+    if [ "${ODOM_READY_WAIT_ENABLED}" != true ]; then
+        return 0
+    fi
+
+    if ! wait_for_topic "${topic_name}" "${timeout_sec}"; then
+        return 1
+    fi
+
+    sample_timeout_sec="$(awk -v window_size="${window_size}" 'BEGIN {
+        sample = int(window_size / 5.0) + 2
+        if (sample < 3) {
+            sample = 3
+        }
+        if (sample > 8) {
+            sample = 8
+        }
+        print sample
+    }')"
+
+    start_ts="$(date +%s)"
+    while [ "${elapsed}" -lt "${timeout_sec}" ]; do
+        current_timeout_sec="${sample_timeout_sec}"
+        if [ $((timeout_sec - elapsed)) -lt "${current_timeout_sec}" ]; then
+            current_timeout_sec=$((timeout_sec - elapsed))
+        fi
+        if [ "${current_timeout_sec}" -lt 1 ]; then
+            current_timeout_sec=1
+        fi
+
+        measured_rate="$(measure_topic_rate_hz "${topic_name}" "${window_size}" "${current_timeout_sec}" || true)"
+        if [ -n "${measured_rate}" ]; then
+            echo "  - odom rate sample: ${measured_rate} Hz (target >= ${min_rate_hz} Hz)"
+            if float_ge "${measured_rate}" "${min_rate_hz}"; then
+                return 0
+            fi
+        else
+            echo "  - odom rate sample: waiting for ${window_size} messages on ${topic_name}"
+        fi
+
+        sleep 1
+        elapsed=$(( $(date +%s) - start_ts ))
+    done
+
+    return 1
+}
+
 launch_cartographer_mapping() {
     local -a launch_args=(
         "use_sim_time:=true"
@@ -1733,6 +1923,7 @@ convert_pbstream_to_map() {
 }
 
 cleanup_all() {
+    stop_rosbag_playback
     stop_recorder
     stop_vslam
     stop_cartographer

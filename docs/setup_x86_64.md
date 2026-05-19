@@ -240,6 +240,8 @@ mode は次の 4 つです。
 
 `--mode` を省略した場合は、実行時にこの 4 つから対話選択できます。
 
+`with_odom_offline_vslam` では、2 回目 replay の odom bag 録画前に `/visual_slam/tracking/odometry` の平均レートを確認します。既定では `ros2 topic hz -w 10` 相当の窓で `--image-fps` の 90% 以上に達してから録画を始めます。必要なら `--odom-ready-window` / `--odom-ready-min-rate` / `--odom-ready-timeout` / `--no-odom-ready-wait` で調整できます。
+
 VSLAM map も同時に作る場合は、`no_odom_online_vslam` か `with_odom_online_vslam` を使います。
 
 ```bash
