@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Custom terminal dashboard for ROS 2 map, localization, scan, image, and sections."""
+"""Custom terminal dashboard for ROS 2 map, localization, scan, image, crop image, and sections."""
 
 from __future__ import annotations
 
@@ -82,6 +82,7 @@ class DashboardState:
     initial_pose: Optional[Pose2D] = None
     scan: Optional[LaserScan] = None
     image_rgb: Optional[np.ndarray] = None
+    crop_image_rgb: Optional[np.ndarray] = None
     camera_info: Optional[CameraInfo] = None
     particles: Optional[PoseArray] = None
     path: Optional[Path] = None
@@ -96,6 +97,9 @@ class DashboardState:
     image_frame_id: str = ""
     image_stamp: Optional[object] = None
     last_image_error: str = ""
+    crop_image_frame_id: str = ""
+    crop_image_stamp: Optional[object] = None
+    last_crop_image_error: str = ""
     last_projection_error: str = ""
 
 
@@ -115,6 +119,7 @@ class TerminalDashboard(Node):
             "initialpose": True,
             "scan": True,
             "image": bool(args.image_topic),
+            "crop": bool(args.crop_image_topic),
             "sections": True,
             "gates": True,
             "particles": False,
@@ -172,6 +177,11 @@ class TerminalDashboard(Node):
                 self.create_subscription(CompressedImage, args.image_topic, self.on_compressed_image, sensor_qos)
             else:
                 self.create_subscription(Image, args.image_topic, self.on_image, sensor_qos)
+        if args.crop_image_topic:
+            if args.crop_compressed_image:
+                self.create_subscription(CompressedImage, args.crop_image_topic, self.on_crop_compressed_image, sensor_qos)
+            else:
+                self.create_subscription(Image, args.crop_image_topic, self.on_crop_image, sensor_qos)
         if args.image_topic and args.camera_info_topic:
             self.create_subscription(CameraInfo, args.camera_info_topic, self.on_camera_info, sensor_qos)
         if args.particles_topic:
@@ -258,6 +268,24 @@ class TerminalDashboard(Node):
             self.state.last_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_image_error = str(exc)
+
+    def on_crop_image(self, msg: Image) -> None:
+        try:
+            self.state.crop_image_rgb = raw_image_to_rgb(msg)
+            self.state.crop_image_frame_id = msg.header.frame_id
+            self.state.crop_image_stamp = msg.header.stamp
+            self.state.last_crop_image_error = ""
+        except Exception as exc:  # noqa: BLE001
+            self.state.last_crop_image_error = str(exc)
+
+    def on_crop_compressed_image(self, msg: CompressedImage) -> None:
+        try:
+            self.state.crop_image_rgb = compressed_image_to_rgb(msg)
+            self.state.crop_image_frame_id = msg.header.frame_id
+            self.state.crop_image_stamp = msg.header.stamp
+            self.state.last_crop_image_error = ""
+        except Exception as exc:  # noqa: BLE001
+            self.state.last_crop_image_error = str(exc)
 
     def on_particles(self, msg: PoseArray) -> None:
         self.state.particles = msg
@@ -517,11 +545,11 @@ class TerminalDashboard(Node):
     def draw_image_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int]) -> None:
         image = self.state.image_rgb
         if not self.toggles["image"]:
-            self.draw_empty_panel(canvas, rect, "image hidden")
+            self.draw_empty_panel(canvas, rect, "image hidden", "image")
             return
         if image is None:
             text = self.state.last_image_error or "waiting for image"
-            self.draw_empty_panel(canvas, rect, text)
+            self.draw_empty_panel(canvas, rect, text, "image")
             return
         x0, y0, w, h = rect
         canvas[y0 : y0 + h, x0 : x0 + w] = (18, 19, 22)
@@ -533,6 +561,26 @@ class TerminalDashboard(Node):
         ox = x0 + (w - iw) // 2
         oy = y0 + (h - ih) // 2
         canvas[oy : oy + ih, ox : ox + iw] = bgr
+        self.draw_panel_title(canvas, rect, "image")
+
+    def draw_crop_image_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int]) -> None:
+        image = self.state.crop_image_rgb
+        if not self.toggles["crop"]:
+            self.draw_empty_panel(canvas, rect, "crop hidden", "crop")
+            return
+        if image is None:
+            text = self.state.last_crop_image_error or "waiting for crop image"
+            self.draw_empty_panel(canvas, rect, text, "crop")
+            return
+        x0, y0, w, h = rect
+        canvas[y0 : y0 + h, x0 : x0 + w] = (18, 19, 22)
+        rgb = resize_to_fit(image, w, h)
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        ih, iw = bgr.shape[:2]
+        ox = x0 + (w - iw) // 2
+        oy = y0 + (h - ih) // 2
+        canvas[oy : oy + ih, ox : ox + iw] = bgr
+        self.draw_panel_title(canvas, rect, "crop")
 
     def draw_scan_on_image(self, image_rgb: np.ndarray) -> np.ndarray:
         scan = self.state.scan
@@ -620,10 +668,18 @@ class TerminalDashboard(Node):
         status = f"scan proj {visible}/{sampled}"
         return draw_status(status, (255, 255, 255))
 
-    def draw_empty_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int], text: str) -> None:
+    def draw_panel_title(self, canvas: np.ndarray, rect: tuple[int, int, int, int], title: str) -> None:
+        x0, y0, _, _ = rect
+        cv2.putText(canvas, title[:24], (x0 + 10, y0 + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 3, cv2.LINE_AA)
+        cv2.putText(canvas, title[:24], (x0 + 10, y0 + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (230, 235, 242), 1, cv2.LINE_AA)
+
+    def draw_empty_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int], text: str, title: str = "") -> None:
         x0, y0, w, h = rect
         canvas[y0 : y0 + h, x0 : x0 + w] = (24, 25, 28)
-        cv2.putText(canvas, text[:60], (x0 + 12, y0 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (190, 195, 205), 1, cv2.LINE_AA)
+        if title:
+            self.draw_panel_title(canvas, rect, title)
+        text_y = y0 + (54 if title else 30)
+        cv2.putText(canvas, text[:60], (x0 + 12, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (190, 195, 205), 1, cv2.LINE_AA)
 
     def handle_key(self, key: str) -> None:
         mapping = {
@@ -633,6 +689,7 @@ class TerminalDashboard(Node):
             "u": "initialpose",
             "s": "scan",
             "i": "image",
+            "r": "crop",
             "c": "sections",
             "g": "gates",
             "p": "particles",
@@ -662,14 +719,32 @@ class TerminalDashboard(Node):
         canvas = np.full((self.args.height, self.args.width, 3), (20, 21, 24), dtype=np.uint8)
         header_h = 52
         gap = 6
-        has_image_panel = bool(self.args.image_topic)
-        right_w = int(self.args.width * self.args.image_panel_ratio) if has_image_panel else 0
-        map_rect = (0, header_h, self.args.width - right_w - (gap if has_image_panel else 0), self.args.height - header_h)
-        image_rect = (self.args.width - right_w, header_h, right_w, self.args.height - header_h)
+        has_main_image_panel = bool(self.args.image_topic)
+        has_crop_image_panel = bool(self.args.crop_image_topic)
+        has_right_panel = has_main_image_panel or has_crop_image_panel
+        right_w = int(self.args.width * self.args.image_panel_ratio) if has_right_panel else 0
+        map_rect = (0, header_h, self.args.width - right_w - (gap if has_right_panel else 0), self.args.height - header_h)
         self.draw_map_panel(canvas, map_rect)
-        if has_image_panel:
-            self.draw_image_panel(canvas, image_rect)
-            cv2.line(canvas, (image_rect[0] - gap // 2, header_h), (image_rect[0] - gap // 2, self.args.height), (55, 58, 64), 1)
+        if has_right_panel:
+            image_x0 = self.args.width - right_w
+            image_y0 = header_h
+            image_h = self.args.height - header_h
+            if has_main_image_panel and has_crop_image_panel:
+                split_gap = gap
+                top_h = max(1, (image_h - split_gap) // 2)
+                bottom_h = max(1, image_h - top_h - split_gap)
+                image_rect = (image_x0, image_y0, right_w, top_h)
+                crop_rect = (image_x0, image_y0 + top_h + split_gap, right_w, bottom_h)
+                self.draw_image_panel(canvas, image_rect)
+                self.draw_crop_image_panel(canvas, crop_rect)
+                cv2.line(canvas, (image_x0, crop_rect[1] - split_gap // 2), (self.args.width, crop_rect[1] - split_gap // 2), (55, 58, 64), 1)
+            elif has_main_image_panel:
+                image_rect = (image_x0, image_y0, right_w, image_h)
+                self.draw_image_panel(canvas, image_rect)
+            else:
+                crop_rect = (image_x0, image_y0, right_w, image_h)
+                self.draw_crop_image_panel(canvas, crop_rect)
+            cv2.line(canvas, (image_x0 - gap // 2, header_h), (image_x0 - gap // 2, self.args.height), (55, 58, 64), 1)
         self.draw_header(canvas)
 
         ok, encoded = cv2.imencode(".png", canvas, [cv2.IMWRITE_PNG_COMPRESSION, self.args.png_compression])
@@ -689,16 +764,33 @@ class TerminalDashboard(Node):
         init = self.pose_status(self.state.initial_pose)
         scan = self.state.scan.header.frame_id if self.state.scan is not None else "-"
         image = "yes" if self.state.image_rgb is not None else "-"
+        crop = "yes" if self.state.crop_image_rgb is not None else "-"
         camera_info = "yes" if self.state.camera_info is not None else "-"
-        flags = " ".join(f"{k[0]}:{'1' if v else '0'}" for k, v in self.toggles.items())
+        flags = self.toggle_status_summary()
         odom = self.odom_status()
         line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
         line2 = (
-            f"odom={odom} img={image} cam={camera_info} tog={flags} "
-            f"keys=m/l/a/u/s/i/c/g/p/t space q {self.last_key_status}"
+            f"odom={odom} img={image} crop={crop} cam={camera_info} tog={flags} "
+            f"keys=m/l/a/u/s/i/r/c/g/p/t space q {self.last_key_status}"
         )
         cv2.putText(canvas, line1[:180], (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         cv2.putText(canvas, line2[:180], (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (215, 220, 228), 1, cv2.LINE_AA)
+
+    def toggle_status_summary(self) -> str:
+        labels = (
+            ("m", "map"),
+            ("l", "localization"),
+            ("a", "amcl"),
+            ("u", "initialpose"),
+            ("s", "scan"),
+            ("i", "image"),
+            ("r", "crop"),
+            ("c", "sections"),
+            ("g", "gates"),
+            ("p", "particles"),
+            ("t", "path"),
+        )
+        return " ".join(f"{key}:{'1' if self.toggles.get(name, False) else '0'}" for key, name in labels)
 
     def pose_status(self, pose: Optional[Pose2D]) -> str:
         if pose is None:
@@ -753,6 +845,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-topic", default="/camera/left/image_raw")
     parser.add_argument("--camera-info-topic", default=None)
     parser.add_argument("--compressed-image", action="store_true")
+    parser.add_argument(
+        "--crop-image-topic",
+        default="",
+        help="Optional image topic for perception crop preview, e.g. /perception/crop/image",
+    )
+    parser.add_argument(
+        "--crop-compressed-image",
+        action="store_true",
+        help="Treat --crop-image-topic as sensor_msgs/CompressedImage",
+    )
     parser.add_argument("--particles-topic", default="/particle_cloud")
     parser.add_argument("--path-topic", default="/visual_slam/tracking/slam_path")
     parser.add_argument("--section-markers-topic", default="/localization/section_markers")
