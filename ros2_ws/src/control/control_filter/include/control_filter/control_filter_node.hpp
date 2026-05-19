@@ -8,6 +8,8 @@
 #include "ackermann_msgs/msg/ackermann_drive_stamped.hpp"
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
+#include <map>
 
 struct ControlFilterParams {
   std::string filter_type = "slew_rate";
@@ -59,20 +61,31 @@ public:
 private:
   void TopicCallback(
       const ackermann_msgs::msg::AckermannDriveStamped::SharedPtr msg);
+  void SectionCallback(const std_msgs::msg::String::SharedPtr msg);
   rcl_interfaces::msg::SetParametersResult
   ParametersCallback(const std::vector<rclcpp::Parameter> &parameters);
 
-  void PrintParameters() const;
+  void PrintParameters(const std::string& section_name, const ControlFilterParams& params) const;
 
   // ROS 2 interfaces
   rclcpp::Subscription<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
       subscription_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr
+      section_sub_;
   rclcpp::Publisher<ackermann_msgs::msg::AckermannDriveStamped>::SharedPtr
       publisher_;
   OnSetParametersCallbackHandle::SharedPtr parameters_callback_handle_;
 
   ControlFilterCore core_;
   rclcpp::Time last_callback_time_;
+
+  std::vector<std::string> section_names_;
+  std::vector<std::string> section_classes_;
+  std::map<std::string, std::string> section_to_class_map_;
+  std::map<std::string, ControlFilterParams> class_params_;
+  ControlFilterParams default_params_;
+  std::string current_section_ = "";
+  std::string current_class_ = "";
 };
 
 #endif // CONTROL_FILTER_NODE_HPP_

@@ -1,8 +1,18 @@
 /**:
   ros__parameters:
+    # --- セクションとクラスのマッピング ---
+    # セクション名をリストで指定します。指定しない場合はデフォルト設定のみ使用されます。
+    # section_names: ["section_1", "section_2", "section_3", "section_4"]
+    # section_classes: ["straight", "corner", "straight", "corner"]
+    section_names: []
+    section_classes: []
+
+    # ==========================================
+    # デフォルトパラメータ (指定セクション以外、またはセクション機能未使用時)
+    # ==========================================
     # フィルタの種類: "slew_rate", "average", "none"
     filter_type: "slew_rate"
-
+    
     # 平滑化に使用するウィンドウサイズ (filter_typeがaverageの場合のみ使用)
     window_size: 5
 
@@ -27,3 +37,29 @@
 
     # 操舵角全体のゲイン
     steer_scale_ratio: 1.0
+
+    # ==========================================
+    # クラス別パラメータ (例: straight クラス)
+    # ==========================================
+    # straight:
+    #   filter_type: "slew_rate"
+    #   max_speed_slew_rate: 3.0
+    #   max_steer_slew_rate: 1.0
+    #   use_scale_filter: true
+    #   straight_steer_threshold: 0.20
+    #   straight_speed_scale_ratio: 1.0
+    #   cornering_speed_scale_ratio: 0.8
+    #   steer_scale_ratio: 1.0
+
+    # ==========================================
+    # クラス別パラメータ (例: corner クラス)
+    # ==========================================
+    # corner:
+    #   filter_type: "slew_rate"
+    #   max_speed_slew_rate: 1.5
+    #   max_steer_slew_rate: 2.5
+    #   use_scale_filter: true
+    #   straight_steer_threshold: 0.20
+    #   straight_speed_scale_ratio: 0.8
+    #   cornering_speed_scale_ratio: 0.5
+    #   steer_scale_ratio: 1.0
