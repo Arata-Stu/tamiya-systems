@@ -60,91 +60,91 @@
 
   <let name="resolved_input_image_topic"
        value="$(var input_image_topic)"
-       if="$(eval '\'$(var input_image_topic)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var input_image_topic)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_input_image_topic"
        value="/realsense2_camera/color/image_raw"
-       if="$(eval '\'$(var input_image_topic)\'.strip() == \'\' and \'$(var camera_source)\' == \'color\'')" />
+       if="$(eval '&quot;$(var input_image_topic)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;color&quot;')" />
   <let name="resolved_input_image_topic"
        value="/camera/left/image_raw"
-       if="$(eval '\'$(var input_image_topic)\'.strip() == \'\' and \'$(var camera_source)\' == \'left\'')" />
+       if="$(eval '&quot;$(var input_image_topic)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;left&quot;')" />
   <let name="resolved_input_image_topic"
        value="/camera/right/image_raw"
-       if="$(eval '\'$(var input_image_topic)\'.strip() == \'\' and \'$(var camera_source)\' == \'right\'')" />
+       if="$(eval '&quot;$(var input_image_topic)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;right&quot;')" />
 
   <let name="resolved_input_camera_info_topic"
        value="$(var input_camera_info_topic)"
-       if="$(eval '\'$(var input_camera_info_topic)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var input_camera_info_topic)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_input_camera_info_topic"
        value="/realsense2_camera/color/camera_info"
-       if="$(eval '\'$(var input_camera_info_topic)\'.strip() == \'\' and \'$(var camera_source)\' == \'color\'')" />
+       if="$(eval '&quot;$(var input_camera_info_topic)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;color&quot;')" />
   <let name="resolved_input_camera_info_topic"
        value="/camera/left/camera_info"
-       if="$(eval '\'$(var input_camera_info_topic)\'.strip() == \'\' and \'$(var camera_source)\' == \'left\'')" />
+       if="$(eval '&quot;$(var input_camera_info_topic)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;left&quot;')" />
   <let name="resolved_input_camera_info_topic"
        value="/camera/right/camera_info"
-       if="$(eval '\'$(var input_camera_info_topic)\'.strip() == \'\' and \'$(var camera_source)\' == \'right\'')" />
+       if="$(eval '&quot;$(var input_camera_info_topic)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;right&quot;')" />
 
   <let name="resolved_debug_input_image_topic"
        value="$(var debug_input_image_topic)"
-       if="$(eval '\'$(var debug_input_image_topic)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var debug_input_image_topic)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_debug_input_image_topic"
        value="$(var resolved_input_image_topic)"
-       unless="$(eval '\'$(var debug_input_image_topic)\'.strip() != \'\'' )" />
+       unless="$(eval '&quot;$(var debug_input_image_topic)&quot;.strip() != &quot;&quot;')" />
 
   <let name="resolved_debug_input_camera_info_topic"
        value="$(var debug_input_camera_info_topic)"
-       if="$(eval '\'$(var debug_input_camera_info_topic)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var debug_input_camera_info_topic)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_debug_input_camera_info_topic"
        value="$(var resolved_input_camera_info_topic)"
-       unless="$(eval '\'$(var debug_input_camera_info_topic)\'.strip() != \'\'' )" />
+       unless="$(eval '&quot;$(var debug_input_camera_info_topic)&quot;.strip() != &quot;&quot;')" />
 
   <let name="resolved_rectified_image_width"
        value="$(var rectified_image_width)"
-       if="$(eval '\'$(var rectified_image_width)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var rectified_image_width)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_rectified_image_width"
        value="$(var color_image_width)"
-       if="$(eval '\'$(var rectified_image_width)\'.strip() == \'\' and \'$(var camera_source)\' == \'color\'')" />
+       if="$(eval '&quot;$(var rectified_image_width)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;color&quot;')" />
   <let name="resolved_rectified_image_width"
        value="$(var stereo_image_width)"
-       if="$(eval '\'$(var rectified_image_width)\'.strip() == \'\' and \'$(var camera_source)\' in [\'left\', \'right\']')" />
+       if="$(eval '&quot;$(var rectified_image_width)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; in [&quot;left&quot;, &quot;right&quot;]')" />
 
   <let name="resolved_rectified_image_height"
        value="$(var rectified_image_height)"
-       if="$(eval '\'$(var rectified_image_height)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var rectified_image_height)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_rectified_image_height"
        value="$(var color_image_height)"
-       if="$(eval '\'$(var rectified_image_height)\'.strip() == \'\' and \'$(var camera_source)\' == \'color\'')" />
+       if="$(eval '&quot;$(var rectified_image_height)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; == &quot;color&quot;')" />
   <let name="resolved_rectified_image_height"
        value="$(var stereo_image_height)"
-       if="$(eval '\'$(var rectified_image_height)\'.strip() == \'\' and \'$(var camera_source)\' in [\'left\', \'right\']')" />
+       if="$(eval '&quot;$(var rectified_image_height)&quot;.strip() == &quot;&quot; and &quot;$(var camera_source)&quot; in [&quot;left&quot;, &quot;right&quot;]')" />
 
   <let name="resolved_classifier_input_image_topic"
        value="$(var classifier_input_image_topic)"
-       if="$(eval '\'$(var classifier_input_image_topic)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var classifier_input_image_topic)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_classifier_input_image_topic"
        value="$(var crop_image_topic)"
-       unless="$(eval '\'$(var classifier_input_image_topic)\'.strip() != \'\'' )" />
+       unless="$(eval '&quot;$(var classifier_input_image_topic)&quot;.strip() != &quot;&quot;')" />
 
   <let name="resolved_classifier_input_camera_info_topic"
        value="$(var classifier_input_camera_info_topic)"
-       if="$(eval '\'$(var classifier_input_camera_info_topic)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var classifier_input_camera_info_topic)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_classifier_input_camera_info_topic"
        value="$(var crop_camera_info_topic)"
-       unless="$(eval '\'$(var classifier_input_camera_info_topic)\'.strip() != \'\'' )" />
+       unless="$(eval '&quot;$(var classifier_input_camera_info_topic)&quot;.strip() != &quot;&quot;')" />
 
   <let name="resolved_classifier_input_image_width"
        value="$(var classifier_input_image_width)"
-       if="$(eval '\'$(var classifier_input_image_width)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var classifier_input_image_width)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_classifier_input_image_width"
        value="$(var resolved_rectified_image_width)"
-       unless="$(eval '\'$(var classifier_input_image_width)\'.strip() != \'\'' )" />
+       unless="$(eval '&quot;$(var classifier_input_image_width)&quot;.strip() != &quot;&quot;')" />
 
   <let name="resolved_classifier_input_image_height"
        value="$(var classifier_input_image_height)"
-       if="$(eval '\'$(var classifier_input_image_height)\'.strip() != \'\'' )" />
+       if="$(eval '&quot;$(var classifier_input_image_height)&quot;.strip() != &quot;&quot;')" />
   <let name="resolved_classifier_input_image_height"
        value="$(var resolved_rectified_image_height)"
-       unless="$(eval '\'$(var classifier_input_image_height)\'.strip() != \'\'' )" />
+       unless="$(eval '&quot;$(var classifier_input_image_height)&quot;.strip() != &quot;&quot;')" />
 
   <let name="perception_image_topic"
        value="$(var rectified_image_topic)"
