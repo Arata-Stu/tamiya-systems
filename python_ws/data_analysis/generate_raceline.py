@@ -172,7 +172,7 @@ def preset_defaults(preset: str) -> dict:
         return {
             # Align the optimizer discretization with the race_stacks F110
             # configuration while keeping the Tamiya-specific vehicle defaults.
-            "backend": "heuristic",
+            "backend": "global-opt",
             "opt_type": "mincurv_iqp",
             "curvature_limit": 1.0,
             "global_opt_stepsize_prep": 0.05,
