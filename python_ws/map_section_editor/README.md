@@ -3,12 +3,13 @@
 2D map 向けの GUI ツール置き場です。
 
 - `section_editor.py`: `map.yaml` 上でセクションをポリゴン分割し、ROS2ノード用のセクション定義CSVを作ります。
-- `map_cleanup_editor.py`: centerline 前処理用。PNG/PGM を黒塗り/白戻しして、cleaned PNG を保存します。
+- `map_cleanup_editor.py`: centerline 前処理用。起動時に map を黒白へ二値化したうえで、黒塗り/白戻しして cleaned PNG を保存します。
 
 ## map_cleanup_editor.py
 
 分岐やノイズで centerline がうまく引けない地図を、人手で少し整えてから
 `generate_centerline.py` / `generate_raceline.py` に渡したいときのツールです。
+既定では、`250` 以上の画素を白、未満を黒に寄せてから編集します。
 
 ```bash
 cd python_ws
@@ -25,7 +26,7 @@ python3 map_section_editor/map_cleanup_editor.py \
 - `i` または右上の `Help` ボタン: 説明パネルの表示/非表示
 - `u`: undo
 - `r`: 今回開いた状態に戻す
-- `R`: 元の入力画像に戻す
+- `R`: 今回の二値化後入力画像に戻す
 - `s`: 保存
 - `[` / `]` または `,` / `.` または右上の `-` / `+` ボタン: ブラシサイズ変更
 - ホイール / `+` / `-`: ズーム
@@ -34,6 +35,8 @@ python3 map_section_editor/map_cleanup_editor.py \
 
 `create_2d_map_from_bag.sh` からは `--edit-map` または `--map-edit-mode auto`
 で呼び出せます。section editor は同スクリプトの転送前メニューからも開けます。
+
+必要なら `--binarize-white-threshold` で二値化しきい値を変更できます。
 
 ## section_editor.py
 

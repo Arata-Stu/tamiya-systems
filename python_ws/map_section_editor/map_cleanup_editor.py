@@ -3,8 +3,9 @@
 Interactive occupancy-map cleanup editor for centerline preprocessing.
 
 This tool is intended for cases where automatic centerline extraction fails on
-branching or noisy maps. It lets an operator paint black/white directly on a
-PNG/PGM map, then save a cleaned PNG for later centerline/raceline generation.
+branching or noisy maps. It binarizes the source map for editing, then lets an
+operator paint black/white directly on it and save a cleaned PNG for later
+centerline/raceline generation.
 """
 
 from __future__ import annotations
@@ -240,7 +241,7 @@ class MapCleanupEditor:
         self._push_undo()
         self.image = self.raw_input.copy()
         self._sync_dirty_state()
-        print("[INFO] Reset to raw input map.")
+        print("[INFO] Reset to normalized input map.")
 
     def _undo(self) -> None:
         if not self.undo_stack:
@@ -342,7 +343,7 @@ class MapCleanupEditor:
             return
 
         mode_text = "black" if self.mode == "paint_black" else "white"
-        source_text = "saved output" if self.loaded_saved_output else "raw input"
+        source_text = "saved output" if self.loaded_saved_output else "normalized input"
         dirty_text = "yes" if self.has_unsaved_changes else "no"
         cursor_u, cursor_v = self._to_original_pixel(self.last_mouse_x, self.last_mouse_y)
 
@@ -385,7 +386,7 @@ class MapCleanupEditor:
         )
         self._draw_text_with_outline(
             frame,
-            "b:black  e:white  u:undo  r:revert unsaved  R:reset raw map  i:help  s:save  0:reset view  q/Esc:quit",
+            "b:black  e:white  u:undo  r:revert unsaved  R:reset normalized map  i:help  s:save  0:reset view  q/Esc:quit",
             (24, 166),
             0.58,
             (220, 220, 220),
@@ -601,6 +602,15 @@ def parse_args() -> argparse.Namespace:
         default=32,
         help="Maximum number of undo snapshots.",
     )
+    parser.add_argument(
+        "--binarize-white-threshold",
+        type=int,
+        default=250,
+        help=(
+            "Before editing, convert pixels >= threshold to white and pixels below "
+            "threshold to black. Set <=0 to disable."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -609,6 +619,16 @@ def load_grayscale(path: Path) -> np.ndarray:
     if image is None:
         raise RuntimeError(f"failed to load image: {path}")
     return image
+
+
+def binarize_for_editing(image: np.ndarray, white_threshold: int) -> np.ndarray:
+    threshold = int(white_threshold)
+    if threshold <= 0:
+        return image.copy()
+
+    out = np.zeros_like(image, dtype=np.uint8)
+    out[image >= threshold] = 255
+    return out
 
 
 def main() -> int:
@@ -627,6 +647,12 @@ def main() -> int:
         raise FileNotFoundError(f"input map not found: {input_path}")
 
     raw_input = load_grayscale(input_path)
+    raw_input = binarize_for_editing(raw_input, args.binarize_white_threshold)
+    if args.binarize_white_threshold > 0:
+        print(
+            "[INFO] Binarized input map for editing: "
+            f"pixels >= {args.binarize_white_threshold} -> white, others -> black."
+        )
     loaded_saved_output = output_path.exists()
     if loaded_saved_output:
         session_base = load_grayscale(output_path)
@@ -634,6 +660,7 @@ def main() -> int:
             raise RuntimeError(
                 f"saved output size {session_base.shape} does not match input size {raw_input.shape}: {output_path}"
             )
+        session_base = binarize_for_editing(session_base, args.binarize_white_threshold)
         print(f"[INFO] Loaded existing cleaned map as session base: {output_path}")
     else:
         session_base = raw_input.copy()
