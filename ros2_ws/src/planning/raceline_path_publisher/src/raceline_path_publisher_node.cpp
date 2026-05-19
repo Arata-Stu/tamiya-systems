@@ -4,10 +4,13 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
+#include <cmath>
 #include <string>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "race_planning_msgs/msg/trajectory.hpp"
+#include "race_planning_msgs/msg/trajectory_point.hpp"
 #include "tf2/exceptions.h"
 #include "tf2/time.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -48,6 +51,11 @@ RacelinePathPublisherNode::RacelinePathPublisherNode()
     local_path_pub_ =
         this->create_publisher<nav_msgs::msg::Path>("trajectory", rclcpp::QoS(10));
   }
+  if (publish_local_reference_) {
+    local_reference_pub_ =
+        this->create_publisher<race_planning_msgs::msg::Trajectory>(
+            "trajectory_reference", rclcpp::QoS(10));
+  }
 
   if (!raceline_csv_path_.empty()) {
     LoadRaceline();
@@ -81,6 +89,8 @@ void RacelinePathPublisherNode::LoadParameters() {
       this->declare_parameter<bool>("publish_global_path", true);
   publish_local_path_ =
       this->declare_parameter<bool>("publish_local_path", true);
+  publish_local_reference_ =
+      this->declare_parameter<bool>("publish_local_reference", true);
 }
 
 bool RacelinePathPublisherNode::LoadRaceline() {
@@ -122,8 +132,9 @@ void RacelinePathPublisherNode::TimerCallback() {
   if (publish_global_path_ && global_path_pub_) {
     PublishGlobalPath(stamp);
   }
-  if (publish_local_path_ && local_path_pub_) {
-    PublishLocalPath(stamp);
+  if ((publish_local_path_ && local_path_pub_) ||
+      (publish_local_reference_ && local_reference_pub_)) {
+    PublishLocalOutputs(stamp);
   }
 }
 
@@ -131,7 +142,7 @@ void RacelinePathPublisherNode::PublishGlobalPath(const rclcpp::Time &stamp) {
   global_path_pub_->publish(core_.BuildPath(map_frame_, ToBuiltinTime(stamp)));
 }
 
-void RacelinePathPublisherNode::PublishLocalPath(const rclcpp::Time &stamp) {
+void RacelinePathPublisherNode::PublishLocalOutputs(const rclcpp::Time &stamp) {
   geometry_msgs::msg::TransformStamped map_from_base;
   geometry_msgs::msg::TransformStamped base_from_map;
 
@@ -164,19 +175,62 @@ void RacelinePathPublisherNode::PublishLocalPath(const rclcpp::Time &stamp) {
       core_.BuildPathFromIndices(indices, map_frame_, ToBuiltinTime(stamp));
 
   nav_msgs::msg::Path local_path;
-  local_path.header.frame_id = base_frame_;
-  local_path.header.stamp = stamp;
-  local_path.poses.reserve(map_path.poses.size());
-
-  for (const auto &pose : map_path.poses) {
-    geometry_msgs::msg::PoseStamped transformed_pose;
-    tf2::doTransform(pose, transformed_pose, base_from_map);
-    transformed_pose.header.frame_id = base_frame_;
-    transformed_pose.header.stamp = stamp;
-    local_path.poses.push_back(transformed_pose);
+  race_planning_msgs::msg::Trajectory local_reference;
+  if (publish_local_path_ && local_path_pub_) {
+    local_path.header.frame_id = base_frame_;
+    local_path.header.stamp = stamp;
+    local_path.poses.reserve(map_path.poses.size());
+  }
+  if (publish_local_reference_ && local_reference_pub_) {
+    local_reference.header.frame_id = base_frame_;
+    local_reference.header.stamp = stamp;
+    local_reference.points.reserve(map_path.poses.size());
   }
 
-  local_path_pub_->publish(local_path);
+  const auto &samples = core_.GetData().samples;
+  double path_s = 0.0;
+  bool has_previous_point = false;
+  geometry_msgs::msg::Point previous_position;
+
+  for (std::size_t i = 0U; i < map_path.poses.size(); ++i) {
+    geometry_msgs::msg::PoseStamped transformed_pose;
+    tf2::doTransform(map_path.poses[i], transformed_pose, base_from_map);
+    transformed_pose.header.frame_id = base_frame_;
+    transformed_pose.header.stamp = stamp;
+
+    if (publish_local_path_ && local_path_pub_) {
+      local_path.poses.push_back(transformed_pose);
+    }
+
+    if (publish_local_reference_ && local_reference_pub_) {
+      if (has_previous_point) {
+        path_s += std::hypot(
+            transformed_pose.pose.position.x - previous_position.x,
+            transformed_pose.pose.position.y - previous_position.y);
+      }
+
+      race_planning_msgs::msg::TrajectoryPoint point;
+      point.pose = transformed_pose.pose;
+      if (i < indices.size() && indices[i] < samples.size()) {
+        const auto &sample = samples[indices[i]];
+        point.track_s_m = sample.s;
+        point.speed_mps = sample.speed;
+        point.curvature_radpm = sample.curvature;
+        point.acceleration_mps2 = sample.acceleration;
+      }
+      point.path_s_m = path_s;
+      local_reference.points.push_back(point);
+      previous_position = transformed_pose.pose.position;
+      has_previous_point = true;
+    }
+  }
+
+  if (publish_local_path_ && local_path_pub_) {
+    local_path_pub_->publish(local_path);
+  }
+  if (publish_local_reference_ && local_reference_pub_) {
+    local_reference_pub_->publish(local_reference);
+  }
 }
 
 } // namespace raceline_path_publisher

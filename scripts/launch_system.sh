@@ -138,12 +138,15 @@ Usage:
 Modes:
   production              Full production run with VSLAM + localization + section localizer
   sensor_data_recording   Sensor-recording preset for initial mapping runs
+  identification          VSLAM odom + final cmd_drive recording preset for MAP lookup generation
   localization_eval       Lean localization evaluation preset (VSLAM ref + global localization)
   perception_eval         Lean LiDAR-camera perception evaluation preset
   vslam_eval              Lean VSLAM-only evaluation preset
   base                    Alias of production
   mapping                 Alias of sensor_data_recording
   vslam_map               Alias of sensor_data_recording
+  map_lookup_recording    Alias of identification
+  map_lookup              Alias of identification
 
 Options:
   -i, --interactive       Toggle launch arguments interactively before running
@@ -165,6 +168,7 @@ Examples:
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} production --set use_perception=true
   ${SCRIPT_NAME} production --set use_perception=true --set use_perception_classifier=true
+  ${SCRIPT_NAME} identification
   ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
 EOF
 }
@@ -276,6 +280,33 @@ apply_mode() {
       # Initial mapping runs keep the stereo-gray left/right sensors at
       # ${SENSOR_IMAGE_WIDTH}x${SENSOR_IMAGE_HEIGHT}x${SENSOR_IMAGE_FPS%%.*}
       # and enable crop perception so recorded bags already contain /perception/crop/*.
+      set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
+      set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+      set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
+      ;;
+    identification|map_lookup_recording|map_lookup)
+      ARG_record="true"
+      ARG_use_vehicle="true"
+      ARG_vslam="true"
+      ARG_localization="false"
+      ARG_use_lidar="false"
+      ARG_use_camera="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_sim_time="false"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
+      ARG_use_section_localizer="false"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="true"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
       set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
       set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
       set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
@@ -576,6 +607,7 @@ choose_mode_interactive() {
   local -a MODE_LABELS=(
     "production       (= base)              本番走行: VSLAM + 自己位置推定 + セクションローカライザ"
     "mapping          (= sensor_data_recording, vslam_map)  センサ録画: マッピング用rosbag収集"
+    "identification  (= map_lookup_recording, map_lookup)  MAP lookup生成用: VSLAM odom + 実車cmd_drive録画"
     "localization_eval                       自己位置推定の精度検証 (VSLAM + 全体位置推定)"
     "perception_eval                         LiDAR/カメラ知覚の評価"
     "vslam_eval                              VSLAM単体の評価"
@@ -583,6 +615,7 @@ choose_mode_interactive() {
   local -a MODE_VALUES=(
     "production"
     "sensor_data_recording"
+    "identification"
     "localization_eval"
     "perception_eval"
     "vslam_eval"
@@ -1046,7 +1079,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    production|base|sensor_data_recording|mapping|vslam_map|localization_eval|perception_eval|vslam_eval)
+    production|base|sensor_data_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval)
       MODE="$1"
       shift
       ;;

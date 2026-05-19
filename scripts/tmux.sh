@@ -5,6 +5,7 @@ set -euo pipefail
 MODE_TAMIYA="tamiya"
 MODE_PYTHON="python"
 MODE_MAP="map"
+MODE_IDENTIFICATION="identification"
 MODE_LOCALIZATION_EVAL="localization_eval"
 MODE_PERCEPTION_EVAL="perception_eval"
 MODE_VSLAM_EVAL="vslam_eval"
@@ -13,6 +14,7 @@ MODE_SIMULATOR="simulator"
 DEFAULT_SESSION_TAMIYA="tamiya"
 DEFAULT_SESSION_PYTHON="python"
 DEFAULT_SESSION_MAP="map"
+DEFAULT_SESSION_IDENTIFICATION="identification"
 DEFAULT_SESSION_LOCALIZATION_EVAL="localization_eval"
 DEFAULT_SESSION_PERCEPTION_EVAL="perception_eval"
 DEFAULT_SESSION_VSLAM_EVAL="vslam_eval"
@@ -79,12 +81,17 @@ CMD_MONITOR="bash ${MONITOR_SH}"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 CMD_CREATE_VSLAM_MAP="bash ${CREATE_VSLAM_MAP_SH} --mode vslam --rate 1.0"
 CMD_CREATE_MAP="bash ${CREATE_MAP_SH} --mode 2d_slam --rate 1.0"
+CMD_IDENTIFICATION="bash ${LAUNCH_SYSTEM_SH} identification"
 CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
 CMD_LOCALIZATION_EVAL="bash ${LAUNCH_SYSTEM_SH} localization_eval --set map_dir=<map_dir>"
 CMD_PERCEPTION_EVAL="bash ${LAUNCH_SYSTEM_SH} perception_eval"
 CMD_VSLAM_EVAL="bash ${LAUNCH_SYSTEM_SH} vslam_eval --set map_dir=<map_dir>"
 CMD_SIMULATOR="ros2 launch system_launch simulator.launch.xml use_ftg:=false record:=false rviz:=false localization:=false"
-CMD_DASHBOARD_LOCALIZATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic /map --localization-topic /localization_result --scan-topic /scan --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
+CMD_RECORD_START='ros2 service call /bag_manager_node/start_recording std_srvs/srv/Trigger "{}"'
+CMD_RECORD_STOP='ros2 service call /bag_manager_node/stop_recording std_srvs/srv/Trigger "{}"'
+CMD_BUILD_MAP_LOOKUP='python data_analysis/build_map_steering_lookup.py --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml'
+CMD_DASHBOARD_IDENTIFICATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --scan-topic '' --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
+CMD_DASHBOARD_LOCALIZATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic /map --localization-topic /localization_result --scan-topic /scan --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
 CMD_LEFT_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /camera/left/image_raw --best-effort --max-fps 10"
 CMD_DEBUG_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/debug/image --best-effort --max-fps 10"
 CMD_PERCEPTION_LABEL="ros2 topic echo /perception/classification/label"
@@ -273,8 +280,8 @@ create_layout_from_panes() {
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map|localization_eval|perception_eval|vslam_eval|simulator]
-  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map|localization_eval|perception_eval|vslam_eval|simulator]
+  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map|identification|localization_eval|perception_eval|vslam_eval|simulator]
+  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map|identification|localization_eval|perception_eval|vslam_eval|simulator]
 
 Notes:
   - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
@@ -295,11 +302,12 @@ choose_mode_interactive() {
     echo "  1) $MODE_TAMIYA (production + monitor)" >&2
     echo "  2) $MODE_PYTHON (python workspace)" >&2
     echo "  3) $MODE_MAP (map creation + localization eval)" >&2
-    echo "  4) $MODE_LOCALIZATION_EVAL (bag replay + localization eval)" >&2
-    echo "  5) $MODE_PERCEPTION_EVAL (bag replay + perception eval)" >&2
-    echo "  6) $MODE_VSLAM_EVAL (bag replay + VSLAM eval)" >&2
-    echo "  7) $MODE_SIMULATOR (simulator setup)" >&2
-    read -r -p "Enter 1-7: " answer
+    echo "  4) $MODE_IDENTIFICATION (live VSLAM + bag recording for MAP lookup)" >&2
+    echo "  5) $MODE_LOCALIZATION_EVAL (bag replay + localization eval)" >&2
+    echo "  6) $MODE_PERCEPTION_EVAL (bag replay + perception eval)" >&2
+    echo "  7) $MODE_VSLAM_EVAL (bag replay + VSLAM eval)" >&2
+    echo "  8) $MODE_SIMULATOR (simulator setup)" >&2
+    read -r -p "Enter 1-8: " answer
 
     case "$answer" in
       1|"$MODE_TAMIYA")
@@ -314,19 +322,23 @@ choose_mode_interactive() {
         echo "$MODE_MAP"
         return
         ;;
-      4|"$MODE_LOCALIZATION_EVAL")
+      4|"$MODE_IDENTIFICATION")
+        echo "$MODE_IDENTIFICATION"
+        return
+        ;;
+      5|"$MODE_LOCALIZATION_EVAL")
         echo "$MODE_LOCALIZATION_EVAL"
         return
         ;;
-      5|"$MODE_PERCEPTION_EVAL")
+      6|"$MODE_PERCEPTION_EVAL")
         echo "$MODE_PERCEPTION_EVAL"
         return
         ;;
-      6|"$MODE_VSLAM_EVAL")
+      7|"$MODE_VSLAM_EVAL")
         echo "$MODE_VSLAM_EVAL"
         return
         ;;
-      7|"$MODE_SIMULATOR")
+      8|"$MODE_SIMULATOR")
         echo "$MODE_SIMULATOR"
         return
         ;;
@@ -362,6 +374,18 @@ create_map_layout() {
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  create_layout_from_panes "$WINDOW_MAIN" 0
+}
+
+create_identification_layout() {
+  reset_panes
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_IDENTIFICATION"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_IDENTIFICATION"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_STOP"
+  add_pane "$WINDOW_DATA" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_BUILD_MAP_LOOKUP"
   create_layout_from_panes "$WINDOW_MAIN" 0
 }
 
@@ -429,7 +453,7 @@ while [[ $# -gt 0 ]]; do
       SESSION_NAME="$2"
       shift 2
       ;;
-    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_SIMULATOR")
+    "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_IDENTIFICATION"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_SIMULATOR")
       if [[ -z "$MODE" ]]; then
         MODE="$1"
       elif [[ -z "$SESSION_NAME" ]]; then
@@ -459,11 +483,11 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_SIMULATOR")
+  "$MODE_TAMIYA"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_IDENTIFICATION"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_SIMULATOR")
     ;;
   *)
     echo "Invalid mode: $MODE" >&2
-    echo "Use --mode tamiya, python, map, localization_eval, perception_eval, vslam_eval, or simulator" >&2
+    echo "Use --mode tamiya, python, map, identification, localization_eval, perception_eval, vslam_eval, or simulator" >&2
     exit 1
     ;;
 esac
@@ -478,6 +502,9 @@ if [[ -z "$SESSION_NAME" ]]; then
       ;;
     "$MODE_MAP")
       SESSION_NAME="$DEFAULT_SESSION_MAP"
+      ;;
+    "$MODE_IDENTIFICATION")
+      SESSION_NAME="$DEFAULT_SESSION_IDENTIFICATION"
       ;;
     "$MODE_LOCALIZATION_EVAL")
       SESSION_NAME="$DEFAULT_SESSION_LOCALIZATION_EVAL"
@@ -509,6 +536,9 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
       ;;
     "$MODE_MAP")
       create_map_layout
+      ;;
+    "$MODE_IDENTIFICATION")
+      create_identification_layout
       ;;
     "$MODE_LOCALIZATION_EVAL")
       create_localization_eval_layout

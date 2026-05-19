@@ -2,7 +2,7 @@
 <package format="3">
   <name>raceline_path_publisher</name>
   <version>0.0.1</version>
-  <description>Publish global and local nav_msgs/Path trajectories from a raceline CSV.</description>
+  <description>Publish global/local path and local trajectory-reference topics from a raceline CSV.</description>
 
   <maintainer email="you@example.com">Your Name</maintainer>
   <license>Apache-2.0</license>
@@ -12,6 +12,7 @@
   <depend>builtin_interfaces</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>race_planning_msgs</depend>
   <depend>rclcpp</depend>
   <depend>tf2</depend>
   <depend>tf2_geometry_msgs</depend>

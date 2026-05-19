@@ -3,7 +3,9 @@
 
 #include <string>
 
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "race_planning_msgs/msg/trajectory.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
@@ -21,7 +23,7 @@ private:
   bool LoadRaceline();
   void TimerCallback();
   void PublishGlobalPath(const rclcpp::Time &stamp);
-  void PublishLocalPath(const rclcpp::Time &stamp);
+  void PublishLocalOutputs(const rclcpp::Time &stamp);
 
   RacelinePathCore core_;
 
@@ -35,6 +37,7 @@ private:
   double tf_timeout_sec_ = 0.05;
   bool publish_global_path_ = true;
   bool publish_local_path_ = true;
+  bool publish_local_reference_ = true;
 
   bool raceline_loaded_ = false;
   rclcpp::Time last_load_attempt_time_;
@@ -42,6 +45,8 @@ private:
 
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr global_path_pub_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr local_path_pub_;
+  rclcpp::Publisher<race_planning_msgs::msg::Trajectory>::SharedPtr
+      local_reference_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   tf2_ros::Buffer tf_buffer_;

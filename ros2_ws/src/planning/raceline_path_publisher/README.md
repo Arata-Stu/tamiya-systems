@@ -1,12 +1,17 @@
 # raceline_path_publisher
 
-Raceline CSV から標準 ROS 2 メッセージを publish する package です。
+Raceline CSV から ROS 2 trajectory message を publish する package です。
 
 - `global_path` (`nav_msgs/msg/Path`, frame=`map`)
 - `trajectory` (`nav_msgs/msg/Path`, frame=`base_link`)
+- `trajectory_reference` (`race_planning_msgs/msg/Trajectory`, frame=`base_link`)
 
 `trajectory` は `pure_pursuit_controller` がそのまま受け取りやすいように、
 グローバル raceline から車両前方の一部を切り出して `base_link` 座標系に変換して publish します。
+`trajectory_reference` は同じ局所区間に対して、各点の pose に加えて
+`track_s_m / path_s_m / speed_mps / curvature_radpm / acceleration_mps2`
+を載せて publish します。将来の MPC など、速度付き参照軌道が必要な controller 向けです。
+CSV に速度系の列がない場合、それらの値は 0 のまま publish されます。
 
 ## 対応 CSV
 

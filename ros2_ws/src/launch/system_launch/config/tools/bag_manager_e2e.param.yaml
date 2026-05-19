@@ -15,6 +15,7 @@
       - /jetracer/cmd_drive
       - /autonomous/cmd_drive
       - /autonomous/trajectory
+      - /autonomous/trajectory_reference
       - /emergency/cmd_drive
       - /emergency/signal
       - /joy

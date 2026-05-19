@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
-from nav_msgs.msg import OccupancyGrid, Path
+from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -85,6 +85,12 @@ class DashboardState:
     camera_info: Optional[CameraInfo] = None
     particles: Optional[PoseArray] = None
     path: Optional[Path] = None
+    odom_speed_mps: Optional[float] = None
+    odom_linear_x: Optional[float] = None
+    odom_linear_y: Optional[float] = None
+    odom_angular_z: Optional[float] = None
+    odom_frame_id: str = ""
+    odom_child_frame_id: str = ""
     current_section: str = "-"
     frames: int = 0
     image_frame_id: str = ""
@@ -159,6 +165,8 @@ class TerminalDashboard(Node):
             self.create_subscription(PoseWithCovarianceStamped, args.initial_pose_topic, self.on_initial_pose, reliable_qos)
         if args.scan_topic:
             self.create_subscription(LaserScan, args.scan_topic, self.on_scan, sensor_qos)
+        if args.odom_topic:
+            self.create_subscription(Odometry, args.odom_topic, self.on_odom, sensor_qos)
         if args.image_topic:
             if args.compressed_image:
                 self.create_subscription(CompressedImage, args.image_topic, self.on_compressed_image, sensor_qos)
@@ -217,6 +225,17 @@ class TerminalDashboard(Node):
 
     def on_scan(self, msg: LaserScan) -> None:
         self.state.scan = msg
+
+    def on_odom(self, msg: Odometry) -> None:
+        twist = msg.twist.twist
+        linear_x = float(twist.linear.x)
+        linear_y = float(twist.linear.y)
+        self.state.odom_speed_mps = math.hypot(linear_x, linear_y)
+        self.state.odom_linear_x = linear_x
+        self.state.odom_linear_y = linear_y
+        self.state.odom_angular_z = float(twist.angular.z)
+        self.state.odom_frame_id = msg.header.frame_id
+        self.state.odom_child_frame_id = msg.child_frame_id
 
     def on_camera_info(self, msg: CameraInfo) -> None:
         self.state.camera_info = msg
@@ -641,7 +660,7 @@ class TerminalDashboard(Node):
         self.state.frames += 1
 
         canvas = np.full((self.args.height, self.args.width, 3), (20, 21, 24), dtype=np.uint8)
-        header_h = 34
+        header_h = 52
         gap = 6
         has_image_panel = bool(self.args.image_topic)
         right_w = int(self.args.width * self.args.image_panel_ratio) if has_image_panel else 0
@@ -663,7 +682,8 @@ class TerminalDashboard(Node):
         sys.stdout.flush()
 
     def draw_header(self, canvas: np.ndarray) -> None:
-        cv2.rectangle(canvas, (0, 0), (self.args.width, 34), (14, 15, 18), -1)
+        header_h = 52
+        cv2.rectangle(canvas, (0, 0), (self.args.width, header_h), (14, 15, 18), -1)
         loc = self.state.localization.frame_id if self.state.localization is not None else "-"
         amcl = self.pose_status(self.state.amcl_pose)
         init = self.pose_status(self.state.initial_pose)
@@ -671,11 +691,14 @@ class TerminalDashboard(Node):
         image = "yes" if self.state.image_rgb is not None else "-"
         camera_info = "yes" if self.state.camera_info is not None else "-"
         flags = " ".join(f"{k[0]}:{'1' if v else '0'}" for k, v in self.toggles.items())
-        text = (
-            f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} image={image} caminfo={camera_info} "
-            f"section={self.state.current_section} {flags} keys: m/l/a/u/s/i/c/g/p/t, space, q {self.last_key_status}"
+        odom = self.odom_status()
+        line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
+        line2 = (
+            f"odom={odom} img={image} cam={camera_info} tog={flags} "
+            f"keys=m/l/a/u/s/i/c/g/p/t space q {self.last_key_status}"
         )
-        cv2.putText(canvas, text[:210], (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (235, 235, 235), 1, cv2.LINE_AA)
+        cv2.putText(canvas, line1[:180], (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
+        cv2.putText(canvas, line2[:180], (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (215, 220, 228), 1, cv2.LINE_AA)
 
     def pose_status(self, pose: Optional[Pose2D]) -> str:
         if pose is None:
@@ -683,6 +706,19 @@ class TerminalDashboard(Node):
         if pose.covariance is None or len(pose.covariance) < 36:
             return pose.frame_id
         return f"{pose.frame_id}:{pose.covariance[0]:.2g}/{pose.covariance[7]:.2g}/{pose.covariance[35]:.2g}"
+
+    def odom_status(self) -> str:
+        if self.state.odom_speed_mps is None:
+            return "-"
+        frame_id = self.state.odom_frame_id or "-"
+        child_frame_id = self.state.odom_child_frame_id or "-"
+        return (
+            f"{frame_id}->{child_frame_id} "
+            f"v={self.state.odom_speed_mps:.2f}m/s "
+            f"vx={self.state.odom_linear_x:.2f} "
+            f"vy={self.state.odom_linear_y:.2f} "
+            f"wz={self.state.odom_angular_z:.2f}"
+        )
 
 
 class RawTerminal:
@@ -709,6 +745,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--amcl-pose-topic", default="/amcl_pose")
     parser.add_argument("--initial-pose-topic", default="/initialpose")
     parser.add_argument("--scan-topic", default="/scan")
+    parser.add_argument(
+        "--odom-topic",
+        default="/visual_slam/tracking/odometry",
+        help="nav_msgs/Odometry topic used to display planar speed, empty to disable",
+    )
     parser.add_argument("--image-topic", default="/camera/left/image_raw")
     parser.add_argument("--camera-info-topic", default=None)
     parser.add_argument("--compressed-image", action="store_true")

@@ -42,6 +42,12 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - 任意で時系列 + ヒストグラム PNG を出力
   - rolling p90 を使って「開始何秒後から安定か」を推定
 
+- `build_map_steering_lookup.py`
+  - rosbag から `nav_msgs/msg/Odometry` と `ackermann_msgs/msg/AckermannDriveStamped` を取得
+  - `v = hypot(vx, vy)` と `a_y ~= v * yaw_rate` から MAP 用 steering lookup table を生成
+  - race_stacks 互換の lookup CSV、確認用 counts CSV、matched raw CSV を出力
+  - 収録手順は `README_map_lookup.md` を参照
+
 - `plot_localization_quality_map.py`
   - 既存の評価CSVと `map.yaml` から、良否ポイント図と成功率ヒートマップを生成
 
@@ -182,6 +188,42 @@ python data_analysis/visualize_lidar_camera_projection.py \
   - 直近 `--rolling-window-sec` 秒の `nearest_abs_delta_ms` の p90
 - `stable_after_sec`
   - `rolling_p90_abs_delta_ms <= --stability-threshold-ms` を最初に満たした時刻
+
+## 使い方（MAP lookup 生成）
+
+詳細な収録手順は `README_map_lookup.md` を見てください。最短導線だけここに置きます。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems
+
+# 1. vSLAM odom + 実車 cmd_drive を記録する軽量 preset で起動
+bash scripts/launch_system.sh identification
+
+# 2. 別ターミナルで録画開始
+ros2 service call /bag_manager_node/start_recording std_srvs/srv/Trigger "{}"
+
+# 3. 収録後に録画停止
+ros2 service call /bag_manager_node/stop_recording std_srvs/srv/Trigger "{}"
+
+# 4. lookup table を生成
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python data_analysis/build_map_steering_lookup.py \
+  --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml
+```
+
+主な出力:
+- `/tmp/<bag_name>_map_lookup_table.csv`
+  - race_stacks 互換の `speed x steer -> lateral_accel` lookup table
+- `/tmp/<bag_name>_map_lookup_table_counts.csv`
+  - 各 bin の生サンプル数
+- `/tmp/<bag_name>_map_lookup_table_raw.csv`
+  - `odom` と `cmd_drive` を突き合わせた raw サンプル一覧
+
+補足:
+- 既定の `--cmd-topic` は `/jetracer/cmd_drive` です。これは最終的に車体へ入った指令を使いたいためです
+- controller の素の出力で LUT を作りたい場合は `--cmd-topic /autonomous/cmd_drive` に切り替えてください
+- IMU は不要です。今の script は `odom` と `cmd_drive` だけで動きます
+- 生成される table は「正の操舵量」と「正の横加速度」のみを保存し、左右符号は runtime 側で付ける前提です
 
 ## 使い方（camera crop 解析）
 
