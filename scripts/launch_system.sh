@@ -102,10 +102,14 @@ if [[ -d "$SYSTEM_LAUNCH_SOURCE_SHARE" ]]; then
   BAG_MANAGER_DEFAULT_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/tools/bag_manager.param.yaml"
   BAG_MANAGER_MAPPING_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/tools/bag_manager_mapping.param.yaml"
   BAG_MANAGER_E2E_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/tools/bag_manager_e2e.param.yaml"
+  VEHICLE_DEFAULT_PARAM_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/vehicle/jetracer_node.param.yaml"
+  VEHICLE_MAPPING_PARAM_PATH="$SYSTEM_LAUNCH_SOURCE_SHARE/config/vehicle/jetracer_node_mapping.param.yaml"
 else
   BAG_MANAGER_DEFAULT_PATH='$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml'
   BAG_MANAGER_MAPPING_PATH='$(find-pkg-share system_launch)/config/tools/bag_manager_mapping.param.yaml'
   BAG_MANAGER_E2E_PATH='$(find-pkg-share system_launch)/config/tools/bag_manager_e2e.param.yaml'
+  VEHICLE_DEFAULT_PARAM_PATH='$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml'
+  VEHICLE_MAPPING_PARAM_PATH='$(find-pkg-share system_launch)/config/vehicle/jetracer_node_mapping.param.yaml'
 fi
 
 ARG_bag_manager_param="$BAG_MANAGER_DEFAULT_PATH"
@@ -231,6 +235,8 @@ get_arg() {
 }
 
 apply_mode() {
+  clear_extra_arg_value "vehicle_param"
+
   case "$1" in
     production|base)
       ARG_record="false"
@@ -287,6 +293,7 @@ apply_mode() {
       set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
       set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
       set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
+      set_extra_arg_value "vehicle_param" "$VEHICLE_MAPPING_PARAM_PATH"
       ;;
     identification|map_lookup_recording|map_lookup)
       ARG_record="true"
@@ -450,6 +457,56 @@ current_map_dir() {
   echo ""
 }
 
+current_vehicle_param() {
+  local arg
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    case "$arg" in
+      vehicle_param:=*|vehicle_param=*)
+        echo "${arg#*=}"
+        return
+        ;;
+    esac
+  done
+
+  echo ""
+}
+
+mapping_vehicle_profile_applicable() {
+  [[ "$(get_arg use_vehicle)" == "true" ]] || return 1
+
+  case "$MODE" in
+    sensor_data_recording|mapping|vslam_map)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+vehicle_profile_label() {
+  local current
+
+  if ! mapping_vehicle_profile_applicable; then
+    echo "(n/a)"
+    return 0
+  fi
+
+  current="$(current_vehicle_param)"
+  case "$current" in
+    "$VEHICLE_MAPPING_PARAM_PATH")
+      echo "slow (throttle_gain=0.1)"
+      ;;
+    ""|"$VEHICLE_DEFAULT_PARAM_PATH")
+      echo "normal (throttle_gain=1.0)"
+      ;;
+    *)
+      echo "custom (${current})"
+      ;;
+  esac
+}
+
 set_extra_arg_value() {
   local key="$1"
   local value="$2"
@@ -576,6 +633,41 @@ choose_map_dir_interactive() {
   esac
 }
 
+choose_vehicle_profile_interactive() {
+  local answer
+  local current
+
+  if ! mapping_vehicle_profile_applicable; then
+    return 0
+  fi
+
+  current="$(vehicle_profile_label)"
+  echo ""
+  echo "Vehicle speed profile:"
+  echo "  1) slow     throttle_gain=0.1  (mapping向け, 推奨)"
+  echo "  2) normal   throttle_gain=1.0"
+  echo "  c) custom vehicle_param path"
+  read -r -p "Select vehicle profile [${current}]: " answer
+
+  [[ -z "$answer" ]] && return 0
+
+  case "$answer" in
+    1|slow|Slow)
+      set_extra_arg_value "vehicle_param" "$VEHICLE_MAPPING_PARAM_PATH"
+      ;;
+    2|normal|Normal)
+      set_extra_arg_value "vehicle_param" "$VEHICLE_DEFAULT_PARAM_PATH"
+      ;;
+    c|C)
+      read -r -p "vehicle_param path: " answer
+      [[ -n "$answer" ]] && set_extra_arg_value "vehicle_param" "$answer"
+      ;;
+    *)
+      echo "Invalid vehicle profile selection: $answer" >&2
+      ;;
+  esac
+}
+
 choose_bag_manager_interactive() {
   local answer
   local idx
@@ -684,8 +776,11 @@ toggle_interactive_legacy() {
     done
     printf "      %-32s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
     printf "      %-32s %s\n" "map_dir" "$(map_dir_label)"
+    if mapping_vehicle_profile_applicable; then
+      printf "      %-32s %s\n" "vehicle_speed_profile" "$(vehicle_profile_label)"
+    fi
     echo ""
-    echo "Enter numbers to toggle, 'b' for bag manager, 'm' for map dir, 's KEY=VALUE' to set a value, or Enter to run."
+    echo "Enter numbers to toggle, 'b' for bag manager, 'm' for map dir, 'v' for vehicle speed, 's KEY=VALUE' to set a value, or Enter to run."
     read -r -p "> " answer
 
     [[ -z "$answer" ]] && break
@@ -697,6 +792,11 @@ toggle_interactive_legacy() {
 
     if [[ "$answer" == "m" || "$answer" == "M" ]]; then
       choose_map_dir_interactive
+      continue
+    fi
+
+    if [[ "$answer" == "v" || "$answer" == "V" ]]; then
+      choose_vehicle_profile_interactive
       continue
     fi
 
@@ -748,6 +848,9 @@ render_launch_extra_interactive() {
   printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
   printf "   %-38s %s\n" "map_dir" "$(map_dir_label)"
   printf "   %-38s %s\n" "camera_resolution" "$(camera_resolution_label)"
+  if mapping_vehicle_profile_applicable; then
+    printf "   %-38s %s\n" "vehicle_speed_profile" "$(vehicle_profile_label)"
+  fi
 }
 
 camera_resolution_label() {
@@ -903,7 +1006,9 @@ toggle_interactive_checkbox() {
     "bag manager" \
     "set value" \
     choose_map_dir_interactive \
-    "map"
+    "map" \
+    choose_vehicle_profile_interactive \
+    "vehicle speed"
 }
 
 toggle_interactive() {

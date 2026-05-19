@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    # Mapping runs keep the vehicle deliberately slow so manual driving and bag
+    # collection are easier to control.
+    throttle_gain: 0.1

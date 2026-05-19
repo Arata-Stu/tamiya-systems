@@ -41,6 +41,7 @@ tui_render_checkbox_menu() {
   local extra_menu_label="${6:-}"
   local set_value_label="${7:-}"
   local secondary_menu_label="${8:-}"
+  local tertiary_menu_label="${9:-}"
   local length
   local idx
   local key
@@ -88,6 +89,9 @@ tui_render_checkbox_menu() {
   if [[ -n "$secondary_menu_label" ]]; then
     help="$help  m: $secondary_menu_label"
   fi
+  if [[ -n "$tertiary_menu_label" ]]; then
+    help="$help  v: $tertiary_menu_label"
+  fi
   echo "$help  enter: done  q: quit"
 }
 
@@ -103,6 +107,8 @@ tui_checkbox_menu() {
   local set_value_label="${9:-}"
   local secondary_menu_func="${10:-}"
   local secondary_menu_label="${11:-}"
+  local tertiary_menu_func="${12:-}"
+  local tertiary_menu_label="${13:-}"
   local cursor=0
   local length
   local key
@@ -115,7 +121,7 @@ tui_checkbox_menu() {
   fi
 
   while true; do
-    tui_render_checkbox_menu "$title" "$keys_array" "$get_value_func" "$extra_render_func" "$cursor" "$extra_menu_label" "$set_value_label" "$secondary_menu_label"
+    tui_render_checkbox_menu "$title" "$keys_array" "$get_value_func" "$extra_render_func" "$cursor" "$extra_menu_label" "$set_value_label" "$secondary_menu_label" "$tertiary_menu_label"
     key="$(tui_read_key)"
 
     case "$key" in
@@ -153,6 +159,12 @@ tui_checkbox_menu() {
         if [[ -n "$secondary_menu_func" ]]; then
           tui_clear_screen
           "$secondary_menu_func"
+        fi
+        ;;
+      v|V)
+        if [[ -n "$tertiary_menu_func" ]]; then
+          tui_clear_screen
+          "$tertiary_menu_func"
         fi
         ;;
     esac
