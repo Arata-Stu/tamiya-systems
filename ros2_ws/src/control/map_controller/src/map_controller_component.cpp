@@ -146,8 +146,9 @@ void MapControllerComponent::LoadParameters() {
       this->declare_parameter<double>("lateral_error_clip_m", 0.50), 0.50);
   curvature_normalization_ = ClampPositive(
       this->declare_parameter<double>("curvature_normalization", 0.80), 0.80);
-  curvature_window_points_ = std::max(
-      1, this->declare_parameter<int>("curvature_window_points", 20));
+  const int curvature_window_points = static_cast<int>(
+      this->declare_parameter<int>("curvature_window_points", 20));
+  curvature_window_points_ = std::max(1, curvature_window_points);
 
   steering_limit_ = ClampPositive(
       this->declare_parameter<double>("steering_limit", 0.45), 0.45);
@@ -499,7 +500,7 @@ double MapControllerComponent::ComputeLookaheadDistance(
 }
 
 double MapControllerComponent::ComputeSteeringFromLateralAccel(
-    double lateral_accel_mps2, double speed_mps) const {
+    double lateral_accel_mps2, double speed_mps) {
   if (use_lookup_table_ && lookup_table_.valid()) {
     return LookupSteeringAngle(lateral_accel_mps2, speed_mps);
   }

@@ -50,7 +50,7 @@ private:
                                     double curvature_mean) const;
   double ComputeLookaheadDistance(double lateral_error_m) const;
   double ComputeSteeringFromLateralAccel(double lateral_accel_mps2,
-                                         double speed_mps) const;
+                                         double speed_mps);
   double LookupSteeringAngle(double lateral_accel_mps2,
                              double speed_mps) const;
   double InterpolateSteerForSpeedColumn(double accel_mps2,

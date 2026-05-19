@@ -24,7 +24,7 @@ ament_auto_add_executable(map_controller_node
 
 target_link_libraries(map_controller_node map_controller_component)
 
-ament_auto_package(INSTALL_TO_SHARE
+ament_auto_package(USE_SCOPED_HEADER_INSTALL_DIR INSTALL_TO_SHARE
   config
   launch
 )

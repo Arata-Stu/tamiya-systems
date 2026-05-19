@@ -1146,6 +1146,7 @@ exec ros2 launch system_launch system.launch.xml \
   "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}" \
   "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}" \
   "use_pure_pursuit:=${ARG_use_pure_pursuit}" \
+  "use_map_controller:=${ARG_use_map_controller}" \
   "use_sim_time:=${ARG_use_sim_time}" \
   "publish_map:=${ARG_publish_map}" \
   "map_server_use_sim_time:=${ARG_map_server_use_sim_time}" \
