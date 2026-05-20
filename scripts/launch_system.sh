@@ -150,6 +150,7 @@ Modes:
   localization_eval       Lean localization evaluation preset (VSLAM ref + global localization)
   perception_eval         Lean LiDAR-camera perception evaluation preset
   vslam_eval              Lean VSLAM-only evaluation preset
+  rule_base               Rule-base autonomous driving (Localization + Planning + Map Controller)
   base                    Alias of production
   mapping                 Alias of sensor_data_recording
   vslam_map               Alias of sensor_data_recording
@@ -240,6 +241,32 @@ apply_mode() {
   clear_extra_arg_value "vehicle_param"
 
   case "$1" in
+    rule_base)
+      ARG_record="false"
+      ARG_use_vehicle="true"
+      ARG_vslam="true"
+      ARG_localization="true"
+      ARG_use_lidar="true"
+      ARG_use_camera="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
+      ARG_use_planning="true"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="true"
+      ARG_use_sim_time="false"
+      ARG_publish_map="true"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="true"
+      ARG_publish_localization_tf="true"
+      ARG_use_section_localizer="true"
+      ARG_section_localizer_debug_mode="false"
+      ARG_enable_localization_and_mapping="true"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
+      ;;
     production|base)
       ARG_record="false"
       ARG_use_vehicle="true"
@@ -719,6 +746,7 @@ choose_mode_interactive() {
     "localization_eval                       自己位置推定の精度検証 (VSLAM + 全体位置推定)"
     "perception_eval                         LiDAR/カメラ知覚の評価"
     "vslam_eval                              VSLAM単体の評価"
+    "rule_base                               ルールベース自動運転 (Localization + Planning + Map Controller)"
   )
   local -a MODE_VALUES=(
     "production"
@@ -727,6 +755,7 @@ choose_mode_interactive() {
     "localization_eval"
     "perception_eval"
     "vslam_eval"
+    "rule_base"
   )
   local n_modes="${#MODE_LABELS[@]}"
   local cursor=0
