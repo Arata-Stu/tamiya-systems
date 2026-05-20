@@ -12,8 +12,8 @@
       - /camera/right/camera_info
       # - /realsense2_camera/color/camera_info
       # - /realsense2_camera/color/image_raw
-      # - /jetracer/cmd_drive
-      # - /autonomous/cmd_drive
+      - /jetracer/cmd_drive
+      - /autonomous/cmd_drive
       # - /autonomous/trajectory
       # - /emergency/cmd_drive
       # - /emergency/signal

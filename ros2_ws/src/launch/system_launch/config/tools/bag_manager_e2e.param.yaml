@@ -8,8 +8,8 @@
       - /scan_raw
       - /camera/left/image_raw
       - /camera/left/camera_info
-      # - /camera/right/image_raw
-      # - /camera/right/camera_info
+      - /camera/right/image_raw
+      - /camera/right/camera_info
       # - /realsense2_camera/color/camera_info
       # - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
