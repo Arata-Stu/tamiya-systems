@@ -86,6 +86,8 @@ class DashboardState:
     camera_info: Optional[CameraInfo] = None
     particles: Optional[PoseArray] = None
     path: Optional[Path] = None
+    global_path: Optional[Path] = None
+    local_path: Optional[Path] = None
     odom_speed_mps: Optional[float] = None
     odom_linear_x: Optional[float] = None
     odom_linear_y: Optional[float] = None
@@ -124,6 +126,8 @@ class TerminalDashboard(Node):
             "gates": True,
             "particles": False,
             "path": True,
+            "global_path": True,
+            "local_path": True,
         }
         self.last_render_time = 0.0
         self.last_key_status = ""
@@ -188,6 +192,10 @@ class TerminalDashboard(Node):
             self.create_subscription(PoseArray, args.particles_topic, self.on_particles, sensor_qos)
         if args.path_topic:
             self.create_subscription(Path, args.path_topic, self.on_path, reliable_qos)
+        if args.global_path_topic:
+            self.create_subscription(Path, args.global_path_topic, self.on_global_path, reliable_qos)
+        if args.local_path_topic:
+            self.create_subscription(Path, args.local_path_topic, self.on_local_path, reliable_qos)
         if args.section_markers_topic:
             self.create_subscription(MarkerArray, args.section_markers_topic, self.on_section_markers, marker_qos)
         if args.current_section_marker_topic:
@@ -292,6 +300,12 @@ class TerminalDashboard(Node):
 
     def on_path(self, msg: Path) -> None:
         self.state.path = msg
+
+    def on_global_path(self, msg: Path) -> None:
+        self.state.global_path = msg
+
+    def on_local_path(self, msg: Path) -> None:
+        self.state.local_path = msg
 
     def on_current_section(self, msg: String) -> None:
         self.state.current_section = msg.data or "-"
@@ -398,7 +412,11 @@ class TerminalDashboard(Node):
         if self.toggles["sections"]:
             self.draw_sections(canvas, scale, ox, oy)
         if self.toggles["path"]:
-            self.draw_path(canvas, scale, ox, oy)
+            self.draw_path(canvas, scale, ox, oy, self.state.path, (40, 180, 80))
+        if self.toggles["global_path"]:
+            self.draw_path(canvas, scale, ox, oy, self.state.global_path, (180, 40, 180))
+        if self.toggles["local_path"]:
+            self.draw_path(canvas, scale, ox, oy, self.state.local_path, (40, 180, 180))
         if self.toggles["scan"]:
             self.draw_scan_on_map(canvas, scale, ox, oy)
         if self.toggles["particles"]:
@@ -469,8 +487,7 @@ class TerminalDashboard(Node):
             px, py = self.world_to_view_px(x, y, scale, ox, oy)
             cv2.circle(canvas, (px, py), 2, (35, 125, 255), -1, cv2.LINE_AA)
 
-    def draw_path(self, canvas: np.ndarray, scale: float, ox: int, oy: int) -> None:
-        path = self.state.path
+    def draw_path(self, canvas: np.ndarray, scale: float, ox: int, oy: int, path: Optional[Path], color: Color) -> None:
         map_state = self.state.map_state
         if path is None or map_state is None or not path.poses:
             return
@@ -486,7 +503,7 @@ class TerminalDashboard(Node):
                 continue
             pixels.append(self.world_to_view_px(x, y, scale, ox, oy))
         if len(pixels) >= 2:
-            cv2.polylines(canvas, [np.asarray(pixels, dtype=np.int32)], False, (40, 180, 80), 3, cv2.LINE_AA)
+            cv2.polylines(canvas, [np.asarray(pixels, dtype=np.int32)], False, color, 3, cv2.LINE_AA)
 
     def marker_color(self, marker: Marker, fallback: Color) -> Color:
         if marker.color.a <= 0:
@@ -694,6 +711,8 @@ class TerminalDashboard(Node):
             "g": "gates",
             "p": "particles",
             "t": "path",
+            "y": "global_path",
+            "h": "local_path",
         }
         if key == "q":
             self.running = False
@@ -771,7 +790,7 @@ class TerminalDashboard(Node):
         line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
         line2 = (
             f"odom={odom} img={image} crop={crop} cam={camera_info} tog={flags} "
-            f"keys=m/l/a/u/s/i/r/c/g/p/t space q {self.last_key_status}"
+            f"keys=m/l/a/u/s/i/r/c/g/p/t/y/h space q {self.last_key_status}"
         )
         cv2.putText(canvas, line1[:180], (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         cv2.putText(canvas, line2[:180], (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (215, 220, 228), 1, cv2.LINE_AA)
@@ -789,6 +808,8 @@ class TerminalDashboard(Node):
             ("g", "gates"),
             ("p", "particles"),
             ("t", "path"),
+            ("y", "global_path"),
+            ("h", "local_path"),
         )
         return " ".join(f"{key}:{'1' if self.toggles.get(name, False) else '0'}" for key, name in labels)
 
@@ -857,6 +878,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--particles-topic", default="/particle_cloud")
     parser.add_argument("--path-topic", default="/visual_slam/tracking/slam_path")
+    parser.add_argument("--global-path-topic", default="/planning/global_path")
+    parser.add_argument("--local-path-topic", default="/planning/trajectory")
     parser.add_argument("--section-markers-topic", default="/localization/section_markers")
     parser.add_argument("--current-section-marker-topic", default="/localization/current_section_marker")
     parser.add_argument("--current-section-topic", default="/localization/current_section")
