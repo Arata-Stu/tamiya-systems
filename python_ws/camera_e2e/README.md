@@ -137,7 +137,7 @@ launch 済みの `isaac_ros_camera_e2e_control` と、`--pause` で止めた `ro
 python3 validate_ros2_pipeline_with_bag.py \
   --checkpoint ./ckpts/train/<date>/<time>/best_model.pth \
   --image-topic /camera/left/image_raw \
-  --cmd-topic /autonomous/cmd_drive_raw \
+  --cmd-topic /autonomous/cmd_drive \
   --output-csv ./outputs/ros2_pipeline_eval.csv \
   --max-samples 50
 ```
@@ -159,3 +159,8 @@ python3 validate_ros2_pipeline_with_bag.py \
   export artifact を疑う
 - 3者が一致するのに実機走行だけおかしい:
   車体側の steering/throttle 校正、遅延、古い `model.plan` 掴みなどを疑う
+
+補足:
+
+- `isaac_ros_camera_e2e.launch.xml` のデフォルト (`control_filter:=false`) では decoder 出力は `/autonomous/cmd_drive` です。
+- `/autonomous/cmd_drive_raw` を使うのは `control_filter:=true` で launch した場合です。

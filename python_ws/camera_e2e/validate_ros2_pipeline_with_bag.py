@@ -361,7 +361,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Validate the launched ROS2 camera_e2e pipeline by stepping a paused rosbag2 player "
-            "and comparing live /autonomous/cmd_drive_raw outputs against offline PyTorch/ONNX results."
+            "and comparing live autonomous command outputs against offline PyTorch/ONNX results."
         )
     )
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to best_model.pth")
@@ -371,7 +371,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-name", type=str, default="pilotnet")
 
     parser.add_argument("--image-topic", default="/camera/left/image_raw")
-    parser.add_argument("--cmd-topic", default="/autonomous/cmd_drive_raw")
+    parser.add_argument(
+        "--cmd-topic",
+        default="/autonomous/cmd_drive",
+        help=(
+            "Live command topic to compare against. "
+            "Use /autonomous/cmd_drive for the default launch, or /autonomous/cmd_drive_raw "
+            "when isaac_ros_camera_e2e.launch.xml is started with control_filter:=true."
+        ),
+    )
     parser.add_argument("--player-prefix", default="/rosbag2_player")
     parser.add_argument("--output-csv", default="./outputs/ros2_pipeline_eval.csv")
 
