@@ -10,6 +10,7 @@
     <arg name="use_emergency" default="false" description="run emergency override controller"/>
     <arg name="use_perception" default="false" description="run lidar-camera perception cropper"/>
     <arg name="use_perception_classifier" default="false" description="run Triton-based crop classifier"/>
+    <arg name="use_planning" default="false" description="run geometric planning (raceline_path_publisher)"/>
     <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
     <arg name="magp_rl_run_pure_pursuit" default="false" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
@@ -51,7 +52,9 @@
     <arg name="image_fps" default="90.0" />
     <arg name="camera_mount_frame" default="camera_camera_link" />
 
-    <!-- Control -->
+    <!-- Control & Planning -->
+    <arg name="planning_raceline_csv" default="" />
+    <arg name="map_controller_lookup_table_csv" default="" />
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
     <arg name="emergency_param" default="$(find-pkg-share emergency_controller)/config/emergency_controller.param.yaml" />
@@ -173,6 +176,15 @@
     <let name="resolved_vslam_map_dir"
          value="$(eval '\'$(var resolved_map_dir)/cuvslam_map\'')"
          if="$(eval '\'$(var vslam_map_dir)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_planning_raceline_csv"
+         value="$(var planning_raceline_csv)"
+         if="$(eval '\'$(var planning_raceline_csv)\'.strip() != \'\'')" />
+    <let name="resolved_planning_raceline_csv"
+         value="$(eval '\'$(var resolved_map_dir)/$(var resolved_map_name)_raceline.csv\'')"
+         if="$(eval '\'$(var planning_raceline_csv)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_planning_raceline_csv"
+         value=""
+         if="$(eval '\'$(var planning_raceline_csv)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() == \'\'')" />
     <let name="resolved_vehicle_camera_frame"
          value="$(var camera_mount_frame)" />
     <let name="resolved_publish_camera_stereo_tf"
@@ -274,6 +286,14 @@
         </include>
     </group>
 
+    <!-- Geometric Planning (Raceline Path Publisher) -->
+    <group if="$(var use_planning)">
+        <include file="$(find-pkg-share raceline_path_publisher)/launch/raceline_path_publisher.launch.xml">
+            <arg name="raceline_csv_path" value="$(var resolved_planning_raceline_csv)"/>
+            <arg name="local_path_topic" value="$(var pure_pursuit_trajectory_topic)"/>
+        </include>
+    </group>
+
     <!-- MAP Controller for local trajectory reference -->
     <group if="$(var use_map_controller)">
         <include file="$(find-pkg-share map_controller)/launch/map_controller.launch.xml">
@@ -281,6 +301,7 @@
             <arg name="trajectory_reference_topic" value="$(var map_controller_reference_topic)"/>
             <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
             <arg name="odometry_topic" value="$(var map_controller_odometry_topic)"/>
+            <arg name="lookup_table_csv_path" value="$(var map_controller_lookup_table_csv)"/>
         </include>
     </group>
 
