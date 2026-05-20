@@ -121,3 +121,41 @@ python3 compare_pytorch_triton.py \
 
 - `ONNX(ros2)` は live Triton server への問い合わせではなく、Triton に載せる `model.onnx` を ONNX Runtime で実行した結果です。
 - ここで `PyTorch(ros2)` と `ONNX(ros2)` が一致するのに実機だけおかしい場合は、古い `model.plan` / version directory を Triton が掴んでいる可能性が高いです。
+
+## ROS2 Node Pipeline Validation With Rosbag
+
+launch 済みの `isaac_ros_camera_e2e_control` と、`--pause` で止めた `ros2 bag play` を使って、
+実際の ROS2 node pipeline の出力 `/autonomous/cmd_drive_raw` を offline 推論結果と比較できます。
+
+想定ワークフロー:
+
+1. camera e2e launch を起動
+2. `ros2 bag play /path/to/bag --clock --pause`
+3. 別ターミナルで下記スクリプトを実行
+
+```bash
+python3 validate_ros2_pipeline_with_bag.py \
+  --checkpoint ./ckpts/train/<date>/<time>/best_model.pth \
+  --image-topic /camera/left/image_raw \
+  --cmd-topic /autonomous/cmd_drive_raw \
+  --output-csv ./outputs/ros2_pipeline_eval.csv \
+  --max-samples 50
+```
+
+このスクリプトは `rosbag2_player/play_next` を使って 1 メッセージずつ再生を進め、
+画像を受けるたびに
+
+- live ROS2 pipeline の出力
+- `PyTorch(ros2 前処理)`
+- `ONNX(ros2 前処理)`
+
+を同じ行に CSV 出力します。
+
+解釈の目安:
+
+- `live` と `PyTorch(ros2)` がズレる:
+  launch 中の node pipeline、Triton 配備物、または runtime 設定差を疑う
+- `PyTorch(ros2)` と `ONNX(ros2)` がズレる:
+  export artifact を疑う
+- 3者が一致するのに実機走行だけおかしい:
+  車体側の steering/throttle 校正、遅延、古い `model.plan` 掴みなどを疑う
