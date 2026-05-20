@@ -18,6 +18,7 @@ def main(args):
     print(f"Checkpoint Path: {checkpoint_path}")
     print(f"Output ONNX Path: {output_path}")
     print(f"Input Shape: (1, {args.channels}, {args.height}, {args.width})")
+    print(f"Input Normalization: {args.input_normalization}")
     print("---------------------")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +74,15 @@ if __name__ == "__main__":
     parser.add_argument("--height", type=int, default=120)
     parser.add_argument("--width", type=int, default=212)
     parser.add_argument("--num_outputs", type=int, default=2)
-    # --mean, --std, --input_normalization の引数はIsaac ROS側で処理するため廃止
+    parser.add_argument(
+        "--input_normalization",
+        type=str,
+        choices=["external"],
+        default="external",
+        help=(
+            "Compatibility flag for existing README/deploy commands. "
+            "Normalization is handled by isaac_ros_dnn_image_encoder, so only 'external' is supported."
+        ),
+    )
     args = parser.parse_args()
     main(args)

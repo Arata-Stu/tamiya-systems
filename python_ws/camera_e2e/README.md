@@ -78,3 +78,46 @@ export は成功しても推論時に古い version や互換性のない plan �
 
 `isaac_ros_dnn_image_encoder` 側で `image_mean=[0.5,0.5,0.5]` / `image_stddev=[0.5,0.5,0.5]` を設定する場合、  
 `export_onnx.py` は `--input_normalization external`（デフォルト）でエクスポートしてください。
+
+また、学習デフォルトでは `force_grayscale_3ch: true` のため、ROS2 側も `force_grayscale_3ch:=true`
+で推論する前提です。color カメラ画像をそのまま 3ch で学習したときだけ `false` にしてください。
+
+## PyTorch / Triton Artifact Compare
+
+同じ 1 枚の画像に対して、以下を並べて比較できます。
+
+- 学習前処理 + PyTorch checkpoint
+- ROS2 推論前処理 + PyTorch checkpoint
+- ROS2 推論前処理 + Triton 配備用 `model.onnx`（ONNX Runtime）
+
+これにより、ズレが
+
+- dataset / 学習前処理由来なのか
+- ROS2 側の前処理由来なのか
+- ONNX export / deploy artifact 由来なのか
+
+を切り分けやすくなります。
+
+```bash
+python3 compare_pytorch_triton.py \
+  --checkpoint ./ckpts/train/<date>/<time>/best_model.pth \
+  --dataset-root ./datasets/test \
+  --sample-index 0 \
+  --output-dir ./outputs/compare/sample_000
+```
+
+raw bag の 1 フレームから直接比較したい場合:
+
+```bash
+python3 compare_pytorch_triton.py \
+  --checkpoint ./ckpts/train/<date>/<time>/best_model.pth \
+  --bag-dir /path/to/rosbag_sequence \
+  --image-topic /camera/left/image_raw \
+  --frame-index 0 \
+  --output-dir ./outputs/compare/bag_frame_000
+```
+
+注意:
+
+- `ONNX(ros2)` は live Triton server への問い合わせではなく、Triton に載せる `model.onnx` を ONNX Runtime で実行した結果です。
+- ここで `PyTorch(ros2)` と `ONNX(ros2)` が一致するのに実機だけおかしい場合は、古い `model.plan` / version directory を Triton が掴んでいる可能性が高いです。

@@ -15,7 +15,9 @@
     <arg name="original_image_height" default="240" />
     <arg name="network_image_width" default="212" />
     <arg name="network_image_height" default="120" />
+    <arg name="force_grayscale_3ch" default="true" />
     <arg name="use_rgb_format_converter" default="true" />
+    <arg name="mono_image_topic" default="/pilotnet/image_mono" />
     <arg name="rgb_image_topic" default="/pilotnet/image_rgb" />
 
     <!-- Nitros TensorList names (encoder -> Triton, Triton -> decoder) -->
@@ -26,8 +28,9 @@
     <arg name="triton_input_binding_name" default="image_input" />
     <arg name="triton_output_binding_name" default="control_output" />
 
-    <let name="encoder_image_topic" value="$(var rgb_image_topic)" if="$(var use_rgb_format_converter)"/>
-    <let name="encoder_image_topic" value="$(var input_image_topic)" unless="$(var use_rgb_format_converter)"/>
+    <let name="encoder_image_topic" value="$(var rgb_image_topic)" if="$(var force_grayscale_3ch)"/>
+    <let name="encoder_image_topic" value="$(var rgb_image_topic)" if="$(eval '\'$(var force_grayscale_3ch)\' != \'true\' and \'$(var use_rgb_format_converter)\' == \'true\'')"/>
+    <let name="encoder_image_topic" value="$(var input_image_topic)" if="$(eval '\'$(var force_grayscale_3ch)\' != \'true\' and \'$(var use_rgb_format_converter)\' != \'true\'')"/>
     <let name="input_tensor_topic" value="/encoder/tensor_pub" />
     <let name="triton_output_topic" value="/triton_pilotnet/output_tensor" />
 
@@ -37,7 +40,38 @@
     <let name="decoder_output_target" value="$(var output_control_topic_raw)" if="$(var control_filter)"/>
     <let name="decoder_output_target" value="$(var output_filtered_control_topic)" unless="$(var control_filter)"/>
 
+    <group if="$(var force_grayscale_3ch)">
+        <!-- Match python_ws/camera_e2e training preprocessing:
+             convert any color/mono input to grayscale, then replicate to 3 channels. -->
+        <load_composable_node target="$(var container_name)">
+            <composable_node
+                pkg="isaac_ros_image_proc"
+                plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode"
+                name="pilotnet_image_mono_converter">
+                <param name="encoding_desired" value="mono8" />
+                <param name="image_width" value="$(var original_image_width)" />
+                <param name="image_height" value="$(var original_image_height)" />
+                <remap from="image_raw" to="$(var input_image_topic)" />
+                <remap from="image" to="$(var mono_image_topic)" />
+            </composable_node>
+        </load_composable_node>
+
+        <load_composable_node target="$(var container_name)">
+            <composable_node
+                pkg="isaac_ros_image_proc"
+                plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode"
+                name="pilotnet_image_gray3_converter">
+                <param name="encoding_desired" value="rgb8" />
+                <param name="image_width" value="$(var original_image_width)" />
+                <param name="image_height" value="$(var original_image_height)" />
+                <remap from="image_raw" to="$(var mono_image_topic)" />
+                <remap from="image" to="$(var rgb_image_topic)" />
+            </composable_node>
+        </load_composable_node>
+    </group>
+
     <group if="$(var use_rgb_format_converter)">
+        <group unless="$(var force_grayscale_3ch)">
         <load_composable_node target="$(var container_name)">
             <composable_node
                 pkg="isaac_ros_image_proc"
@@ -50,6 +84,7 @@
                 <remap from="image" to="$(var rgb_image_topic)" />
             </composable_node>
         </load_composable_node>
+        </group>
     </group>
 
     <include file="$(find-pkg-share isaac_ros_dnn_image_encoder)/launch/dnn_image_encoder.launch.py">

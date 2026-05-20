@@ -20,6 +20,11 @@ ros2 launch isaac_ros_camera_e2e_control isaac_ros_camera_e2e.launch.xml \
   network_image_height:=120
 ```
 
+学習側の `python_ws/camera_e2e/config/train.yaml` はデフォルトで `force_grayscale_3ch: true` です。
+そのため launch 側もデフォルトで `force_grayscale_3ch:=true` とし、入力が color でも mono でも
+`gray -> 3ch` にそろえてから encoder に渡します。学習を color 3ch のままで行った場合だけ
+`force_grayscale_3ch:=false` を指定してください。
+
 Precision-specific presets:
 
 ```bash
