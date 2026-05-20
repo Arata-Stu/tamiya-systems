@@ -12,7 +12,8 @@ def _init_weights(m):
 class PilotNetControl(nn.Module):
     """
     NVIDIA PilotNetベースのエンドツーエンド制御モデル。
-    入力: 画像 (B, C, H, W) もしくは時系列 (B, S, C, H, W)
+    Isaac ROS側で前処理（正規化、NCHW変換）されたテンソルを直接受け取る。
+    入力: (B, 3, 120, 212)
     出力: [steer, speed]
     """
 
@@ -30,20 +31,13 @@ class PilotNetControl(nn.Module):
         self.conv4 = nn.Conv2d(48, 64, kernel_size=3, stride=1)
         self.conv5 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
         
-        # 次元を効率的に削減するMaxPool層
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # 動的入力次元の計算（変更なし：poolを適用してサイズを測る）
         with torch.no_grad():
             dummy_input = torch.zeros(1, input_channels, input_height, input_width)
-            # 畳み込み -> プーリングの順で通過させた後のサイズを取得
             x = self.pool(self._forward_conv(dummy_input))
             flatten_dim = x.view(1, -1).shape[1]
-            
-            # デバッグ用に確認したい場合は以下のコメントアウトを外してください
-            # print(f"Flatten dimension calculated: {flatten_dim}")
 
-        # 計算された次元数を元にFC層を定義
         self.fc1 = nn.Linear(flatten_dim, 1164)
         self.fc2 = nn.Linear(1164, 100)
         self.fc3 = nn.Linear(100, 50)
@@ -61,18 +55,8 @@ class PilotNetControl(nn.Module):
         return x
 
     def forward(self, x):
-        # Sequence-to-One
-        if x.dim() == 5:
-            x = x[:, -1, :, :, :]
-
-        # NHWC -> NCHW
-        if x.dim() == 4 and x.shape[-1] in (1, 3, 4):
-            x = x.permute(0, 3, 1, 2).contiguous()
-        if x.dim() == 4 and x.shape[1] == 4:
-            x = x[:, :3, :, :]
-
+        # 複雑な分岐や変換は廃止。真っ直ぐ計算するだけ。
         x = self._forward_conv(x)
-        
         x = self.pool(x)
         
         x = x.view(x.size(0), -1)
@@ -81,4 +65,5 @@ class PilotNetControl(nn.Module):
         x = F.relu(self.fc3(x))
         x = F.relu(self.fc4(x))
         x = torch.tanh(self.fc5(x))
+        
         return x

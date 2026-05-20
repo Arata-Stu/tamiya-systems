@@ -736,7 +736,7 @@ def build_arg_parser(preset: str = "default") -> argparse.ArgumentParser:
         help="Path to global_racetrajectory_optimization checkout for --backend global-opt",
     )
     p.add_argument("--opt-type", choices=["shortest_path", "mincurv", "mincurv_iqp"], default=defaults["opt_type"])
-    p.add_argument("--vehicle-width", type=float, default=0.18)
+    p.add_argument("--vehicle-width", type=float, default=0.25)
     p.add_argument("--safety-margin", type=float, default=0.05)
     p.add_argument("--curvature-limit", type=float, default=defaults["curvature_limit"])
     p.add_argument("--global-opt-stepsize-prep", type=float, default=defaults["global_opt_stepsize_prep"])

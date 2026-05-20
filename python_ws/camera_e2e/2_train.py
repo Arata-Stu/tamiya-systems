@@ -18,7 +18,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
     model.train()
     total_loss = 0.0
     for batch in tqdm(dataloader, desc="Training", leave=False):
-        images = batch["image"].to(device)
+        # 修正: 5D (B, S, C, H, W) -> 4D (B, C, H, W) (シーケンスの最後のフレームを使用)
+        images = batch["image"][:, -1, :, :, :].to(device)
         labels = torch.stack([batch["steer"], batch["speed"]], dim=-1).to(device)
 
         optimizer.zero_grad()
@@ -36,8 +37,10 @@ def validate_one_epoch(model, dataloader, criterion, device):
     total_loss = 0.0
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Validation", leave=False):
-            images = batch["image"].to(device)
+            # 修正: 5D (B, S, C, H, W) -> 4D (B, C, H, W) (シーケンスの最後のフレームを使用)
+            images = batch["image"][:, -1, :, :, :].to(device)
             labels = torch.stack([batch["steer"], batch["speed"]], dim=-1).to(device)
+            
             outputs = model(images)
             loss = criterion(outputs, labels)
             total_loss += loss.item()

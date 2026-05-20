@@ -2,25 +2,8 @@ import argparse
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 
 from src.model import create_trajectory_model, infer_trajectory_architecture
-
-
-class NormalizedModel(nn.Module):
-    def __init__(self, model: nn.Module, mean, std):
-        super().__init__()
-        self.model = model
-        mean = torch.tensor(mean, dtype=torch.float32).view(1, len(mean), 1, 1)
-        std = torch.tensor(std, dtype=torch.float32).view(1, len(std), 1, 1)
-        self.register_buffer("mean", mean)
-        self.register_buffer("std", std)
-
-    def forward(self, x):
-        x = x.to(torch.float32)
-        x = torch.clamp(x, 0.0, 255.0) / 255.0
-        x = (x - self.mean) / self.std
-        return self.model(x)
 
 
 def main(args):
@@ -31,10 +14,12 @@ def main(args):
     print(f"Checkpoint Path: {checkpoint_path}")
     print(f"Output ONNX Path: {output_path}")
     print(f"Input Shape: (1, {args.channels}, {args.height}, {args.width})")
+
     if not checkpoint_path.exists():
         print(f"Error: Checkpoint file not found at {checkpoint_path}")
         return
 
+    # チェックポイントの読み込みとメタデータの抽出
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
         state_dict = checkpoint["model_state_dict"]
@@ -50,12 +35,12 @@ def main(args):
     print(f"Model Architecture: {architecture}")
     print(f"Output Shape: (1, {num_points}, 2)")
     print(f"Output Scale: {output_scale}")
-    print(f"Input Normalization: {args.input_normalization}")
     print("---------------------")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    base_model = create_trajectory_model(
+    # モデルの生成と重みのロード
+    model = create_trajectory_model(
         architecture=architecture,
         num_points=num_points,
         input_channels=args.channels,
@@ -63,16 +48,11 @@ def main(args):
         input_width=args.width,
         output_scale=output_scale,
     )
-    base_model.load_state_dict(state_dict)
-
-    base_model.eval()
-    if args.input_normalization == "internal":
-        model = NormalizedModel(base_model, mean=args.mean, std=args.std)
-        dummy_input = torch.randint(0, 255, (1, args.channels, args.height, args.width), dtype=torch.float32)
-    else:
-        model = base_model
-        dummy_input = torch.randn(1, args.channels, args.height, args.width, dtype=torch.float32)
+    model.load_state_dict(state_dict)
     model.eval()
+
+    # Isaac ROSのエンコーダから送られてくる「正規化済み」のテンソルを想定したダミー入力
+    dummy_input = torch.randn(1, args.channels, args.height, args.width, dtype=torch.float32)
 
     try:
         torch.onnx.export(
@@ -102,13 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("--width", type=int, default=320)
     parser.add_argument("--num_points", type=int, default=20)
     parser.add_argument("--output_scale", type=float, default=10.0)
-    parser.add_argument("--mean", type=float, nargs=3, default=[0.5, 0.5, 0.5])
-    parser.add_argument("--std", type=float, nargs=3, default=[0.5, 0.5, 0.5])
-    parser.add_argument(
-        "--input_normalization",
-        type=str,
-        choices=["external", "internal"],
-        default="external",
-        help="external: input is already normalized by isaac_ros_dnn_image_encoder.",
-    )
+    
+    # 正規化用の引数 (--mean, --std, --input_normalization) を削除しました
+    
     main(parser.parse_args())
