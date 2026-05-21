@@ -16,9 +16,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#include <deque>
-#include <vector>
+#include <cstddef>
 #include <string>
+#include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -36,6 +36,8 @@ public:
 
 private:
   void InputCallback(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+  bool EnsureBuffers(std::size_t scan_length);
+  void ReleaseBuffers();
 
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr sub_;
 
@@ -43,9 +45,15 @@ private:
       nvidia::isaac_ros::nitros::NitrosTensorList>> nitros_pub_;
 
   std::string tensor_name_;
-  size_t history_size_;
+  std::size_t buffer_pool_size_;
+  float max_range_;
+  bool sanitize_invalid_values_;
 
-  std::deque<std::vector<float>> scan_history_;
+  std::size_t scan_length_;
+  std::size_t next_device_buffer_index_;
+
+  std::vector<float> normalized_scan_buffer_;
+  std::vector<void *> device_buffers_;
 };
 
 }  // namespace isaac_ros_lidar_e2e_control

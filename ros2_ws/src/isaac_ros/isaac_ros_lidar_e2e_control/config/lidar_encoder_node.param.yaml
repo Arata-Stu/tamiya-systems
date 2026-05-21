@@ -19,4 +19,6 @@
 /**:
   ros__parameters:
     tensor_name: input_scan
-    history_size: 1
+    buffer_pool_size: 32
+    max_range: 12.0
+    sanitize_invalid_values: true

@@ -17,18 +17,44 @@
 
 #include "isaac_ros_lidar_e2e_control/scan_encoder_node.hpp"
 
-#include <algorithm>
 #include <cmath>
 #include <cuda_runtime.h>
-#include <numeric>
 
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_builder.hpp"
 #include "isaac_ros_nitros_tensor_list_type/nitros_tensor_list_builder.hpp"
 
 namespace isaac_ros_lidar_e2e_control {
 
+namespace {
+
+float NormalizeRangeValue(
+    const float range, const float max_range,
+    const bool sanitize_invalid_values) {
+  float sanitized_range = range;
+  if (sanitize_invalid_values) {
+    if (std::isnan(range)) {
+      sanitized_range = max_range;
+    } else if (std::isinf(range)) {
+      sanitized_range = range > 0.0F ? max_range : 0.0F;
+    }
+  }
+
+  if (!(sanitized_range >= 0.0F)) {
+    sanitized_range = 0.0F;
+  }
+  if (sanitized_range > max_range) {
+    sanitized_range = max_range;
+  }
+
+  return sanitized_range / max_range;
+}
+
+}  // namespace
+
 ScanEncoderNode::ScanEncoderNode(const rclcpp::NodeOptions &options)
-    : Node("scan_encoder_node", options) {
+    : Node("scan_encoder_node", options),
+      scan_length_(0),
+      next_device_buffer_index_(0) {
   sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", rclcpp::SensorDataQoS(),
       std::bind(&ScanEncoderNode::InputCallback, this, std::placeholders::_1));
@@ -42,80 +68,128 @@ ScanEncoderNode::ScanEncoderNode(const rclcpp::NodeOptions &options)
           supported_type_name);
 
   tensor_name_ = declare_parameter<std::string>("tensor_name", "input_scan");
-  history_size_ =
-      static_cast<size_t>(declare_parameter<int>("history_size", 1));
+  const int buffer_pool_size_param =
+      declare_parameter<int>("buffer_pool_size", 32);
+  max_range_ = static_cast<float>(declare_parameter<double>("max_range", 12.0));
+  sanitize_invalid_values_ =
+      declare_parameter<bool>("sanitize_invalid_values", true);
+
+  if (buffer_pool_size_param <= 0) {
+    RCLCPP_WARN(this->get_logger(),
+                "buffer_pool_size must be >= 1. Falling back to 1.");
+    buffer_pool_size_ = 1U;
+  } else {
+    buffer_pool_size_ = static_cast<std::size_t>(buffer_pool_size_param);
+  }
+  if (!(max_range_ > 0.0F)) {
+    RCLCPP_WARN(this->get_logger(),
+                "max_range must be > 0. Falling back to 12.0.");
+    max_range_ = 12.0F;
+  }
 
   RCLCPP_INFO(this->get_logger(),
-              "✅ ScanEncoderNode initialized with history_size = %ld, "
-              "tensor_name = %s",
-              history_size_, tensor_name_.c_str());
+              "ScanEncoderNode initialized (buffer_pool_size=%zu, tensor_name=%s, "
+              "max_range=%.3f)",
+              buffer_pool_size_, tensor_name_.c_str(), max_range_);
 }
 
-ScanEncoderNode::~ScanEncoderNode() = default;
+ScanEncoderNode::~ScanEncoderNode() { ReleaseBuffers(); }
+
+bool ScanEncoderNode::EnsureBuffers(const std::size_t scan_length) {
+  if (scan_length_ == scan_length && !device_buffers_.empty()) {
+    return true;
+  }
+
+  if (scan_length_ != 0U && scan_length_ != scan_length) {
+    RCLCPP_WARN(
+        this->get_logger(),
+        "LaserScan size changed from %zu to %zu. Reinitializing encoder buffers.",
+        scan_length_, scan_length);
+  }
+
+  ReleaseBuffers();
+
+  scan_length_ = scan_length;
+  next_device_buffer_index_ = 0U;
+
+  const std::size_t element_count = scan_length_;
+  const std::size_t buffer_size = element_count * sizeof(float);
+
+  normalized_scan_buffer_.assign(element_count, 0.0F);
+  device_buffers_.reserve(buffer_pool_size_);
+
+  for (std::size_t index = 0; index < buffer_pool_size_; ++index) {
+    void *buffer = nullptr;
+    const cudaError_t status = cudaMalloc(&buffer, buffer_size);
+    if (status != cudaSuccess || buffer == nullptr) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "cudaMalloc failed while preallocating tensor buffers: %s",
+                   cudaGetErrorString(status));
+      ReleaseBuffers();
+      return false;
+    }
+    device_buffers_.push_back(buffer);
+  }
+
+  RCLCPP_INFO(this->get_logger(),
+              "Prepared scan encoder buffers (scan_length=%zu, bytes=%zu, pool=%zu)",
+              scan_length_, buffer_size, device_buffers_.size());
+  return true;
+}
+
+void ScanEncoderNode::ReleaseBuffers() {
+  for (void *buffer : device_buffers_) {
+    if (buffer != nullptr) {
+      cudaFree(buffer);
+    }
+  }
+  device_buffers_.clear();
+  normalized_scan_buffer_.clear();
+  scan_length_ = 0U;
+  next_device_buffer_index_ = 0U;
+}
 
 void ScanEncoderNode::InputCallback(
     const sensor_msgs::msg::LaserScan::SharedPtr msg) {
   const auto &ranges = msg->ranges;
-  const size_t scan_len = ranges.size();
+  const std::size_t scan_len = ranges.size();
 
-  if (scan_len == 0) {
-    RCLCPP_WARN(this->get_logger(), "⚠️ Received empty LaserScan ranges.");
+  if (scan_len == 0U) {
+    RCLCPP_WARN(this->get_logger(), "Received empty LaserScan ranges.");
     return;
   }
 
-  // 1. スキャンをコピーして履歴に追加
-  std::vector<float> current_scan(ranges.begin(), ranges.end());
-  scan_history_.push_back(current_scan);
-
-  if (scan_history_.size() > history_size_) {
-    scan_history_.pop_front();
-  }
-
-  // 2. 履歴が不足している場合はまだpublishしない
-  if (scan_history_.size() < history_size_) {
-    RCLCPP_DEBUG(this->get_logger(), "Buffering scan frames: %ld / %ld",
-                 scan_history_.size(), history_size_);
+  if (!EnsureBuffers(scan_len)) {
     return;
   }
 
-  // 3. ホスト側で平坦化
-  const size_t num_elements = history_size_ * scan_len;
-  const size_t buffer_size = num_elements * sizeof(float);
-  std::vector<float> host_buffer(num_elements);
-
-  size_t idx = 0;
-  for (const auto &scan_vec : scan_history_) {
-    std::copy(scan_vec.begin(), scan_vec.end(), host_buffer.begin() + idx);
-    idx += scan_vec.size();
+  for (std::size_t index = 0; index < scan_length_; ++index) {
+    normalized_scan_buffer_[index] = NormalizeRangeValue(
+        ranges[index], max_range_, sanitize_invalid_values_);
   }
 
-  // 4. CUDAメモリ確保
-  void *buffer = nullptr;
-  cudaError_t status = cudaMalloc(&buffer, buffer_size);
-  if (status != cudaSuccess || buffer == nullptr) {
-    RCLCPP_ERROR(this->get_logger(), "❌ cudaMalloc failed: %s",
-                 cudaGetErrorString(status));
-    return;
-  }
+  // Rotate through preallocated GPU buffers so we do not overwrite a tensor
+  // that may still be in flight downstream.
+  void *buffer = device_buffers_[next_device_buffer_index_];
+  next_device_buffer_index_ =
+      (next_device_buffer_index_ + 1U) % device_buffers_.size();
 
-  // 5. GPUへ転送
-  status = cudaMemcpy(buffer, host_buffer.data(), buffer_size,
-                      cudaMemcpyHostToDevice);
+  const std::size_t buffer_size = scan_length_ * sizeof(float);
+  const cudaError_t status = cudaMemcpy(
+      buffer, normalized_scan_buffer_.data(), buffer_size,
+      cudaMemcpyHostToDevice);
   if (status != cudaSuccess) {
-    RCLCPP_ERROR(this->get_logger(), "❌ cudaMemcpy failed: %s",
+    RCLCPP_ERROR(this->get_logger(), "cudaMemcpy failed: %s",
                  cudaGetErrorString(status));
-    cudaFree(buffer);
     return;
   }
 
-  // 6. NITROS TensorListを構築
   std_msgs::msg::Header header = msg->header;
   header.frame_id = tensor_name_;
 
   auto tensor =
       nvidia::isaac_ros::nitros::NitrosTensorBuilder()
-          .WithShape(
-              {1, static_cast<int>(history_size_), static_cast<int>(scan_len)})
+          .WithShape({1, static_cast<int>(scan_len)})
           .WithDataType(nvidia::isaac_ros::nitros::NitrosDataType::kFloat32)
           .WithData(buffer)
           .Build();
@@ -126,18 +200,13 @@ void ScanEncoderNode::InputCallback(
                          .Build();
 
   RCLCPP_DEBUG(this->get_logger(),
-               "Publishing tensor: shape=[1, %ld, %ld], size=%ld bytes",
-               history_size_, scan_len, buffer_size);
+               "Publishing normalized scan tensor: shape=[1, %zu], size=%zu bytes",
+               scan_len, buffer_size);
 
-  // 7. Publish
-  // NOTE:
-  // The GPU buffer is handed off to NitrosTensorList via builder ownership.
-  // Do not cudaFree(buffer) here; freeing immediately invalidates the pointer
-  // before downstream Triton copies input data.
   nitros_pub_->publish(tensor_list);
 }
 
-} // namespace isaac_ros_lidar_e2e_control
+}  // namespace isaac_ros_lidar_e2e_control
 
 // Register component
 #include "rclcpp_components/register_node_macro.hpp"
