@@ -604,6 +604,7 @@ launch_vslam_stack() {
     local vslam_param_path="${5:-}"
     local enable_alignment_from_config="${6:-true}"
     local -a launch_args=(
+        "use_sim_time:=true"
         "image_width:=${IMAGE_WIDTH}"
         "image_height:=${IMAGE_HEIGHT}"
         "camera_container_name:=${CAMERA_CONTAINER_NAME}"
@@ -1810,7 +1811,7 @@ run_live_vslam_alignment_session() {
 
     echo "[align] Launch RViz2 for live map/VSLAM alignment"
     launch_background_process "RVIZ_PID" "RVIZ_USES_SETSID" \
-        rviz2 -d "${rviz_config_path}"
+        rviz2 -d "${rviz_config_path}" --ros-args -p use_sim_time:=true
 
     sleep 3
     wait_for_topic "/map" 5 || true
@@ -1822,6 +1823,7 @@ run_live_vslam_alignment_session() {
     alignment_cmd=(
         ros2 run vslam_map_tools manual_tf_alignment_node.py
         --ros-args
+        -p use_sim_time:=true
         -p parent_frame:=map
         -p child_frame:=vslam_map
         -p config_path:="${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"

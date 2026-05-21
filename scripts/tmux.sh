@@ -173,9 +173,9 @@ CMD_LEFT_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /camera/left/
 CMD_DEBUG_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/debug/image --best-effort --max-fps 10"
 CMD_PERCEPTION_LABEL="ros2 topic echo /perception/classification/label"
 CMD_PERCEPTION_CONFIDENCE="ros2 topic echo /perception/classification/confidence"
-RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz'
-RVIZ_VSLAM_ALIGNMENT='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_map_alignment.rviz'
-RVIZ_VSLAM_DEBUG='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.rviz'
+RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz --ros-args -p use_sim_time:=true'
+RVIZ_VSLAM_ALIGNMENT='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_map_alignment.rviz --ros-args -p use_sim_time:=true'
+RVIZ_VSLAM_DEBUG='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.rviz --ros-args -p use_sim_time:=true'
 
 PANE_WINDOWS=()
 PANE_DIRS=()

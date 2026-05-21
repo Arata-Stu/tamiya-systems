@@ -103,6 +103,7 @@
         exec="manual_tf_alignment_node.py"
         name="manual_tf_alignment_node"
         output="screen">
+        <param name="use_sim_time" value="$(var use_sim_time)"/>
         <param name="parent_frame" value="$(var vslam_map_parent_frame)"/>
         <param name="child_frame" value="$(var vslam_map_frame)"/>
         <param name="config_path" value="$(var vslam_map_alignment_config)"/>
