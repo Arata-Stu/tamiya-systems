@@ -2,6 +2,83 @@
 
 set -euo pipefail
 
+INITIAL_PWD="${PWD}"
+
+resolve_real_path() {
+  local input_path="$1"
+
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$input_path" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+    return 0
+  fi
+
+  if command -v perl >/dev/null 2>&1; then
+    perl -MCwd=realpath -e 'print realpath($ARGV[0])' "$input_path"
+    return 0
+  fi
+
+  printf '%s\n' "$input_path"
+}
+
+SCRIPT_PATH="$(resolve_real_path "${BASH_SOURCE[0]}")"
+
+is_repo_root() {
+  local candidate="$1"
+
+  [[ -d "$candidate" ]] || return 1
+  [[ -d "$candidate/scripts" ]] || return 1
+  [[ -d "$candidate/ros2_ws" ]] || return 1
+  [[ -f "$candidate/scripts/tmux.sh" ]] || return 1
+}
+
+find_repo_root_from() {
+  local current="$1"
+
+  [[ -n "$current" ]] || return 1
+
+  if [[ -f "$current" ]]; then
+    current="$(dirname "$current")"
+  fi
+
+  [[ -d "$current" ]] || return 1
+
+  while true; do
+    if is_repo_root "$current"; then
+      (cd "$current" && pwd)
+      return 0
+    fi
+
+    [[ "$current" == "/" ]] && break
+    current="$(dirname "$current")"
+  done
+
+  return 1
+}
+
+resolve_repo_root() {
+  local candidate
+
+  for candidate in \
+    "${INITIAL_PWD}" \
+    "${SCRIPT_PATH}" \
+    "$(dirname "${SCRIPT_PATH}")" \
+    "$(dirname "$(dirname "${SCRIPT_PATH}")")" \
+    /workspaces \
+    /workspace; do
+    [[ -n "$candidate" ]] || continue
+    if find_repo_root_from "$candidate"; then
+      return 0
+    fi
+  done
+
+  (cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)
+}
+
 MODE_TAMIYA="tamiya"
 MODE_PYTHON="python"
 MODE_MAP="map"
@@ -25,8 +102,8 @@ WINDOW_DATA="data"
 WINDOW_EVAL="eval"
 WINDOW_VISUAL="visual"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
+REPO_ROOT="$(resolve_repo_root)"
 
 resolve_existing_dir() {
   local candidate

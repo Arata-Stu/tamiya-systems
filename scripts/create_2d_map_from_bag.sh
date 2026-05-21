@@ -2,8 +2,90 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+INITIAL_PWD="${PWD}"
+
+resolve_real_path() {
+    local input_path="$1"
+
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$input_path" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+        return 0
+    fi
+
+    if command -v perl >/dev/null 2>&1; then
+        perl -MCwd=realpath -e 'print realpath($ARGV[0])' "$input_path"
+        return 0
+    fi
+
+    printf '%s\n' "$input_path"
+}
+
+SCRIPT_PATH="$(resolve_real_path "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
+
+is_repo_root() {
+    local candidate="$1"
+
+    [ -d "${candidate}" ] || return 1
+    [ -d "${candidate}/scripts" ] || return 1
+    [ -d "${candidate}/ros2_ws" ] || return 1
+    [ -f "${candidate}/scripts/create_2d_map_from_bag.sh" ] || return 1
+}
+
+find_repo_root_from() {
+    local current="$1"
+
+    [ -n "${current}" ] || return 1
+
+    if [ -f "${current}" ]; then
+        current="$(dirname "${current}")"
+    fi
+
+    if [ ! -d "${current}" ]; then
+        return 1
+    fi
+
+    while true; do
+        if is_repo_root "${current}"; then
+            (cd "${current}" && pwd)
+            return 0
+        fi
+
+        if [ "${current}" = "/" ]; then
+            break
+        fi
+
+        current="$(dirname "${current}")"
+    done
+
+    return 1
+}
+
+resolve_repo_root() {
+    local candidate
+
+    for candidate in \
+        "${CREATE_2D_MAP_PROJECT_ROOT:-}" \
+        "${INITIAL_PWD}" \
+        "${SCRIPT_DIR}" \
+        "${SCRIPT_DIR}/.." \
+        "/workspaces" \
+        "/workspace"; do
+        [ -n "${candidate}" ] || continue
+        if find_repo_root_from "${candidate}"; then
+            return 0
+        fi
+    done
+
+    (cd "${SCRIPT_DIR}/.." && pwd)
+}
+
+REPO_ROOT="$(resolve_repo_root)"
 SYSTEM_LAUNCH_SOURCE_SHARE=""
 SYSTEM_LAUNCH_CMD=()
 
@@ -29,19 +111,32 @@ resolve_system_launch_source_share() {
 
 resolve_system_launch_config_file() {
     local relative_path="$1"
+    local resolved_path
+
+    if resolved_path="$(resolve_system_launch_share_file "config" "${relative_path}")"; then
+        echo "${resolved_path}"
+        return 0
+    fi
+
+    return 1
+}
+
+resolve_system_launch_share_file() {
+    local share_subdir="$1"
+    local relative_path="$2"
     local pkg_prefix=""
 
     if [ -n "${SYSTEM_LAUNCH_SOURCE_SHARE}" ] && \
-       [ -f "${SYSTEM_LAUNCH_SOURCE_SHARE}/config/${relative_path}" ]; then
-        echo "${SYSTEM_LAUNCH_SOURCE_SHARE}/config/${relative_path}"
+       [ -f "${SYSTEM_LAUNCH_SOURCE_SHARE}/${share_subdir}/${relative_path}" ]; then
+        echo "${SYSTEM_LAUNCH_SOURCE_SHARE}/${share_subdir}/${relative_path}"
         return 0
     fi
 
     if command -v ros2 >/dev/null 2>&1; then
         pkg_prefix="$(ros2 pkg prefix system_launch 2>/dev/null || true)"
         if [ -n "${pkg_prefix}" ] && \
-           [ -f "${pkg_prefix}/share/system_launch/config/${relative_path}" ]; then
-            echo "${pkg_prefix}/share/system_launch/config/${relative_path}"
+           [ -f "${pkg_prefix}/share/system_launch/${share_subdir}/${relative_path}" ]; then
+            echo "${pkg_prefix}/share/system_launch/${share_subdir}/${relative_path}"
             return 0
         fi
     fi
@@ -55,9 +150,10 @@ resolve_repo_file() {
 
     for candidate_root in \
         "${CREATE_2D_MAP_PROJECT_ROOT:-}" \
-        "/workspaces/src/launch/system_launch" \
         "${REPO_ROOT}" \
         "${SYSTEM_LAUNCH_SOURCE_SHARE}" \
+        "/workspaces" \
+        "/workspace" \
         "${PWD}"; do
         [ -n "${candidate_root}" ] || continue
         if [ -f "${candidate_root}/${relative_path}" ]; then
@@ -1550,6 +1646,10 @@ resolve_vslam_live_alignment_rviz_config() {
             return 0
         fi
         return 1
+    fi
+
+    if resolve_system_launch_share_file "rviz" "vslam_map_alignment.rviz"; then
+        return 0
     fi
 
     resolve_repo_file "ros2_ws/src/launch/system_launch/rviz/vslam_map_alignment.rviz"
