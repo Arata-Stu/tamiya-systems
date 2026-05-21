@@ -15,6 +15,12 @@
   <arg name="use_localization_manager" default="true" />
   <arg name="localization_manager_param" default="$(find-pkg-share localization_manager)/config/localization_manager.param.yaml" />
   <arg name="localization_feedback_timeout_sec" default="0.0" />
+  <arg name="localization_result_offset_x" default="0.0" />
+  <arg name="localization_result_offset_y" default="0.0" />
+  <arg name="localization_result_offset_z" default="0.0" />
+  <arg name="localization_result_offset_roll_rad" default="0.0" />
+  <arg name="localization_result_offset_pitch_rad" default="0.0" />
+  <arg name="localization_result_offset_yaw_rad" default="0.0" />
   <arg name="publish_localization_tf" default="true" />
   <arg name="localization_tf_mode" default="map_to_odom" />
   <arg name="localization_tf_map_frame" default="map" />
@@ -84,6 +90,12 @@
       <arg name="localization_trigger_service" value="$(var localization_trigger_service)" />
       <arg name="localization_result_topic" value="$(var localization_result_topic)" />
       <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)" />
+      <arg name="localization_result_offset_x" value="$(var localization_result_offset_x)" />
+      <arg name="localization_result_offset_y" value="$(var localization_result_offset_y)" />
+      <arg name="localization_result_offset_z" value="$(var localization_result_offset_z)" />
+      <arg name="localization_result_offset_roll_rad" value="$(var localization_result_offset_roll_rad)" />
+      <arg name="localization_result_offset_pitch_rad" value="$(var localization_result_offset_pitch_rad)" />
+      <arg name="localization_result_offset_yaw_rad" value="$(var localization_result_offset_yaw_rad)" />
       <arg name="use_sim_time" value="$(var use_sim_time)" />
       <arg name="publish_localization_tf" value="$(var publish_localization_tf)" />
       <arg name="localization_tf_mode" value="$(var localization_tf_mode)" />

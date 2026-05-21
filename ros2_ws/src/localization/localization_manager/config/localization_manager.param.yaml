@@ -14,6 +14,15 @@
     amcl_pose_max_yaw_variance: -1.0
     publish_initialpose_to_amcl: false
     initial_pose_topic: "/initialpose"
+    # Apply a fixed transform from the localization_result pose frame to
+    # base_link before publishing TF / initialpose. Set yaw=pi to correct
+    # a 180-degree heading flip.
+    localization_result_offset_x: 0.0
+    localization_result_offset_y: 0.0
+    localization_result_offset_z: 0.0
+    localization_result_offset_roll_rad: 0.0
+    localization_result_offset_pitch_rad: 0.0
+    localization_result_offset_yaw_rad: 0.0
 
     # TF bridge settings
     publish_localization_tf: true

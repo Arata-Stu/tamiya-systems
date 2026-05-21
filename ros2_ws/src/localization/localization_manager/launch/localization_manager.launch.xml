@@ -12,6 +12,12 @@
   <arg name="amcl_pose_max_yaw_variance" default="-1.0"/>
   <arg name="publish_initialpose_to_amcl" default="false"/>
   <arg name="initial_pose_topic" default="/initialpose"/>
+  <arg name="localization_result_offset_x" default="0.0"/>
+  <arg name="localization_result_offset_y" default="0.0"/>
+  <arg name="localization_result_offset_z" default="0.0"/>
+  <arg name="localization_result_offset_roll_rad" default="0.0"/>
+  <arg name="localization_result_offset_pitch_rad" default="0.0"/>
+  <arg name="localization_result_offset_yaw_rad" default="0.0"/>
   <arg name="use_sim_time" default="false"/>
 
   <arg name="publish_localization_tf" default="true"/>
@@ -37,6 +43,12 @@
     <param name="amcl_pose_max_yaw_variance" value="$(var amcl_pose_max_yaw_variance)"/>
     <param name="publish_initialpose_to_amcl" value="$(var publish_initialpose_to_amcl)"/>
     <param name="initial_pose_topic" value="$(var initial_pose_topic)"/>
+    <param name="localization_result_offset_x" value="$(var localization_result_offset_x)"/>
+    <param name="localization_result_offset_y" value="$(var localization_result_offset_y)"/>
+    <param name="localization_result_offset_z" value="$(var localization_result_offset_z)"/>
+    <param name="localization_result_offset_roll_rad" value="$(var localization_result_offset_roll_rad)"/>
+    <param name="localization_result_offset_pitch_rad" value="$(var localization_result_offset_pitch_rad)"/>
+    <param name="localization_result_offset_yaw_rad" value="$(var localization_result_offset_yaw_rad)"/>
     <param name="use_sim_time" value="$(var use_sim_time)"/>
     <param name="publish_localization_tf" value="$(var publish_localization_tf)"/>
     <param name="localization_tf_mode" value="$(var localization_tf_mode)"/>

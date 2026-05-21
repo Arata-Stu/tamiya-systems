@@ -4,6 +4,7 @@
 #include <string>
 
 #include "geometry_msgs/msg/pose_with_covariance_stamped.hpp"
+#include "geometry_msgs/msg/pose.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/bool.hpp"
@@ -27,6 +28,8 @@ private:
   void update_localization_tf(
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg,
       const std::string &source_name);
+  geometry_msgs::msg::Pose apply_localization_result_offset(
+      const geometry_msgs::msg::Pose &pose) const;
   bool should_apply_amcl_pose_update();
   bool is_amcl_pose_accepted(
       const geometry_msgs::msg::PoseWithCovarianceStamped &msg);
@@ -59,6 +62,12 @@ private:
   bool allow_amcl_pose_tf_update_ = true;
   bool publish_initialpose_to_amcl_ = false;
   std::string initial_pose_topic_ = "/initialpose";
+  double localization_result_offset_x_ = 0.0;
+  double localization_result_offset_y_ = 0.0;
+  double localization_result_offset_z_ = 0.0;
+  double localization_result_offset_roll_rad_ = 0.0;
+  double localization_result_offset_pitch_rad_ = 0.0;
+  double localization_result_offset_yaw_rad_ = 0.0;
 
   double localization_feedback_timeout_sec_ = 0.0;
   bool waiting_localization_result_ = false;

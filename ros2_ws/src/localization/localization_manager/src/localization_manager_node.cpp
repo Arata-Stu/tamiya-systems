@@ -38,6 +38,24 @@ LocalizationManagerNode::LocalizationManagerNode()
   initial_pose_topic_ =
       this->declare_parameter<std::string>("initial_pose_topic",
                                            initial_pose_topic_);
+  localization_result_offset_x_ =
+      this->declare_parameter("localization_result_offset_x",
+                              localization_result_offset_x_);
+  localization_result_offset_y_ =
+      this->declare_parameter("localization_result_offset_y",
+                              localization_result_offset_y_);
+  localization_result_offset_z_ =
+      this->declare_parameter("localization_result_offset_z",
+                              localization_result_offset_z_);
+  localization_result_offset_roll_rad_ =
+      this->declare_parameter("localization_result_offset_roll_rad",
+                              localization_result_offset_roll_rad_);
+  localization_result_offset_pitch_rad_ =
+      this->declare_parameter("localization_result_offset_pitch_rad",
+                              localization_result_offset_pitch_rad_);
+  localization_result_offset_yaw_rad_ =
+      this->declare_parameter("localization_result_offset_yaw_rad",
+                              localization_result_offset_yaw_rad_);
   localization_feedback_timeout_sec_ = std::max(
       0.0, this->declare_parameter("localization_feedback_timeout_sec", 0.0));
 
@@ -143,12 +161,17 @@ LocalizationManagerNode::LocalizationManagerNode()
               localization_result_topic_.c_str());
   RCLCPP_INFO(this->get_logger(),
               "AMCL pose input: %s (topic=%s, update_mode=%s, max_xy_var=%.3f, "
-              "max_yaw_var=%.3f, initialpose_forward=%s -> %s)",
+              "max_yaw_var=%.3f, initialpose_forward=%s -> %s, "
+              "result_offset_xyz=(%.3f, %.3f, %.3f), rpy=(%.3f, %.3f, %.3f))",
               use_amcl_pose_ ? "enabled" : "disabled", amcl_pose_topic_.c_str(),
               amcl_pose_update_mode_.c_str(),
               amcl_pose_max_xy_variance_, amcl_pose_max_yaw_variance_,
               publish_initialpose_to_amcl_ ? "enabled" : "disabled",
-              initial_pose_topic_.c_str());
+              initial_pose_topic_.c_str(), localization_result_offset_x_,
+              localization_result_offset_y_, localization_result_offset_z_,
+              localization_result_offset_roll_rad_,
+              localization_result_offset_pitch_rad_,
+              localization_result_offset_yaw_rad_);
   RCLCPP_INFO(this->get_logger(),
               "Localization TF bridge: %s (mode=%s, map=%s, odom=%s, base=%s, "
               "publish_rate=%.2f Hz)",
@@ -267,6 +290,40 @@ bool LocalizationManagerNode::should_apply_amcl_pose_update() {
   return true;
 }
 
+geometry_msgs::msg::Pose LocalizationManagerNode::apply_localization_result_offset(
+    const geometry_msgs::msg::Pose &pose) const {
+  tf2::Quaternion map_to_result_q;
+  tf2::fromMsg(pose.orientation, map_to_result_q);
+  if (map_to_result_q.length2() < 1e-12) {
+    map_to_result_q.setRPY(0.0, 0.0, 0.0);
+  } else {
+    map_to_result_q.normalize();
+  }
+
+  const tf2::Transform map_to_result_tf(
+      map_to_result_q, tf2::Vector3(pose.position.x, pose.position.y,
+                                    pose.position.z));
+
+  tf2::Quaternion result_to_base_q;
+  result_to_base_q.setRPY(localization_result_offset_roll_rad_,
+                          localization_result_offset_pitch_rad_,
+                          localization_result_offset_yaw_rad_);
+  result_to_base_q.normalize();
+  const tf2::Transform result_to_base_tf(
+      result_to_base_q,
+      tf2::Vector3(localization_result_offset_x_, localization_result_offset_y_,
+                   localization_result_offset_z_));
+
+  const tf2::Transform map_to_base_tf = map_to_result_tf * result_to_base_tf;
+
+  geometry_msgs::msg::Pose corrected_pose;
+  corrected_pose.position.x = map_to_base_tf.getOrigin().x();
+  corrected_pose.position.y = map_to_base_tf.getOrigin().y();
+  corrected_pose.position.z = map_to_base_tf.getOrigin().z();
+  corrected_pose.orientation = tf2::toMsg(map_to_base_tf.getRotation());
+  return corrected_pose;
+}
+
 void LocalizationManagerNode::update_localization_tf(
     const geometry_msgs::msg::PoseWithCovarianceStamped &msg,
     const std::string &source_name) {
@@ -276,8 +333,10 @@ void LocalizationManagerNode::update_localization_tf(
 
   const std::string map_frame =
       msg.header.frame_id.empty() ? localization_tf_map_frame_ : msg.header.frame_id;
+  const geometry_msgs::msg::Pose corrected_pose =
+      apply_localization_result_offset(msg.pose.pose);
   tf2::Quaternion map_to_base_q;
-  tf2::fromMsg(msg.pose.pose.orientation, map_to_base_q);
+  tf2::fromMsg(corrected_pose.orientation, map_to_base_q);
   if (map_to_base_q.length2() < 1e-12) {
     map_to_base_q.setRPY(0.0, 0.0, 0.0);
   } else {
@@ -285,8 +344,8 @@ void LocalizationManagerNode::update_localization_tf(
   }
   const tf2::Transform map_to_base_tf(
       map_to_base_q,
-      tf2::Vector3(msg.pose.pose.position.x, msg.pose.pose.position.y,
-                   msg.pose.pose.position.z));
+      tf2::Vector3(corrected_pose.position.x, corrected_pose.position.y,
+                   corrected_pose.position.z));
 
   geometry_msgs::msg::TransformStamped output_tf;
   output_tf.header.frame_id = map_frame;
@@ -323,9 +382,9 @@ void LocalizationManagerNode::update_localization_tf(
     output_tf.transform = tf2::toMsg(map_to_odom_tf);
   } else {
     output_tf.child_frame_id = localization_tf_base_frame_;
-    output_tf.transform.translation.x = msg.pose.pose.position.x;
-    output_tf.transform.translation.y = msg.pose.pose.position.y;
-    output_tf.transform.translation.z = msg.pose.pose.position.z;
+    output_tf.transform.translation.x = corrected_pose.position.x;
+    output_tf.transform.translation.y = corrected_pose.position.y;
+    output_tf.transform.translation.z = corrected_pose.position.z;
     output_tf.transform.rotation = tf2::toMsg(map_to_base_q);
   }
 
@@ -380,6 +439,7 @@ void LocalizationManagerNode::publish_initial_pose(
   if (initial_pose.header.frame_id.empty()) {
     initial_pose.header.frame_id = localization_tf_map_frame_;
   }
+  initial_pose.pose.pose = apply_localization_result_offset(initial_pose.pose.pose);
   initial_pose.header.stamp = this->now();
   initial_pose_pub_->publish(initial_pose);
   RCLCPP_INFO(this->get_logger(),

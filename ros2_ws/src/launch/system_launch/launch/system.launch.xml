@@ -134,6 +134,12 @@
     <arg name="map_frame" default="map" />
     <arg name="localization_manager_param" default="$(find-pkg-share system_launch)/config/localization/localization_manager.param.yaml" />
     <arg name="localization_feedback_timeout_sec" default="0.0" />
+    <arg name="localization_result_offset_x" default="0.0" />
+    <arg name="localization_result_offset_y" default="0.0" />
+    <arg name="localization_result_offset_z" default="0.0" />
+    <arg name="localization_result_offset_roll_rad" default="0.0" />
+    <arg name="localization_result_offset_pitch_rad" default="0.0" />
+    <arg name="localization_result_offset_yaw_rad" default="0.0" />
     <arg name="localization_tf_mode" default="map_to_odom" />
     <arg name="localization_tf_map_frame" default="map" />
     <arg name="localization_tf_odom_frame" default="odom" />
@@ -387,6 +393,7 @@
             <arg name="image_width" value="$(var image_width)"/>
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="camera_container_name" value="$(var camera_container_name)"/>
+            <arg name="use_sim_time" value="$(var use_sim_time)"/>
             <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
             <arg name="load_map_path" value="$(var resolved_vslam_map_dir)"/>
             <arg name="save_map_path" value="$(var vslam_save_map_dir)"/>
@@ -412,6 +419,12 @@
             <arg name="use_localization_manager" value="$(var use_localization_manager)"/>
             <arg name="localization_manager_param" value="$(var localization_manager_param)"/>
             <arg name="localization_feedback_timeout_sec" value="$(var localization_feedback_timeout_sec)"/>
+            <arg name="localization_result_offset_x" value="$(var localization_result_offset_x)"/>
+            <arg name="localization_result_offset_y" value="$(var localization_result_offset_y)"/>
+            <arg name="localization_result_offset_z" value="$(var localization_result_offset_z)"/>
+            <arg name="localization_result_offset_roll_rad" value="$(var localization_result_offset_roll_rad)"/>
+            <arg name="localization_result_offset_pitch_rad" value="$(var localization_result_offset_pitch_rad)"/>
+            <arg name="localization_result_offset_yaw_rad" value="$(var localization_result_offset_yaw_rad)"/>
             <arg name="publish_localization_tf" value="$(var publish_localization_tf)"/>
             <arg name="localization_tf_mode" value="$(var localization_tf_mode)"/>
             <arg name="localization_tf_map_frame" value="$(var localization_tf_map_frame)"/>
