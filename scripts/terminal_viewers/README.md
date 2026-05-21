@@ -33,6 +33,9 @@ It uses exact-time TF by default and hides overlays when a synced scan / image /
 pose cannot be found within `--sync-tolerance-ms` instead of silently mixing
 latest data. If you intentionally want the old forgiving behavior, pass
 `--allow-latest-tf-fallback`.
+The default reference is the latest localization pose when that overlay is
+enabled, so the dashboard may lag slightly but it keeps the view aligned to the
+historical pose you want to inspect.
 
 For compressed images:
 

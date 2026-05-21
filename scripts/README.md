@@ -34,7 +34,8 @@ crop preview は既定で `/perception/crop/image` を購読し、BEST_EFFORT Qo
 受け取ります。評価用途では topic 時刻の近い message だけを組み合わせ、
 exact-time TF が引けないときは overlay を隠す既定動作です。旧来どおり
 latest TF へ緩く fallback したい場合だけ `--allow-latest-tf-fallback` を
-明示してください。
+明示してください。localization overlay が有効なときは、その pose 時刻を
+基準に scan / image を巻き戻して合わせる既定動作です。
 
 ## Shared helpers
 

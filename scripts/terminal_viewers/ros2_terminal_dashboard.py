@@ -409,12 +409,37 @@ class TerminalDashboard(Node):
         else:
             self.section_markers[(marker.ns, marker.id)] = marker
 
-    def nearest_buffer_item(self, buffer: object, target_stamp: object, stamp_getter: object) -> Optional[object]:
+    def nearest_buffer_item(
+        self,
+        buffer: object,
+        target_stamp: object,
+        stamp_getter: object,
+        *,
+        prefer_past: bool = False,
+    ) -> Optional[object]:
         if not buffer:
             return None
         target_ns = stamp_to_ns(target_stamp)
         if target_ns is None:
             return buffer[-1]
+
+        if prefer_past:
+            best_past = None
+            best_past_delta = None
+            for item in reversed(buffer):
+                item_ns = stamp_to_ns(stamp_getter(item))
+                if item_ns is None or item_ns > target_ns:
+                    continue
+                delta = target_ns - item_ns
+                if best_past_delta is None or delta < best_past_delta:
+                    best_past = item
+                    best_past_delta = delta
+                if delta == 0:
+                    break
+            if best_past is not None:
+                if self.sync_tolerance_ns > 0 and best_past_delta is not None and best_past_delta > self.sync_tolerance_ns:
+                    return None
+                return best_past
 
         best_item = None
         best_delta = None
@@ -447,6 +472,7 @@ class TerminalDashboard(Node):
             buffer,
             target_stamp,
             lambda pose: pose.stamp,
+            prefer_past=True,
         )
 
     def select_localization_pose(self, target_stamp: object) -> Optional[Pose2D]:
@@ -465,6 +491,7 @@ class TerminalDashboard(Node):
             self.scan_buffer,
             target_stamp,
             lambda msg: msg.header.stamp,
+            prefer_past=True,
         )
 
     def select_particles(self, target_stamp: object) -> Optional[PoseArray]:
@@ -474,6 +501,7 @@ class TerminalDashboard(Node):
             self.particles_buffer,
             target_stamp,
             lambda msg: msg.header.stamp,
+            prefer_past=True,
         )
 
     def select_image_frame(self, target_stamp: object) -> Optional[TimedImageFrame]:
@@ -483,6 +511,7 @@ class TerminalDashboard(Node):
             self.image_buffer,
             target_stamp,
             lambda frame: frame.stamp,
+            prefer_past=True,
         )
 
     def select_crop_image_frame(self, target_stamp: object) -> Optional[TimedImageFrame]:
@@ -492,6 +521,7 @@ class TerminalDashboard(Node):
             self.crop_image_buffer,
             target_stamp,
             lambda frame: frame.stamp,
+            prefer_past=True,
         )
 
     def select_scan_for_image(self, image_stamp: object) -> Optional[LaserScan]:
@@ -502,24 +532,25 @@ class TerminalDashboard(Node):
             self.camera_info_buffer,
             image_stamp,
             lambda msg: msg.header.stamp,
+            prefer_past=True,
         )
         if nearest is not None:
             return nearest
         return self.camera_info_buffer[-1] if self.camera_info_buffer else self.state.camera_info
 
     def select_reference(self) -> tuple[str, Optional[object]]:
-        if self.toggles["image"] and self.image_buffer:
-            return "img", self.image_buffer[-1].stamp
-        if self.toggles["crop"] and self.crop_image_buffer:
-            return "crop", self.crop_image_buffer[-1].stamp
-        if self.toggles["scan"] and self.scan_buffer:
-            return "scan", self.scan_buffer[-1].header.stamp
         if self.toggles["localization"] and self.localization_buffer:
             return "loc", self.localization_buffer[-1].stamp
         if self.toggles["amcl"] and self.amcl_pose_buffer:
             return "amcl", self.amcl_pose_buffer[-1].stamp
         if self.toggles["initialpose"] and self.initial_pose_buffer:
             return "init", self.initial_pose_buffer[-1].stamp
+        if self.toggles["scan"] and self.scan_buffer:
+            return "scan", self.scan_buffer[-1].header.stamp
+        if self.toggles["image"] and self.image_buffer:
+            return "img", self.image_buffer[-1].stamp
+        if self.toggles["crop"] and self.crop_image_buffer:
+            return "crop", self.crop_image_buffer[-1].stamp
         if self.toggles["particles"] and self.particles_buffer:
             return "particles", self.particles_buffer[-1].header.stamp
         return "-", None
@@ -1155,7 +1186,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sync-buffer-size",
         type=int,
-        default=8,
+        default=24,
         help="recent message count kept per topic for nearest-timestamp matching",
     )
     parser.add_argument(
