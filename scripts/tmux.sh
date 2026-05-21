@@ -1,83 +1,22 @@
 #!/bin/bash
 
+
+# --- Source Library Modules ---
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for lib in "${SCRIPT_DIR}/lib/tmux/"*.sh; do
+    source "${lib}"
+done
+# ------------------------------
+
 set -euo pipefail
 
 INITIAL_PWD="${PWD}"
 
-resolve_real_path() {
-  local input_path="$1"
-
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - "$input_path" <<'PY'
-import os
-import sys
-
-print(os.path.realpath(sys.argv[1]))
-PY
-    return 0
-  fi
-
-  if command -v perl >/dev/null 2>&1; then
-    perl -MCwd=realpath -e 'print realpath($ARGV[0])' "$input_path"
-    return 0
-  fi
-
-  printf '%s\n' "$input_path"
-}
 
 SCRIPT_PATH="$(resolve_real_path "${BASH_SOURCE[0]}")"
 
-is_repo_root() {
-  local candidate="$1"
 
-  [[ -d "$candidate" ]] || return 1
-  [[ -d "$candidate/scripts" ]] || return 1
-  [[ -d "$candidate/ros2_ws" ]] || return 1
-  [[ -f "$candidate/scripts/tmux.sh" ]] || return 1
-}
 
-find_repo_root_from() {
-  local current="$1"
-
-  [[ -n "$current" ]] || return 1
-
-  if [[ -f "$current" ]]; then
-    current="$(dirname "$current")"
-  fi
-
-  [[ -d "$current" ]] || return 1
-
-  while true; do
-    if is_repo_root "$current"; then
-      (cd "$current" && pwd)
-      return 0
-    fi
-
-    [[ "$current" == "/" ]] && break
-    current="$(dirname "$current")"
-  done
-
-  return 1
-}
-
-resolve_repo_root() {
-  local candidate
-
-  for candidate in \
-    "${INITIAL_PWD}" \
-    "${SCRIPT_PATH}" \
-    "$(dirname "${SCRIPT_PATH}")" \
-    "$(dirname "$(dirname "${SCRIPT_PATH}")")" \
-    /workspaces \
-    /workspace; do
-    [[ -n "$candidate" ]] || continue
-    if find_repo_root_from "$candidate"; then
-      return 0
-    fi
-  done
-
-  (cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)
-}
 
 MODE_TAMIYA="tamiya"
 MODE_PYTHON="python"
@@ -105,35 +44,7 @@ WINDOW_VISUAL="visual"
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
 REPO_ROOT="$(resolve_repo_root)"
 
-resolve_existing_dir() {
-  local candidate
 
-  for candidate in "$@"; do
-    if [[ -n "$candidate" && -d "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
-
-  return 1
-}
-
-resolve_setup_command() {
-  local candidate
-
-  for candidate in \
-    "${TMUX_WORKSPACE_SETUP:-}" \
-    "${REPO_ROOT}/install/setup.bash" \
-    "/workspaces/install/setup.bash" \
-    "install/setup.bash"; do
-    if [[ -n "$candidate" && -f "$candidate" ]]; then
-      printf 'source %s\n' "$candidate"
-      return 0
-    fi
-  done
-
-  printf '\n'
-}
 
 SETUP_SCRIPT="$(resolve_setup_command)"
 ROS_SETUP="export ROS_LOCALHOST_ONLY=0"
@@ -182,330 +93,25 @@ PANE_DIRS=()
 PANE_SETUPS=()
 PANE_PREPARES=()
 
-reset_panes() {
-  PANE_WINDOWS=()
-  PANE_DIRS=()
-  PANE_SETUPS=()
-  PANE_PREPARES=()
-}
 
-add_pane() {
-  local window="$1"
-  local dir="${2:-}"
-  local setup="${3:-}"
-  local prepare="${4:-}"
 
-  PANE_WINDOWS+=("$window")
-  PANE_DIRS+=("$dir")
-  PANE_SETUPS+=("$setup")
-  PANE_PREPARES+=("$prepare")
-}
 
-pane_count_for_window() {
-  local window="$1"
-  local count=0
-  local idx
 
-  for idx in "${!PANE_WINDOWS[@]}"; do
-    if [[ "${PANE_WINDOWS[$idx]}" == "$window" ]]; then
-      count=$((count + 1))
-    fi
-  done
 
-  echo "$count"
-}
 
-window_exists_in_specs() {
-  local window="$1"
-  local idx
 
-  for idx in "${!PANE_WINDOWS[@]}"; do
-    if [[ "${PANE_WINDOWS[$idx]}" == "$window" ]]; then
-      return 0
-    fi
-  done
 
-  return 1
-}
 
-create_window_panes() {
-  local window="$1"
-  local pane_count
-  local idx
 
-  pane_count="$(pane_count_for_window "$window")"
-  for ((idx = 1; idx < pane_count; idx++)); do
-    tmux split-window -v -t "$SESSION_NAME":"$window".0
-  done
-  tmux select-layout -t "$SESSION_NAME":"$window" tiled >/dev/null
-}
 
-pane_index_for_spec() {
-  local spec_idx="$1"
-  local window="${PANE_WINDOWS[$spec_idx]}"
-  local pane_index=0
-  local idx
 
-  for ((idx = 0; idx < spec_idx; idx++)); do
-    if [[ "${PANE_WINDOWS[$idx]}" == "$window" ]]; then
-      pane_index=$((pane_index + 1))
-    fi
-  done
 
-  echo "$pane_index"
-}
 
-build_init_cmd() {
-  local dir="$1"
-  local setup="$2"
-  local cmd=""
 
-  if [[ -n "$dir" ]]; then
-    cmd="cd $dir"
-  fi
 
-  if [[ -n "$setup" ]]; then
-    if [[ -n "$cmd" ]]; then
-      cmd="$cmd && $setup"
-    else
-      cmd="$setup"
-    fi
-  fi
 
-  echo "$cmd"
-}
 
-init_pane() {
-  local target="$1"
-  local cmd="$2"
-  [[ -z "$cmd" ]] && return
-  tmux send-keys -t "$target" "$cmd" C-m
-}
 
-prepare_cmd() {
-  local target="$1"
-  local cmd="$2"
-
-  tmux send-keys -t "$target" C-l
-  sleep 0.2
-
-  if [[ -n "$cmd" ]]; then
-    tmux send-keys -t "$target" "$cmd"
-  fi
-}
-
-create_layout_from_panes() {
-  local select_window="$1"
-  local select_pane="${2:-0}"
-  local idx
-  local window
-  local pane_index
-  local init_cmd
-  local created_windows=" "
-
-  if [[ "${#PANE_WINDOWS[@]}" -eq 0 ]]; then
-    echo "No pane specs configured" >&2
-    exit 1
-  fi
-
-  tmux new-session -d -x 250 -y 80 -s "$SESSION_NAME" -n "${PANE_WINDOWS[0]}"
-
-  for window in "${PANE_WINDOWS[@]}"; do
-    if [[ "$created_windows" == *" $window "* ]]; then
-      continue
-    fi
-
-    if [[ "$window" != "${PANE_WINDOWS[0]}" ]]; then
-      tmux new-window -t "$SESSION_NAME" -n "$window"
-    fi
-
-    created_windows="$created_windows$window "
-  done
-
-  created_windows=" "
-  for window in "${PANE_WINDOWS[@]}"; do
-    if [[ "$created_windows" == *" $window "* ]]; then
-      continue
-    fi
-
-    create_window_panes "$window"
-    created_windows="$created_windows$window "
-  done
-
-  for idx in "${!PANE_WINDOWS[@]}"; do
-    window="${PANE_WINDOWS[$idx]}"
-    pane_index="$(pane_index_for_spec "$idx")"
-
-    init_cmd="$(build_init_cmd "${PANE_DIRS[$idx]}" "${PANE_SETUPS[$idx]}")"
-    init_pane "$SESSION_NAME":"$window"."$pane_index" "$init_cmd"
-  done
-
-  sleep 2.0
-
-  for idx in "${!PANE_WINDOWS[@]}"; do
-    window="${PANE_WINDOWS[$idx]}"
-    pane_index="$(pane_index_for_spec "$idx")"
-
-    prepare_cmd "$SESSION_NAME":"$window"."$pane_index" "${PANE_PREPARES[$idx]}"
-  done
-
-  if window_exists_in_specs "$select_window"; then
-    tmux select-window -t "$SESSION_NAME":"$select_window"
-    tmux select-pane -t "$SESSION_NAME":"$select_window"."$select_pane"
-  fi
-}
-
-usage() {
-  cat <<EOF
-Usage:
-  $(basename "$0") [SESSION_NAME] [--mode tamiya|python|map|identification|localization_eval|perception_eval|vslam_eval|simulator]
-  $(basename "$0") [--session SESSION_NAME] [--mode tamiya|python|map|identification|localization_eval|perception_eval|vslam_eval|simulator]
-
-Notes:
-  - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
-  - map mode prepares online map creation, then post-map map-only alignment prep + landmark tracing.
-EOF
-}
-
-choose_mode_interactive() {
-  local answer
-
-  if [[ ! -t 0 ]]; then
-    echo "$MODE_TAMIYA"
-    return
-  fi
-
-  while true; do
-    echo "Select mode:" >&2
-    echo "  1) $MODE_TAMIYA (production + monitor)" >&2
-    echo "  2) $MODE_PYTHON (python workspace)" >&2
-    echo "  3) $MODE_MAP (post-map alignment prep + localization eval)" >&2
-    echo "  4) $MODE_IDENTIFICATION (live VSLAM + bag recording for MAP lookup)" >&2
-    echo "  5) $MODE_LOCALIZATION_EVAL (bag replay + localization eval)" >&2
-    echo "  6) $MODE_PERCEPTION_EVAL (bag replay + perception eval)" >&2
-    echo "  7) $MODE_VSLAM_EVAL (bag replay + VSLAM eval)" >&2
-    echo "  8) $MODE_SIMULATOR (simulator setup)" >&2
-    read -r -p "Enter 1-8: " answer
-
-    case "$answer" in
-      1|"$MODE_TAMIYA")
-        echo "$MODE_TAMIYA"
-        return
-        ;;
-      2|"$MODE_PYTHON")
-        echo "$MODE_PYTHON"
-        return
-        ;;
-      3|"$MODE_MAP")
-        echo "$MODE_MAP"
-        return
-        ;;
-      4|"$MODE_IDENTIFICATION")
-        echo "$MODE_IDENTIFICATION"
-        return
-        ;;
-      5|"$MODE_LOCALIZATION_EVAL")
-        echo "$MODE_LOCALIZATION_EVAL"
-        return
-        ;;
-      6|"$MODE_PERCEPTION_EVAL")
-        echo "$MODE_PERCEPTION_EVAL"
-        return
-        ;;
-      7|"$MODE_VSLAM_EVAL")
-        echo "$MODE_VSLAM_EVAL"
-        return
-        ;;
-      8|"$MODE_SIMULATOR")
-        echo "$MODE_SIMULATOR"
-        return
-        ;;
-      *)
-        echo "Invalid choice: $answer" >&2
-        ;;
-    esac
-  done
-}
-
-create_tamiya_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PRODUCTION"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
-  add_pane "$WINDOW_DATA" "$RECORD_DIR" "" ""
-  add_pane "$WINDOW_DATA" "$SCRIPTS_DIR" "" ""
-  create_layout_from_panes "$WINDOW_MAIN" 0
-}
-
-create_python_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$PYTHON_DIR" "$ROS_SETUP" ""
-  add_pane "$WINDOW_MAIN" "$RECORD_DIR" "$ROS_SETUP" ""
-  create_layout_from_panes "$WINDOW_MAIN" 0
-}
-
-create_map_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_CREATE_MAP"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_VSLAM_ALIGNMENT"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" ""
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_EVAL"
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
-  create_layout_from_panes "$WINDOW_MAIN" 0
-}
-
-create_identification_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_IDENTIFICATION"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_IDENTIFICATION"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
-  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
-  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_STOP"
-  add_pane "$WINDOW_DATA" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_BUILD_MAP_LOOKUP"
-  create_layout_from_panes "$WINDOW_MAIN" 0
-}
-
-create_localization_eval_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_EVAL"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_LOCALIZATION"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
-  create_layout_from_panes "$WINDOW_MAIN" 1
-}
-
-create_perception_eval_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_EVAL"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DEBUG_IMAGE_VIEWER"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_LABEL"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_CONFIDENCE"
-  create_layout_from_panes "$WINDOW_MAIN" 1
-}
-
-create_vslam_eval_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_VSLAM_EVAL"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_VSLAM_DEBUG"
-  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
-  create_layout_from_panes "$WINDOW_MAIN" 1
-}
-
-create_simulator_layout() {
-  reset_panes
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_SIMULATOR"
-  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
-  create_layout_from_panes "$WINDOW_MAIN" 0
-}
 
 MODE=""
 SESSION_NAME=""

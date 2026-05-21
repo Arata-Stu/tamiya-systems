@@ -193,9 +193,9 @@ if [[ "${CONFIRM:-y}" =~ ^[Yy]$ ]]; then
     for target_dir in "${SELECTED_DIRS[@]}"; do
         echo ">>> Transferring: $(remote_relative_path "$target_dir")"
         if is_under_remote_base "$target_dir"; then
-            rsync -avzP -R "$(remote_rsync_source "$target_dir")" "$LOCAL_DEST_DIR/"
+            rsync -avP -R "$(remote_rsync_source "$target_dir")" "$LOCAL_DEST_DIR/"
         else
-            rsync -avzP "$(remote_rsync_source "$target_dir")" "$LOCAL_DEST_DIR/"
+            rsync -avP "$(remote_rsync_source "$target_dir")" "$LOCAL_DEST_DIR/"
         fi
     done
     echo "✅ 完了しました。"
