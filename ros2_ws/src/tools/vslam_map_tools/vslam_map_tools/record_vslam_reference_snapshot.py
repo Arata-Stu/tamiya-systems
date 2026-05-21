@@ -9,6 +9,7 @@ import rclpy
 from nav_msgs.msg import Odometry
 from nav_msgs.msg import Path as PathMsg
 from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 
 def pose_to_dict(pose) -> dict[str, object]:
@@ -53,9 +54,16 @@ class VslamReferenceSnapshotRecorder(Node):
         self.odom_seen = False
         self.dirty = False
 
-        self.create_subscription(PathMsg, args.path_topic, self.on_path, 10)
+        # VSLAM topics may be published as BEST_EFFORT, so request a permissive QoS.
+        best_effort_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+        )
+
+        self.create_subscription(PathMsg, args.path_topic, self.on_path, best_effort_qos)
         if args.odom_topic:
-            self.create_subscription(Odometry, args.odom_topic, self.on_odom, 10)
+            self.create_subscription(Odometry, args.odom_topic, self.on_odom, best_effort_qos)
         self.create_timer(1.0, self.flush_if_dirty)
 
     def on_path(self, msg: PathMsg) -> None:

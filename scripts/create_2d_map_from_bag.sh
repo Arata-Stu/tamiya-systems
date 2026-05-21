@@ -1930,6 +1930,7 @@ run_post_vslam_map_alignment_prep() {
     local reference_publisher_script_path=""
     local manual_alignment_cmd=""
     local manual_alignment_cmd_single_line=""
+    local manual_alignment_helper_path=""
     local rviz_cmd=""
     local dummy=""
     local -a launch_args
@@ -1991,6 +1992,7 @@ run_post_vslam_map_alignment_prep() {
         fi
     else
         echo "Warning: saved VSLAM reference snapshot not found: ${VSLAM_REFERENCE_SNAPSHOT_PATH}" >&2
+        echo "Warning: check recorder log for QoS / initialization issues: ${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" >&2
     fi
 
     manual_alignment_cmd="$(cat <<EOF
@@ -2003,6 +2005,30 @@ ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args \\
 EOF
 )"
     manual_alignment_cmd_single_line="ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args -p use_sim_time:=false -p parent_frame:=map -p child_frame:=vslam_map -p config_path:=${VSLAM_MAP_ALIGNMENT_CONFIG_PATH} -p enable_keyboard:=true"
+    manual_alignment_helper_path="${OUT_DIR}/run_manual_tf_alignment.sh"
+    cat > "${manual_alignment_helper_path}" <<EOF
+#!/bin/bash
+set -euo pipefail
+
+for candidate in \\
+  "${REPO_ROOT}/install/setup.bash" \\
+  "/workspaces/install/setup.bash" \\
+  "install/setup.bash"; do
+  if [ -f "\${candidate}" ]; then
+    # shellcheck disable=SC1090
+    source "\${candidate}"
+    break
+  fi
+done
+
+exec ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args \\
+  -p use_sim_time:=false \\
+  -p parent_frame:=map \\
+  -p child_frame:=vslam_map \\
+  -p config_path:=${VSLAM_MAP_ALIGNMENT_CONFIG_PATH} \\
+  -p enable_keyboard:=true
+EOF
+    chmod +x "${manual_alignment_helper_path}"
 
     echo ""
     echo "[prep] Alignment helper stack is running."
@@ -2015,6 +2041,9 @@ EOF
     echo ""
     echo "[prep] In another pane/window, first source your workspace if needed:"
     echo "  source install/setup.bash"
+    echo ""
+    echo "[prep] Easiest option:"
+    echo "  bash ${manual_alignment_helper_path}"
     echo ""
     echo "[prep] Then run either of these:"
     echo "[prep] Multiline:"
@@ -2532,9 +2561,11 @@ wait_for_topic() {
     local topic_name="$1"
     local timeout_sec="$2"
     local count=0
+    local topic_list_output=""
 
     while [ "${count}" -lt "${timeout_sec}" ]; do
-        if ros2 topic list | grep -Fxq "${topic_name}"; then
+        topic_list_output="$(ros2 topic list 2>/dev/null || true)"
+        if printf '%s\n' "${topic_list_output}" | grep -Fxq -- "${topic_name}"; then
             return 0
         fi
         sleep 1
