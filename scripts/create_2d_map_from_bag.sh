@@ -488,6 +488,9 @@ RVIZ_PID=""
 RVIZ_USES_SETSID=false
 VSLAM_REFERENCE_RECORDER_PID=""
 VSLAM_REFERENCE_RECORDER_USES_SETSID=false
+VSLAM_REFERENCE_CAPTURE_EXPECTED=false
+VSLAM_REFERENCE_CAPTURE_STARTED=false
+VSLAM_REFERENCE_CAPTURE_WAS_STARTED=false
 POST_ALIGNMENT_STACK_PID=""
 POST_ALIGNMENT_STACK_USES_SETSID=false
 POST_ALIGNMENT_REFERENCE_PUBLISHER_PID=""
@@ -1168,9 +1171,15 @@ start_vslam_reference_capture() {
     local recorder_script_path
     local -a recorder_cmd
 
+    VSLAM_REFERENCE_CAPTURE_EXPECTED=false
+    VSLAM_REFERENCE_CAPTURE_STARTED=false
+    VSLAM_REFERENCE_CAPTURE_WAS_STARTED=false
+
     if [ "${PIPELINE_MODE}" != "online" ] || [ "${PREPARE_VSLAM_MAP_ALIGNMENT}" != true ]; then
         return 0
     fi
+
+    VSLAM_REFERENCE_CAPTURE_EXPECTED=true
 
     if ! command -v python3 >/dev/null 2>&1; then
         echo "Warning: python3 not found. Skip VSLAM reference snapshot capture." >&2
@@ -1200,6 +1209,18 @@ start_vslam_reference_capture() {
     launch_background_process "VSLAM_REFERENCE_RECORDER_PID" "VSLAM_REFERENCE_RECORDER_USES_SETSID" \
         "${recorder_cmd[@]}" \
         >> "${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" 2>&1
+
+    if [ -n "${VSLAM_REFERENCE_RECORDER_PID}" ] && kill -0 "${VSLAM_REFERENCE_RECORDER_PID}" 2>/dev/null; then
+        VSLAM_REFERENCE_CAPTURE_STARTED=true
+        VSLAM_REFERENCE_CAPTURE_WAS_STARTED=true
+        echo "[ref] Started VSLAM reference snapshot recorder"
+        echo "  - pid  : ${VSLAM_REFERENCE_RECORDER_PID}"
+        echo "  - log  : ${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}"
+        echo "  - json : ${VSLAM_REFERENCE_SNAPSHOT_PATH}"
+    else
+        echo "Warning: failed to start VSLAM reference snapshot recorder." >&2
+        echo "Warning: expected log path: ${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" >&2
+    fi
 }
 
 discover_rosbag_candidates() {
@@ -1506,7 +1527,11 @@ stop_vslam() {
 }
 
 stop_vslam_reference_recorder() {
+    if [ "${VSLAM_REFERENCE_CAPTURE_STARTED}" = true ]; then
+        echo "[ref] Stop VSLAM reference snapshot recorder"
+    fi
     stop_background_process "VSLAM_REFERENCE_RECORDER_PID" "VSLAM_REFERENCE_RECORDER_USES_SETSID"
+    VSLAM_REFERENCE_CAPTURE_STARTED=false
 }
 
 stop_post_alignment_stack() {
@@ -1999,8 +2024,16 @@ run_post_vslam_map_alignment_prep() {
             fi
         fi
     else
-        echo "Warning: saved VSLAM reference snapshot not found: ${VSLAM_REFERENCE_SNAPSHOT_PATH}" >&2
-        echo "Warning: check recorder log for QoS / initialization issues: ${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" >&2
+        if [ "${VSLAM_REFERENCE_CAPTURE_EXPECTED}" != true ]; then
+            echo "[prep] Saved VSLAM reference snapshot was not requested in this mode."
+        elif [ "${VSLAM_REFERENCE_CAPTURE_WAS_STARTED}" = true ]; then
+            echo "Warning: saved VSLAM reference snapshot not found: ${VSLAM_REFERENCE_SNAPSHOT_PATH}" >&2
+            echo "Warning: recorder did start. Check log for QoS / initialization issues: ${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" >&2
+        else
+            echo "Warning: saved VSLAM reference snapshot not found: ${VSLAM_REFERENCE_SNAPSHOT_PATH}" >&2
+            echo "Warning: recorder never reported a successful start in this run." >&2
+            echo "Warning: expected recorder log path: ${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" >&2
+        fi
     fi
 
     manual_alignment_cmd="$(cat <<EOF
@@ -2774,9 +2807,9 @@ VSLAM_LANDMARK_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_$(date +%Y%m%d_%H%M%
 VSLAM_LANDMARK_TF_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_tf_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LANDMARK_PLAYER_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_player_$(date +%Y%m%d_%H%M%S).log"
 VSLAM_LANDMARK_EXPORT_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_export_$(date +%Y%m%d_%H%M%S).log"
-VSLAM_REFERENCE_SNAPSHOT_LOG_PATH="/tmp/create_2d_map_vslam_reference_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_REFERENCE_SNAPSHOT_LOG_PATH="${OUT_DIR}/vslam_reference_capture.log"
 POST_ALIGNMENT_LOG_PATH="/tmp/create_2d_map_post_alignment_$(date +%Y%m%d_%H%M%S).log"
-POST_ALIGNMENT_REFERENCE_PUBLISHER_LOG_PATH="/tmp/create_2d_map_post_alignment_reference_$(date +%Y%m%d_%H%M%S).log"
+POST_ALIGNMENT_REFERENCE_PUBLISHER_LOG_PATH="${OUT_DIR}/post_alignment_reference_publisher.log"
 
 if [ "${PIPELINE_MODE}" = "online" ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
