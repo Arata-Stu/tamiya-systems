@@ -1,5 +1,6 @@
 record/
 records/
+record_tmp/
 ckpt
 ckpts/
 log
@@ -163,3 +164,6 @@ ros2_ws/src/launch/localization_launch/path
 
 # debug data
 /debug
+
+# exceptions
+!scripts/lib/
