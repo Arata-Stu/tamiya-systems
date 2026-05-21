@@ -1955,7 +1955,15 @@ run_post_vslam_map_alignment_prep() {
         echo "Warning: ${VSLAM_LANDMARK_TOPIC} did not appear yet. Landmarks may require a moment after map load." >&2
     fi
 
-    manual_alignment_cmd="ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args -p use_sim_time:=false -p parent_frame:=map -p child_frame:=vslam_map -p config_path:=${VSLAM_MAP_ALIGNMENT_CONFIG_PATH} -p enable_keyboard:=true"
+    manual_alignment_cmd="$(cat <<EOF
+ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args \\
+  -p use_sim_time:=false \\
+  -p parent_frame:=map \\
+  -p child_frame:=vslam_map \\
+  -p config_path:=${VSLAM_MAP_ALIGNMENT_CONFIG_PATH} \\
+  -p enable_keyboard:=true
+EOF
+)"
 
     echo ""
     echo "[prep] Alignment helper stack is running."
@@ -1963,11 +1971,13 @@ run_post_vslam_map_alignment_prep() {
     echo "  - vslam map dir: ${VSLAM_MAP_DIR}"
     echo "  - log          : ${POST_ALIGNMENT_LOG_PATH}"
     echo ""
-    echo "[prep] Start manual_tf_alignment_node in another pane/window:"
-    echo "  ${manual_alignment_cmd}"
+    echo "[prep] In another pane/window, run this command:"
+    printf '%s\n' "${manual_alignment_cmd}"
     echo ""
     echo "[prep] identity TF is intentionally disabled here."
     echo "[prep] Start the manual node before expecting map <-> vslam_map to connect in RViz."
+    echo "[prep] If landmarks still do not appear after load_map only,"
+    echo "[prep] cuVSLAM may require additional input frames before visualization stabilizes."
 
     if rviz_config_path="$(resolve_vslam_live_alignment_rviz_config 2>/dev/null || true)"; then
         if [ -n "${rviz_config_path}" ]; then
