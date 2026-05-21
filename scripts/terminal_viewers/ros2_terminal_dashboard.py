@@ -510,12 +510,34 @@ class TerminalDashboard(Node):
         map_state = self.state.map_state
         if path is None or map_state is None or not path.poses:
             return
+        stride = max(1, len(path.poses) // max(1, self.args.path_max_points))
+        sampled_poses = path.poses[::stride]
+        if len(sampled_poses) < 2 and len(path.poses) >= 2:
+            sampled_poses = [path.poses[0], path.poses[-1]]
+
+        common_frame_id = path.header.frame_id or sampled_poses[0].header.frame_id
+        all_same_frame = True
+        for stamped in sampled_poses:
+            frame_id = stamped.header.frame_id or path.header.frame_id
+            if frame_id != common_frame_id:
+                all_same_frame = False
+                break
+
+        common_tf = None
+        tf_cache: dict[str, Optional[object]] = {}
+        if all_same_frame and common_frame_id:
+            common_tf = self.lookup_transform(common_frame_id, path.header.stamp)
+
         pixels = []
-        for stamped in path.poses:
+        for stamped in sampled_poses:
             frame_id = stamped.header.frame_id or path.header.frame_id
             x = float(stamped.pose.position.x)
             y = float(stamped.pose.position.y)
-            tf = self.lookup_transform(frame_id, stamped.header.stamp)
+            tf = common_tf
+            if not all_same_frame:
+                if frame_id not in tf_cache:
+                    tf_cache[frame_id] = self.lookup_transform(frame_id, stamped.header.stamp)
+                tf = tf_cache[frame_id]
             if tf is not None:
                 x, y = transform_xy(x, y, tf)
             elif frame_id != map_state.frame_id and not self.args.assume_same_frame:
@@ -916,6 +938,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scan-stride", type=int, default=3)
     parser.add_argument("--scan-radius", type=int, default=2)
     parser.add_argument("--particle-stride", type=int, default=1)
+    parser.add_argument("--path-max-points", type=int, default=600)
     parser.add_argument("--image-panel-ratio", type=float, default=0.34)
     parser.add_argument("--png-compression", type=int, default=3)
     args = parser.parse_args()
