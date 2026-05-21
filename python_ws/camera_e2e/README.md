@@ -46,10 +46,22 @@ chmod +x 3_deploy_model.sh
 ./3_deploy_model.sh
 ```
 
+interactive terminal で `--model-name` を省略した場合は、その場で Triton model 名を入力できます。
+
 デフォルトでは `/workspaces/isaac_ros_assets/models/pilotnet/` 配下の既存 numeric version directory
 （`1`, `2`, `3` など）を削除してから deploy します。Triton/Isaac ROS で古い TensorRT engine が同居すると、
 export は成功しても推論時に古い version や互換性のない plan を掴んで失敗することがあるためです。
 過去 version を残したい場合だけ `--keep-versions` を付けてください。
+
+複数の camera E2E model を共存させたい場合は、version directory を増やすのではなく
+別の Triton model 名で deploy するのが安全です。たとえば:
+
+```bash
+./3_deploy_model.sh --model-name pilotnet_normal
+./3_deploy_model.sh --model-name pilotnet_avoid
+```
+
+このとき `config.pbtxt` の `name:` も deploy 時に自動で合わせて書き換えられます。
 
 ## 画像保存形式の推奨
 
@@ -164,3 +176,4 @@ python3 validate_ros2_pipeline_with_bag.py \
 
 - `isaac_ros_camera_e2e.launch.xml` のデフォルト (`control_filter:=false`) では decoder 出力は `/autonomous/cmd_drive` です。
 - `/autonomous/cmd_drive_raw` を使うのは `control_filter:=true` で launch した場合です。
+- `system.launch` / `launch_system.sh` から使うときは `e2e_camera_model_name:=pilotnet_normal` のように model 名を指定できます。

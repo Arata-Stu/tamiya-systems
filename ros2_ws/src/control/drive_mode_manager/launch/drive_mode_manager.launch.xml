@@ -1,0 +1,22 @@
+<launch>
+
+  <arg name="drive_mode_manager_param" default="$(find-pkg-share drive_mode_manager)/config/drive_mode_manager.param.yaml"/>
+  <arg name="current_section_topic" default="/localization/current_section"/>
+  <arg name="avoidance_requested_topic" default="/planning/path_obstacle_filter/avoidance_requested"/>
+  <arg name="following_requested_topic" default="/planning/path_obstacle_filter/following_requested"/>
+  <arg name="drive_mode_topic" default="/control/drive_mode"/>
+  <arg name="use_sim_time" default="false"/>
+
+  <node pkg="drive_mode_manager"
+        exec="drive_mode_manager_node"
+        name="drive_mode_manager_node"
+        output="screen">
+    <param from="$(var drive_mode_manager_param)"/>
+    <param name="current_section_topic" value="$(var current_section_topic)"/>
+    <param name="avoidance_requested_topic" value="$(var avoidance_requested_topic)"/>
+    <param name="following_requested_topic" value="$(var following_requested_topic)"/>
+    <param name="drive_mode_topic" value="$(var drive_mode_topic)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+  </node>
+
+</launch>

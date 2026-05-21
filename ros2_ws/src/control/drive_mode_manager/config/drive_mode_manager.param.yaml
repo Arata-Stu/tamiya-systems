@@ -1,0 +1,7 @@
+drive_mode_manager_node:
+  ros__parameters:
+    default_policy: "allow_avoid"
+
+    # Same-length arrays. Unknown sections use default_policy.
+    section_names: []
+    section_policies: []

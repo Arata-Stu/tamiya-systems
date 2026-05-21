@@ -83,6 +83,7 @@ BOOL_KEYS=(
   publish_localization_tf
   use_section_localizer
   section_localizer_debug_mode
+  use_drive_mode_manager
   enable_localization_and_mapping
 )
 
@@ -110,6 +111,7 @@ ARG_use_localization_manager="false"
 ARG_publish_localization_tf="false"
 ARG_use_section_localizer="false"
 ARG_section_localizer_debug_mode="false"
+ARG_use_drive_mode_manager="false"
 ARG_enable_localization_and_mapping="false"
 
 if [[ -d "$SYSTEM_LAUNCH_SOURCE_SHARE" ]]; then
@@ -295,6 +297,7 @@ exec ros2 launch system_launch system.launch.xml \
   "publish_localization_tf:=${ARG_publish_localization_tf}" \
   "use_section_localizer:=${ARG_use_section_localizer}" \
   "section_localizer_debug_mode:=${ARG_section_localizer_debug_mode}" \
+  "use_drive_mode_manager:=${ARG_use_drive_mode_manager}" \
   "enable_localization_and_mapping:=${ARG_enable_localization_and_mapping}" \
   "bag_manager_param:=${ARG_bag_manager_param}" \
   "${EXTRA_ARGS[@]}"

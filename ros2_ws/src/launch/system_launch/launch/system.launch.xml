@@ -24,6 +24,7 @@
     <arg name="publish_localization_tf" default="false" />
     <arg name="use_section_localizer" default="false" />
     <arg name="section_localizer_debug_mode" default="false" />
+    <arg name="use_drive_mode_manager" default="false" />
     <arg name="enable_localization_and_mapping" default="false" />
 
     <!-- Vehicle and command topics -->
@@ -169,6 +170,11 @@
     <arg name="section_localizer_update_rate_hz" default="10.0" />
     <arg name="section_localizer_marker_topic" default="/localization/section_markers" />
     <arg name="section_localizer_current_marker_topic" default="/localization/current_section_marker" />
+    <arg name="drive_mode_manager_param" default="$(find-pkg-share drive_mode_manager)/config/drive_mode_manager.param.yaml" />
+    <arg name="drive_mode_topic" default="/control/drive_mode" />
+    <arg name="drive_mode_section_topic" default="/localization/current_section" />
+    <arg name="drive_mode_avoidance_requested_topic" default="/planning/path_obstacle_filter/avoidance_requested" />
+    <arg name="drive_mode_following_requested_topic" default="/planning/path_obstacle_filter/following_requested" />
     <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
     <arg name="map_dir" default="" description="directory containing map-name.yaml and optional cuvslam_map/" />
     <arg name="vslam_map_dir" default="" description="explicit cuvslam map directory override" />
@@ -574,6 +580,17 @@
             <arg name="section_localizer_current_marker_topic" value="$(var section_localizer_current_marker_topic)"/>
             <arg name="map_yaml_path" value="$(var resolved_map_yaml_path)"/>
             <arg name="localization_param" value="$(var localization_param)"/>
+        </include>
+    </group>
+
+    <group if="$(var use_drive_mode_manager)">
+        <include file="$(find-pkg-share drive_mode_manager)/launch/drive_mode_manager.launch.xml">
+            <arg name="drive_mode_manager_param" value="$(var drive_mode_manager_param)" />
+            <arg name="current_section_topic" value="$(var drive_mode_section_topic)" />
+            <arg name="avoidance_requested_topic" value="$(var drive_mode_avoidance_requested_topic)" />
+            <arg name="following_requested_topic" value="$(var drive_mode_following_requested_topic)" />
+            <arg name="drive_mode_topic" value="$(var drive_mode_topic)" />
+            <arg name="use_sim_time" value="$(var use_sim_time)" />
         </include>
     </group>
 

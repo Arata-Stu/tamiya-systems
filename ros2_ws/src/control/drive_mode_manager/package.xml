@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>drive_mode_manager</name>
+  <version>0.0.1</version>
+  <description>Drive mode manager that combines section context and obstacle state.</description>
+
+  <maintainer email="you@example.com">Your Name</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

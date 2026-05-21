@@ -114,6 +114,19 @@ section-class mapping YAML を作るには:
 から起動する alias です。必要なら `--set e2e_run_pure_pursuit=false` で
 trajectory のみ出す構成にもできます。
 
+## Drive Mode Manager
+
+`drive_mode_manager` は `section` と `path_obstacle_filter` の
+`avoidance/following` 状態から `/control/drive_mode` を出します。
+
+```bash
+./scripts/launch_system.sh production \
+  --set use_drive_mode_manager=true
+```
+
+section ごとの policy は `drive_mode_manager` の param YAML で
+`allow_avoid` / `follow_only` / `normal_only` を設定できます。
+
 ## Evaluation presets
 
 `launch_system.sh` の lean preset は以下を想定しています。

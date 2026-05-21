@@ -4,6 +4,14 @@
   <!-- Topic mappings -->
   <arg name="tracked_object_topic" default="/perception/tracked_object" />
   <arg name="trajectory_topic" default="/trajectory" />
+  <arg name="obstacle_on_path_topic" default="/planning/path_obstacle_filter/obstacle_on_path" />
+  <arg name="deceleration_requested_topic" default="/planning/path_obstacle_filter/deceleration_requested" />
+  <arg name="avoidance_requested_topic" default="/planning/path_obstacle_filter/avoidance_requested" />
+  <arg name="following_requested_topic" default="/planning/path_obstacle_filter/following_requested" />
+  <arg name="target_speed_topic" default="/planning/path_obstacle_filter/target_speed_m_s" />
+  <arg name="obstacle_distance_topic" default="/planning/path_obstacle_filter/obstacle_distance_m" />
+  <arg name="obstacle_lateral_topic" default="/planning/path_obstacle_filter/obstacle_lateral_m" />
+  <arg name="debug_markers_topic" default="/planning/path_obstacle_filter/debug/markers" />
 
   <arg name="container_name" default="camera_container" />
   <arg name="create_container" default="false" />
@@ -23,6 +31,14 @@
       
       <remap from="/perception/tracked_object" to="$(var tracked_object_topic)" />
       <remap from="/trajectory" to="$(var trajectory_topic)" />
+      <remap from="~/obstacle_on_path" to="$(var obstacle_on_path_topic)" />
+      <remap from="~/deceleration_requested" to="$(var deceleration_requested_topic)" />
+      <remap from="~/avoidance_requested" to="$(var avoidance_requested_topic)" />
+      <remap from="~/following_requested" to="$(var following_requested_topic)" />
+      <remap from="~/target_speed_m_s" to="$(var target_speed_topic)" />
+      <remap from="~/obstacle_distance_m" to="$(var obstacle_distance_topic)" />
+      <remap from="~/obstacle_lateral_m" to="$(var obstacle_lateral_topic)" />
+      <remap from="~/debug/markers" to="$(var debug_markers_topic)" />
     </composable_node>
   </load_composable_node>
 </launch>

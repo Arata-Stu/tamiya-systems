@@ -78,11 +78,23 @@ chmod +x 3_deploy_model.sh
 ./3_deploy_model.sh
 ```
 
+interactive terminal で `--model-name` を省略した場合は、その場で Triton model 名を入力できます。
+
 デフォルトでは `/workspaces/isaac_ros_assets/models/pilotnet_trajectory/` 配下の既存 numeric version directory
 （`1`, `2`, `3` など）を削除してから deploy します。Triton/Isaac ROS で古い TensorRT engine が同居すると、
 export は成功しても推論時に古い version や互換性のない plan を掴んで失敗することがあるためです。
 過去 version を残したい場合だけ `--keep-versions` を付けてください。
 Triton の `config.pbtxt` は `config/config.pbtxt` を source としてコピーします。
+
+複数の trajectory model を共存させたい場合は、version directory を積むより
+別の Triton model 名に分ける方が安全です。たとえば:
+
+```bash
+./3_deploy_model.sh --model-name pilotnet_trajectory_normal
+./3_deploy_model.sh --model-name pilotnet_trajectory_avoid
+```
+
+deploy 時に `config.pbtxt` の `name:` も自動で更新されます。
 
 ```bash
 ./3_deploy_model.sh --num-points 20 --output-scale 8.0 --precision fp16

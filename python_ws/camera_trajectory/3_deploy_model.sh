@@ -14,6 +14,7 @@ REPO_ROOT="$(realpath "${SCRIPT_DIR}/../..")"
 INPUT_ONNX_PATH=""
 CHECKPOINT_BASE_DIR="${SCRIPT_DIR}/ckpts"
 MODEL_NAME="pilotnet_trajectory"
+MODEL_NAME_SET="false"
 INPUT_TENSOR_NAME="image_input"
 PROJECT_NAME="isaac_ros_camera_trajectory"
 CONFIG_BASENAME="pilotnet_trajectory_config"
@@ -38,6 +39,7 @@ Description:
 
 Options:
   --onnx PATH                 Use existing ONNX and skip export_onnx.py
+  --model-name NAME           Triton model name (default: pilotnet_trajectory)
   --precision {fp16|fp32}     TensorRT compute precision (I/O stays FP32, default: fp16)
   --num-points N              Number of trajectory points (default: 20)
   --output-scale X            Model output scale used at export (default: 8.0)
@@ -49,12 +51,32 @@ Examples:
   $0
   $0 ./ckpts --precision fp32 --num-points 20 --output-scale 8.0
   $0 --onnx ./ckpts/train/run/best_model.onnx --precision fp16
+
+When --model-name is omitted in an interactive terminal, the script prompts for it.
 EOF
 }
 
 die() {
   echo "Error: $*" >&2
   exit 1
+}
+
+validate_model_name() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "model name must match ^[A-Za-z0-9][A-Za-z0-9_-]*$"
+}
+
+prompt_model_name_if_needed() {
+  [[ "${MODEL_NAME_SET}" == "true" ]] && return
+  [[ -t 0 && -t 1 ]] || return
+
+  echo "--- Triton model name ---" >&2
+  echo "Press Enter to use default: ${MODEL_NAME}" >&2
+
+  local user_model_name=""
+  read -r -p "Model name: " user_model_name
+  if [[ -n "${user_model_name}" ]]; then
+    MODEL_NAME="${user_model_name}"
+  fi
 }
 
 find_trtexec() {
@@ -152,6 +174,14 @@ clear_model_versions() {
   done
 }
 
+write_model_config() {
+  local config_source_path="$1"
+  local config_output_path="$2"
+
+  sed -E "s/^name:[[:space:]]*\"[^\"]*\"/name: \"${MODEL_NAME}\"/" \
+    "${config_source_path}" > "${config_output_path}"
+}
+
 setup_model() {
   [[ -f "${INPUT_ONNX_PATH}" ]] || die "ONNX file not found: ${INPUT_ONNX_PATH}"
 
@@ -194,7 +224,7 @@ setup_model() {
     --verbose
 
   echo "Copying config.pbtxt (${config_file})..."
-  cp "${config_source_path}" "${model_root}/config.pbtxt"
+  write_model_config "${config_source_path}" "${model_root}/config.pbtxt"
 
   echo "---------------------------------------------------"
   echo "Deploy complete: ${MODEL_NAME} (Version ${version})"
@@ -213,6 +243,12 @@ parse_args() {
       --onnx)
         [[ $# -ge 2 ]] || die "--onnx requires a path"
         INPUT_ONNX_PATH="$2"
+        shift 2
+        ;;
+      --model-name)
+        [[ $# -ge 2 ]] || die "--model-name requires a value"
+        MODEL_NAME="$2"
+        MODEL_NAME_SET="true"
         shift 2
         ;;
       --precision)
@@ -259,7 +295,9 @@ parse_args() {
 
 main() {
   parse_args "$@"
+  prompt_model_name_if_needed
   [[ "${PRECISION}" == "fp16" || "${PRECISION}" == "fp32" ]] || die "precision must be fp16 or fp32"
+  validate_model_name "${MODEL_NAME}"
 
   if [[ -n "${INPUT_ONNX_PATH}" ]]; then
     INPUT_ONNX_PATH="$(realpath "${INPUT_ONNX_PATH}")"

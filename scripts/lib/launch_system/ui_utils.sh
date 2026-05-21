@@ -41,6 +41,7 @@ Examples:
   ${SCRIPT_NAME} production --set use_perception=true --set use_perception_classifier=true
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse --set use_control_filter=true
   ${SCRIPT_NAME} production --set use_e2e=true --set e2e_variant=lidar_trajectory
+  ${SCRIPT_NAME} production --set use_drive_mode_manager=true
   ${SCRIPT_NAME} identification
   ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
 EOF
@@ -501,6 +502,15 @@ warn_if_mode_incomplete() {
 
     if [[ "$(get_arg use_magp_rl_trajectory)" == "true" ]]; then
       echo "Warning: use_e2e=true and use_magp_rl_trajectory=true may launch duplicate E2E pipelines." >&2
+    fi
+  fi
+
+  if [[ "$(get_arg use_drive_mode_manager)" == "true" ]]; then
+    if [[ "$(get_arg use_section_localizer)" != "true" ]]; then
+      echo "Warning: use_drive_mode_manager=true but use_section_localizer is false." >&2
+    fi
+    if [[ "$(get_arg use_perception)" != "true" ]]; then
+      echo "Warning: use_drive_mode_manager=true but use_perception is false." >&2
     fi
   fi
 }
