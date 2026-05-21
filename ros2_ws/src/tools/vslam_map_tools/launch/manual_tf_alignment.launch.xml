@@ -1,0 +1,34 @@
+<launch>
+  <arg name="parent_frame" default="map" />
+  <arg name="child_frame" default="vslam_map" />
+  <arg name="config_path" default="" />
+  <arg name="enable_keyboard" default="true" />
+  <arg name="publish_rate_hz" default="20.0" />
+  <arg name="translation_step_m" default="0.02" />
+  <arg name="rotation_step_deg" default="1.0" />
+  <arg name="x" default="0.0" />
+  <arg name="y" default="0.0" />
+  <arg name="z" default="0.0" />
+  <arg name="roll_rad" default="0.0" />
+  <arg name="pitch_rad" default="0.0" />
+  <arg name="yaw_rad" default="0.0" />
+
+  <node pkg="vslam_map_tools"
+        exec="manual_tf_alignment_node.py"
+        name="manual_tf_alignment_node"
+        output="screen">
+    <param name="parent_frame" value="$(var parent_frame)" />
+    <param name="child_frame" value="$(var child_frame)" />
+    <param name="config_path" value="$(var config_path)" />
+    <param name="enable_keyboard" value="$(var enable_keyboard)" />
+    <param name="publish_rate_hz" value="$(var publish_rate_hz)" />
+    <param name="translation_step_m" value="$(var translation_step_m)" />
+    <param name="rotation_step_deg" value="$(var rotation_step_deg)" />
+    <param name="x" value="$(var x)" />
+    <param name="y" value="$(var y)" />
+    <param name="z" value="$(var z)" />
+    <param name="roll_rad" value="$(var roll_rad)" />
+    <param name="pitch_rad" value="$(var pitch_rad)" />
+    <param name="yaw_rad" value="$(var yaw_rad)" />
+  </node>
+</launch>

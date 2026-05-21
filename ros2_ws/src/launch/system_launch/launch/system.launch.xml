@@ -160,6 +160,18 @@
     <arg name="vslam_save_map_dir" default="" description="directory to save/update cuvslam map" />
     <arg name="vslam_map_frame" default="vslam_map" />
     <arg name="publish_vslam_map_identity_tf" default="true" />
+    <arg name="use_vslam_map_alignment_node" default="false" />
+    <arg name="vslam_map_alignment_config" default="" />
+    <arg name="vslam_map_alignment_enable_keyboard" default="false" />
+    <arg name="vslam_map_alignment_publish_rate_hz" default="20.0" />
+    <arg name="vslam_map_alignment_translation_step_m" default="0.02" />
+    <arg name="vslam_map_alignment_rotation_step_deg" default="1.0" />
+    <arg name="vslam_map_alignment_x" default="0.0" />
+    <arg name="vslam_map_alignment_y" default="0.0" />
+    <arg name="vslam_map_alignment_z" default="0.0" />
+    <arg name="vslam_map_alignment_roll_rad" default="0.0" />
+    <arg name="vslam_map_alignment_pitch_rad" default="0.0" />
+    <arg name="vslam_map_alignment_yaw_rad" default="0.0" />
     <arg name="publish_map_to_odom_tf" default="false" />
     <arg name="enable_slam_visualization" default="false" />
     <arg name="enable_observations_view" default="false" />
@@ -399,6 +411,18 @@
             <arg name="vslam_map_frame" value="$(var vslam_map_frame)"/>
             <arg name="vslam_map_parent_frame" value="$(var map_frame)"/>
             <arg name="publish_vslam_map_identity_tf" value="$(var publish_vslam_map_identity_tf)"/>
+            <arg name="use_vslam_map_alignment_node" value="$(var use_vslam_map_alignment_node)"/>
+            <arg name="vslam_map_alignment_config" value="$(var vslam_map_alignment_config)"/>
+            <arg name="vslam_map_alignment_enable_keyboard" value="$(var vslam_map_alignment_enable_keyboard)"/>
+            <arg name="vslam_map_alignment_publish_rate_hz" value="$(var vslam_map_alignment_publish_rate_hz)"/>
+            <arg name="vslam_map_alignment_translation_step_m" value="$(var vslam_map_alignment_translation_step_m)"/>
+            <arg name="vslam_map_alignment_rotation_step_deg" value="$(var vslam_map_alignment_rotation_step_deg)"/>
+            <arg name="vslam_map_alignment_x" value="$(var vslam_map_alignment_x)"/>
+            <arg name="vslam_map_alignment_y" value="$(var vslam_map_alignment_y)"/>
+            <arg name="vslam_map_alignment_z" value="$(var vslam_map_alignment_z)"/>
+            <arg name="vslam_map_alignment_roll_rad" value="$(var vslam_map_alignment_roll_rad)"/>
+            <arg name="vslam_map_alignment_pitch_rad" value="$(var vslam_map_alignment_pitch_rad)"/>
+            <arg name="vslam_map_alignment_yaw_rad" value="$(var vslam_map_alignment_yaw_rad)"/>
             <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
             <arg name="load_map_path" value="$(var resolved_vslam_map_dir)"/>
             <arg name="save_map_path" value="$(var vslam_save_map_dir)"/>

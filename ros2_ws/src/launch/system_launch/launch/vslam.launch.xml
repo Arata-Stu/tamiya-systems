@@ -7,6 +7,18 @@
     <arg name="vslam_map_frame" default="vslam_map" />
     <arg name="vslam_map_parent_frame" default="map" />
     <arg name="publish_vslam_map_identity_tf" default="true" />
+    <arg name="use_vslam_map_alignment_node" default="false" />
+    <arg name="vslam_map_alignment_config" default="" />
+    <arg name="vslam_map_alignment_enable_keyboard" default="false" />
+    <arg name="vslam_map_alignment_publish_rate_hz" default="20.0" />
+    <arg name="vslam_map_alignment_translation_step_m" default="0.02" />
+    <arg name="vslam_map_alignment_rotation_step_deg" default="1.0" />
+    <arg name="vslam_map_alignment_x" default="0.0" />
+    <arg name="vslam_map_alignment_y" default="0.0" />
+    <arg name="vslam_map_alignment_z" default="0.0" />
+    <arg name="vslam_map_alignment_roll_rad" default="0.0" />
+    <arg name="vslam_map_alignment_pitch_rad" default="0.0" />
+    <arg name="vslam_map_alignment_yaw_rad" default="0.0" />
 
     <arg name="vslam_param" default="$(find-pkg-share system_launch)/config/localization/vslam.param.yaml" />
     <arg name="save_map_path" default="" />
@@ -86,7 +98,28 @@
     </load_composable_node>
 
     <node
-        if="$(eval '\'$(var publish_vslam_map_identity_tf)\' == \'true\' and \'$(var vslam_map_parent_frame)\' != \'$(var vslam_map_frame)\'')"
+        if="$(eval '\'$(var use_vslam_map_alignment_node)\' == \'true\' and \'$(var vslam_map_parent_frame)\' != \'$(var vslam_map_frame)\'')"
+        pkg="vslam_map_tools"
+        exec="manual_tf_alignment_node.py"
+        name="manual_tf_alignment_node"
+        output="screen">
+        <param name="parent_frame" value="$(var vslam_map_parent_frame)"/>
+        <param name="child_frame" value="$(var vslam_map_frame)"/>
+        <param name="config_path" value="$(var vslam_map_alignment_config)"/>
+        <param name="enable_keyboard" value="$(var vslam_map_alignment_enable_keyboard)"/>
+        <param name="publish_rate_hz" value="$(var vslam_map_alignment_publish_rate_hz)"/>
+        <param name="translation_step_m" value="$(var vslam_map_alignment_translation_step_m)"/>
+        <param name="rotation_step_deg" value="$(var vslam_map_alignment_rotation_step_deg)"/>
+        <param name="x" value="$(var vslam_map_alignment_x)"/>
+        <param name="y" value="$(var vslam_map_alignment_y)"/>
+        <param name="z" value="$(var vslam_map_alignment_z)"/>
+        <param name="roll_rad" value="$(var vslam_map_alignment_roll_rad)"/>
+        <param name="pitch_rad" value="$(var vslam_map_alignment_pitch_rad)"/>
+        <param name="yaw_rad" value="$(var vslam_map_alignment_yaw_rad)"/>
+    </node>
+
+    <node
+        if="$(eval '\'$(var publish_vslam_map_identity_tf)\' == \'true\' and \'$(var use_vslam_map_alignment_node)\' != \'true\' and \'$(var vslam_map_parent_frame)\' != \'$(var vslam_map_frame)\'')"
         pkg="tf2_ros"
         exec="static_transform_publisher"
         name="vslam_map_identity_tf"

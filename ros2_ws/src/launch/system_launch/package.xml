@@ -14,6 +14,7 @@
   <exec_depend>isaac_ros_triton</exec_depend>
   <exec_depend>isaac_ros_scan_image_classifier</exec_depend>
   <exec_depend>scan_image_projection_cropper</exec_depend>
+  <exec_depend>vslam_map_tools</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

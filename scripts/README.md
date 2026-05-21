@@ -14,6 +14,32 @@ directly.
 - `create_2d_map_from_bag.sh`: 2D map 作成用。mode は `no_odom_offline_vslam` / `no_odom_online_vslam` / `with_odom_offline_vslam` / `with_odom_online_vslam` の 4 通りです。前半は Cartographer が odom を使うか、後半は Cartographer と同時に VSLAM を走らせるかを表します。`default` は `no_odom_offline_vslam`、`2d_slam` は `no_odom_online_vslam` の互換 alias です。`--mode` を省略すると実行時に 4択で選べます。`with_odom_online_vslam` は live の `/visual_slam/tracking/odometry` を使い、`with_odom_offline_vslam` は先に VSLAM map を作ってから、その map を読み込んだ VSLAM で odom bag を生成し、その bag を Cartographer に渡します。この mode では source bag を 2 回 replay します。`with_odom_offline_vslam` では、odom bag の録画前に `ros2 topic hz -w 10` 相当の平均レート確認を行い、既定では `--image-fps` の 90% 以上に達してから録画を始めます。必要なら `--odom-ready-window` / `--odom-ready-min-rate` / `--odom-ready-timeout` / `--no-odom-ready-wait` で調整できます。centerline 前に GUI で map を手修正したい場合は `--edit-map`、都度確認したい場合は既定の `--map-edit-mode auto` を使います。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
 - `scp_data.sh`: data transfer helper.
 
+## VSLAM map alignment helpers
+
+`ros2_ws/src/tools/vslam_map_tools/` に、VSLAM map と 2D map の橋渡し用ツールを追加しています。
+
+- `manual_tf_alignment_node.py`: `map -> vslam_map` を publish しながらキー操作で微調整
+- `export_landmarks_png.py`: `/visual_slam/vis/landmarks_cloud` を 2D PNG に rasterize
+
+`system_launch` 経由で alignment node を有効にする例:
+
+```bash
+./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a \
+  --set use_vslam_map_alignment_node=true \
+  --set vslam_map_alignment_enable_keyboard=true \
+  --set enable_slam_visualization=true \
+  --set enable_landmarks_view=true
+```
+
+landmarks から下絵 PNG を保存する例:
+
+```bash
+ros2 run vslam_map_tools export_landmarks_png.py -- \
+  --target-frame map \
+  --reference-yaml /map/course_a/course_a.yaml \
+  --output-image /map/course_a/course_a_vslam_landmarks.png
+```
+
 ## Terminal viewers
 
 The terminal image/ROS viewers live in `terminal_viewers/`:

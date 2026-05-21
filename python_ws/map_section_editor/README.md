@@ -18,9 +18,27 @@ python3 map_section_editor/map_cleanup_editor.py \
   --output ./map_section_editor/levine_centerline_input.png
 ```
 
+landmarks PNG を下絵にして新しく map を描きたい場合:
+
+```bash
+cd python_ws
+python3 map_section_editor/map_cleanup_editor.py \
+  --input /map/course_a/course_a_vslam_landmarks.png \
+  --output /map/course_a/course_a_vslam_traced.png \
+  --initialize-mode blank_black
+```
+
+この mode では、入力 PNG 自体は編集せず reference overlay として表示し、
+黒い blank canvas の上に白で走行可能領域を描いていけます。
+
 操作:
 
 - 左ドラッグ: 現在のブラシ色で描画
+- `1` / `2` / `3`: brush / line / smooth curve tool
+- line tool: クリックした 2 点の間に直線を引く
+- curve tool: 制御点を複数クリックして `Enter` で滑らかな曲線を確定
+- `x`: pending line / curve をクリア
+- `v`: reference overlay の表示/非表示
 - `b` または上部 `Black` ボタン: 黒で塗る
 - `e` または上部 `White` ボタン: 白で戻す
 - `i` または右上の `Help` ボタン: 説明パネルの表示/非表示
@@ -36,7 +54,12 @@ python3 map_section_editor/map_cleanup_editor.py \
 `create_2d_map_from_bag.sh` からは `--edit-map` または `--map-edit-mode auto`
 で呼び出せます。section editor は同スクリプトの転送前メニューからも開けます。
 
-必要なら `--binarize-white-threshold` で二値化しきい値を変更できます。
+主な追加 option:
+
+- `--initialize-mode binarized|blank_white|blank_black`
+- `--reference-image PATH`
+- `--reference-alpha 0.45`
+- `--binarize-white-threshold N`
 
 ## section_editor.py
 

@@ -31,6 +31,7 @@ except ModuleNotFoundError as exc:
 class EditorImages:
     raw_input: np.ndarray
     session_base: np.ndarray
+    reference_overlay: Optional[np.ndarray]
 
 
 class MapCleanupEditor:
@@ -44,10 +45,14 @@ class MapCleanupEditor:
         brush_radius: int,
         undo_depth: int,
         loaded_saved_output: bool,
+        reference_alpha: float,
     ) -> None:
         self.raw_input = images.raw_input.copy()
         self.session_base = images.session_base.copy()
         self.image = images.session_base.copy()
+        self.reference_overlay = (
+            images.reference_overlay.copy() if images.reference_overlay is not None else None
+        )
         self.output_path = output_path
         self.loaded_saved_output = loaded_saved_output
 
@@ -70,10 +75,15 @@ class MapCleanupEditor:
         self.last_draw_uv: Optional[Tuple[int, int]] = None
 
         self.mode = "paint_black"
+        self.tool = "brush"
         self.brush_radius = max(1, int(brush_radius))
         self.show_hud = True
+        self.reference_visible = self.reference_overlay is not None
+        self.reference_alpha = max(0.0, min(1.0, float(reference_alpha)))
         self.undo_stack: Deque[np.ndarray] = deque(maxlen=max(1, int(undo_depth)))
         self.has_unsaved_changes = False
+        self.line_anchor_uv: Optional[Tuple[int, int]] = None
+        self.curve_points: list[Tuple[int, int]] = []
 
         if scale > 0.0:
             self.scale = max(self.min_scale, min(self.max_scale, float(scale)))
@@ -216,11 +226,57 @@ class MapCleanupEditor:
     def _brush_value(self) -> int:
         return 0 if self.mode == "paint_black" else 255
 
+    def _preview_color(self) -> Tuple[int, int, int]:
+        return (30, 30, 230) if self.mode == "paint_black" else (40, 200, 90)
+
+    def _set_tool(self, tool: str) -> None:
+        if tool not in ("brush", "line", "curve"):
+            return
+        if self.tool != tool:
+            self._clear_pending_shape()
+        self.tool = tool
+
+    def _clear_pending_shape(self) -> None:
+        self.line_anchor_uv = None
+        self.curve_points = []
+
     def _paint_segment(self, start_uv: Tuple[int, int], end_uv: Tuple[int, int]) -> None:
         color = self._brush_value()
         thickness = max(1, self.brush_radius * 2 + 1)
         cv2.line(self.image, start_uv, end_uv, color, thickness=thickness, lineType=cv2.LINE_8)
+        cv2.circle(self.image, start_uv, self.brush_radius, color, -1, lineType=cv2.LINE_8)
         cv2.circle(self.image, end_uv, self.brush_radius, color, -1, lineType=cv2.LINE_8)
+
+    def _paint_polyline(self, points_uv: list[Tuple[int, int]]) -> None:
+        if not points_uv:
+            return
+        if len(points_uv) == 1:
+            self._paint_segment(points_uv[0], points_uv[0])
+            return
+
+        color = self._brush_value()
+        thickness = max(1, self.brush_radius * 2 + 1)
+        poly = np.asarray(points_uv, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(self.image, [poly], False, color, thickness=thickness, lineType=cv2.LINE_8)
+        for point in points_uv:
+            cv2.circle(self.image, point, self.brush_radius, color, -1, lineType=cv2.LINE_8)
+
+    def _smoothed_curve_points(self, points_uv: list[Tuple[int, int]]) -> list[Tuple[int, int]]:
+        if len(points_uv) < 3:
+            return list(points_uv)
+
+        pts = np.asarray(points_uv, dtype=np.float32)
+        for _ in range(3):
+            refined = [pts[0]]
+            for idx in range(len(pts) - 1):
+                p0 = pts[idx]
+                p1 = pts[idx + 1]
+                refined.append(0.75 * p0 + 0.25 * p1)
+                refined.append(0.25 * p0 + 0.75 * p1)
+            refined.append(pts[-1])
+            pts = np.asarray(refined, dtype=np.float32)
+
+        return [(int(round(pt[0])), int(round(pt[1]))) for pt in pts]
 
     def _save(self) -> None:
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -243,13 +299,85 @@ class MapCleanupEditor:
         self._sync_dirty_state()
         print("[INFO] Reset to normalized input map.")
 
+    def _toggle_reference(self) -> None:
+        if self.reference_overlay is None:
+            print("[INFO] No reference overlay is loaded.")
+            return
+        self.reference_visible = not self.reference_visible
+        print(f"[INFO] Reference overlay {'enabled' if self.reference_visible else 'disabled'}.")
+
     def _undo(self) -> None:
+        if self.curve_points:
+            self.curve_points.pop()
+            print("[INFO] Removed the last pending curve point.")
+            return
+        if self.line_anchor_uv is not None and self.tool == "line":
+            self.line_anchor_uv = None
+            print("[INFO] Cleared the pending line anchor.")
+            return
         if not self.undo_stack:
             print("[INFO] Nothing to undo.")
             return
         self.image = self.undo_stack.pop()
         self._sync_dirty_state()
         print("[INFO] Undo applied.")
+
+    def _commit_curve(self) -> None:
+        if len(self.curve_points) < 2:
+            print("[INFO] Curve mode needs at least 2 control points.")
+            return
+        self._push_undo()
+        self._paint_polyline(self._smoothed_curve_points(self.curve_points))
+        self._sync_dirty_state()
+        self.curve_points = []
+        print("[INFO] Committed smooth curve.")
+
+    def _draw_reference_overlay(self, canvas: np.ndarray) -> np.ndarray:
+        if self.reference_overlay is None or not self.reference_visible:
+            return canvas
+
+        ref_inv = 255 - self.reference_overlay
+        if not np.any(ref_inv):
+            return canvas
+
+        overlay = np.zeros_like(canvas)
+        overlay[:, :, 0] = np.clip(ref_inv * 0.18, 0, 255).astype(np.uint8)
+        overlay[:, :, 1] = np.clip(ref_inv * 0.70, 0, 255).astype(np.uint8)
+        overlay[:, :, 2] = np.clip(ref_inv * 0.95, 0, 255).astype(np.uint8)
+        mask = ref_inv > 0
+        out = canvas.copy()
+        blended = (
+            canvas[mask].astype(np.float32) * (1.0 - self.reference_alpha)
+            + overlay[mask].astype(np.float32) * self.reference_alpha
+        )
+        out[mask] = np.clip(blended, 0.0, 255.0).astype(np.uint8)
+        return out
+
+    def _draw_preview_polyline(
+        self,
+        frame: np.ndarray,
+        points_uv: list[Tuple[int, int]],
+        color: Tuple[int, int, int],
+    ) -> None:
+        if not points_uv:
+            return
+
+        view_points = np.asarray([self._to_view_pixel(u, v) for u, v in points_uv], dtype=np.int32)
+        if len(view_points) == 1:
+            cv2.circle(
+                frame,
+                tuple(view_points[0]),
+                max(3, int(round(self.brush_radius * self.scale))),
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+            return
+
+        thickness = max(1, int(round(max(1, self.brush_radius * 2) * self.scale)))
+        cv2.polylines(frame, [view_points.reshape((-1, 1, 2))], False, color, thickness=thickness, lineType=cv2.LINE_AA)
+        for point in view_points:
+            cv2.circle(frame, tuple(point), 3, color, -1, cv2.LINE_AA)
 
     def _draw_text_with_outline(
         self,
@@ -343,12 +471,13 @@ class MapCleanupEditor:
             return
 
         mode_text = "black" if self.mode == "paint_black" else "white"
-        source_text = "saved output" if self.loaded_saved_output else "normalized input"
+        source_text = "saved output" if self.loaded_saved_output else "initial canvas"
         dirty_text = "yes" if self.has_unsaved_changes else "no"
+        reference_text = "on" if self.reference_visible else "off"
         cursor_u, cursor_v = self._to_original_pixel(self.last_mouse_x, self.last_mouse_y)
 
         panel_width = min(1240, self.window_width - 20)
-        self._draw_panel(frame, 10, 10, panel_width, 190, alpha=0.76)
+        self._draw_panel(frame, 10, 10, panel_width, 220, alpha=0.76)
         self._draw_text_with_outline(
             frame,
             "Map Cleanup Editor",
@@ -360,7 +489,7 @@ class MapCleanupEditor:
         self._draw_text_with_outline(
             frame,
             (
-                f"Mode: {mode_text}   Brush: {self._brush_diameter_px()}px   Zoom: {self.scale:.2f}x"
+                f"Mode: {mode_text}   Tool: {self.tool}   Brush: {self._brush_diameter_px()}px   Zoom: {self.scale:.2f}x"
                 f"   Cursor: ({cursor_u}, {cursor_v})   Unsaved: {dirty_text}"
             ),
             (24, 78),
@@ -370,7 +499,7 @@ class MapCleanupEditor:
         )
         self._draw_text_with_outline(
             frame,
-            f"Session base: {source_text}   Output: {self.output_path}",
+            f"Session base: {source_text}   Reference overlay: {reference_text}   Output: {self.output_path}",
             (24, 108),
             0.58,
             (220, 220, 220),
@@ -378,7 +507,7 @@ class MapCleanupEditor:
         )
         self._draw_text_with_outline(
             frame,
-            "Left-drag:paint  Right-drag or H/J/K/L/Arrow:pan  Wheel/+/-:zoom  [/] or ,/.:brush",
+            "Brush mode: left-drag paint   Line mode: click start/end   Curve mode: click control points then Enter",
             (24, 138),
             0.58,
             (220, 220, 220),
@@ -386,8 +515,16 @@ class MapCleanupEditor:
         )
         self._draw_text_with_outline(
             frame,
-            "b:black  e:white  u:undo  r:revert unsaved  R:reset normalized map  i:help  s:save  0:reset view  q/Esc:quit",
+            "1:brush  2:line  3:curve  x:clear pending shape  v:toggle ref  Right-drag or H/J/K/L/Arrow:pan",
             (24, 166),
+            0.58,
+            (220, 220, 220),
+            2,
+        )
+        self._draw_text_with_outline(
+            frame,
+            "b:black  e:white  u:undo  r:revert unsaved  R:reset input  s:save  0:reset view  [/] or ,/.:brush  q/Esc:quit",
+            (24, 194),
             0.58,
             (220, 220, 220),
             2,
@@ -395,6 +532,7 @@ class MapCleanupEditor:
 
     def _draw(self) -> np.ndarray:
         canvas = cv2.cvtColor(self.image, cv2.COLOR_GRAY2BGR)
+        canvas = self._draw_reference_overlay(canvas)
 
         scaled_w, scaled_h = self._scaled_size()
         interp = cv2.INTER_NEAREST if self.scale >= 1.0 else cv2.INTER_AREA
@@ -415,8 +553,24 @@ class MapCleanupEditor:
             cursor_u, cursor_v = self._to_original_pixel(self.last_mouse_x, self.last_mouse_y)
             cursor_x, cursor_y = self._to_view_pixel(cursor_u, cursor_v)
             radius = max(2, int(round(self.brush_radius * self.scale)))
-            color = (30, 30, 230) if self.mode == "paint_black" else (40, 200, 90)
+            color = self._preview_color()
             cv2.circle(frame, (cursor_x, cursor_y), radius, color, 1, cv2.LINE_AA)
+
+        if self.tool == "line" and self.line_anchor_uv is not None:
+            preview_points = [self.line_anchor_uv]
+            if self._is_inside_map(self.last_mouse_x, self.last_mouse_y):
+                preview_points.append(self._to_original_pixel(self.last_mouse_x, self.last_mouse_y))
+            self._draw_preview_polyline(frame, preview_points, self._preview_color())
+
+        if self.tool == "curve" and self.curve_points:
+            preview_points = list(self.curve_points)
+            if self._is_inside_map(self.last_mouse_x, self.last_mouse_y):
+                preview_points.append(self._to_original_pixel(self.last_mouse_x, self.last_mouse_y))
+            self._draw_preview_polyline(
+                frame,
+                self._smoothed_curve_points(preview_points),
+                self._preview_color(),
+            )
 
         self._draw_hud(frame)
         self._draw_controls(frame)
@@ -469,12 +623,27 @@ class MapCleanupEditor:
                 return
             if not self._is_inside_map(x, y):
                 return
-            self._push_undo()
-            self.is_drawing = True
             uv = self._to_original_pixel(x, y)
-            self.last_draw_uv = uv
-            self._paint_segment(uv, uv)
-            self.has_unsaved_changes = True
+            if self.tool == "brush":
+                self._push_undo()
+                self.is_drawing = True
+                self.last_draw_uv = uv
+                self._paint_segment(uv, uv)
+                self.has_unsaved_changes = True
+                return
+            if self.tool == "line":
+                if self.line_anchor_uv is None:
+                    self.line_anchor_uv = uv
+                    print(f"[INFO] Line anchor set at {uv}.")
+                else:
+                    self._push_undo()
+                    self._paint_segment(self.line_anchor_uv, uv)
+                    self.line_anchor_uv = uv
+                    self.has_unsaved_changes = True
+                return
+            if self.tool == "curve":
+                self.curve_points.append(uv)
+                print(f"[INFO] Added curve control point {uv}.")
             return
 
         if event == cv2.EVENT_MOUSEMOVE and self.is_drawing and (flags & cv2.EVENT_FLAG_LBUTTON):
@@ -499,6 +668,8 @@ class MapCleanupEditor:
         print("[INFO] Press 's' to save the cleaned PNG before closing.")
         print("[INFO] Press 'i' or click the Help button to toggle the instruction panel.")
         print("[INFO] Use '[' / ']' or ',' / '.' or the +/- buttons to change brush size.")
+        print("[INFO] Use '1'/'2'/'3' for brush/line/curve tools. Press Enter to commit a smooth curve.")
+        print("[INFO] Use 'v' to toggle the reference overlay and 'x' to clear pending line/curve points.")
 
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window_name, self.window_width, self.window_height)
@@ -516,6 +687,8 @@ class MapCleanupEditor:
                 break
             if key_ascii == ord("i"):
                 self.show_hud = not self.show_hud
+            elif key_ascii == ord("v"):
+                self._toggle_reference()
             elif key_ascii == ord("s"):
                 self._save()
             elif key_ascii == ord("u"):
@@ -524,10 +697,22 @@ class MapCleanupEditor:
                 self.mode = "paint_black"
             elif key_ascii == ord("e"):
                 self.mode = "paint_white"
+            elif key_ascii == ord("1"):
+                self._set_tool("brush")
+            elif key_ascii == ord("2"):
+                self._set_tool("line")
+            elif key_ascii == ord("3"):
+                self._set_tool("curve")
+            elif key_ascii == ord("x"):
+                self._clear_pending_shape()
+                print("[INFO] Cleared pending line/curve state.")
             elif key_ascii == ord("r"):
                 self._reset_to_session_base()
             elif key_ascii == ord("R"):
                 self._reset_to_raw_input()
+            elif key in (10, 13):
+                if self.tool == "curve":
+                    self._commit_curve()
             elif key_ascii in (ord("+"), ord("=")):
                 self._zoom_at(1.15, self.window_width // 2, self.window_height // 2)
             elif key_ascii in (ord("-"), ord("_")):
@@ -611,6 +796,23 @@ def parse_args() -> argparse.Namespace:
             "threshold to black. Set <=0 to disable."
         ),
     )
+    parser.add_argument(
+        "--initialize-mode",
+        choices=("binarized", "blank_white", "blank_black"),
+        default="binarized",
+        help="Initial editable canvas mode.",
+    )
+    parser.add_argument(
+        "--reference-image",
+        default="",
+        help="Optional overlay image shown as a non-destructive drawing reference.",
+    )
+    parser.add_argument(
+        "--reference-alpha",
+        type=float,
+        default=0.45,
+        help="Reference overlay blend factor in [0, 1].",
+    )
     return parser.parse_args()
 
 
@@ -646,13 +848,35 @@ def main() -> int:
     if not input_path.exists():
         raise FileNotFoundError(f"input map not found: {input_path}")
 
-    raw_input = load_grayscale(input_path)
-    raw_input = binarize_for_editing(raw_input, args.binarize_white_threshold)
-    if args.binarize_white_threshold > 0:
-        print(
-            "[INFO] Binarized input map for editing: "
-            f"pixels >= {args.binarize_white_threshold} -> white, others -> black."
-        )
+    source_input = load_grayscale(input_path)
+    reference_overlay = None
+
+    if args.initialize_mode == "binarized":
+        raw_input = binarize_for_editing(source_input, args.binarize_white_threshold)
+        if args.binarize_white_threshold > 0:
+            print(
+                "[INFO] Binarized input map for editing: "
+                f"pixels >= {args.binarize_white_threshold} -> white, others -> black."
+            )
+    elif args.initialize_mode == "blank_white":
+        raw_input = np.full_like(source_input, 255, dtype=np.uint8)
+        reference_overlay = source_input.copy()
+        print("[INFO] Initialized a blank white canvas using the input image as reference overlay.")
+    else:
+        raw_input = np.zeros_like(source_input, dtype=np.uint8)
+        reference_overlay = source_input.copy()
+        print("[INFO] Initialized a blank black canvas using the input image as reference overlay.")
+
+    if args.reference_image:
+        reference_path = Path(args.reference_image).expanduser().resolve()
+        reference_overlay = load_grayscale(reference_path)
+        if reference_overlay.shape != raw_input.shape:
+            raise RuntimeError(
+                f"reference image size {reference_overlay.shape} does not match input size {raw_input.shape}: "
+                f"{reference_path}"
+            )
+        print(f"[INFO] Loaded explicit reference overlay: {reference_path}")
+
     loaded_saved_output = output_path.exists()
     if loaded_saved_output:
         session_base = load_grayscale(output_path)
@@ -665,8 +889,17 @@ def main() -> int:
     else:
         session_base = raw_input.copy()
 
+    if args.initialize_mode == "binarized" and args.binarize_white_threshold > 0:
+        print(
+            "[INFO] Use --initialize-mode blank_black or blank_white to trace a fresh map over a reference image."
+        )
+
     editor = MapCleanupEditor(
-        images=EditorImages(raw_input=raw_input, session_base=session_base),
+        images=EditorImages(
+            raw_input=raw_input,
+            session_base=session_base,
+            reference_overlay=reference_overlay,
+        ),
         output_path=output_path,
         scale=args.scale,
         window_width=args.window_width,
@@ -674,6 +907,7 @@ def main() -> int:
         brush_radius=args.brush_radius,
         undo_depth=args.undo_depth,
         loaded_saved_output=loaded_saved_output,
+        reference_alpha=args.reference_alpha,
     )
     editor.run()
     return 0
