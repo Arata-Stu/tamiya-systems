@@ -149,6 +149,15 @@ resolve_repo_file() {
             echo "${candidate_root}/${relative_path}"
             return 0
         fi
+        
+        # If relative_path starts with ros2_ws/ but we are in docker where src is mounted directly
+        if [[ "${relative_path}" == ros2_ws/* ]]; then
+            local stripped_path="${relative_path#ros2_ws/}"
+            if [ -f "${candidate_root}/${stripped_path}" ]; then
+                echo "${candidate_root}/${stripped_path}"
+                return 0
+            fi
+        fi
     done
 
     return 1

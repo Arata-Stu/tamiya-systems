@@ -851,8 +851,7 @@ CENTERLINE_INPUT_MAP="${MAP_PGM_PATH}"
 if [ -f "${MAP_PNG_PATH}" ]; then
     CENTERLINE_INPUT_MAP="${MAP_PNG_PATH}"
 fi
-prompt_vslam_landmark_trace
-run_vslam_landmark_trace
+
 prompt_map_edit
 run_map_edit "${CENTERLINE_INPUT_MAP}"
 generate_centerline "${CENTERLINE_INPUT_MAP}"

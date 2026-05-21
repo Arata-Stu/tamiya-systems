@@ -113,6 +113,8 @@ start_vslam_reference_capture() {
         env PYTHONUNBUFFERED=1 ros2 run vslam_map_tools record_vslam_reference_snapshot.py
         --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
         --odom-topic "${DEFAULT_VSLAM_ODOM_TOPIC}"
+        --landmarks-topic "${VSLAM_LANDMARK_TOPIC}"
+        --trajectory-topic "/trajectory_node_list"
         --output "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
     )
 
@@ -273,7 +275,7 @@ resolve_vslam_landmark_export_script() {
         return 1
     fi
 
-    resolve_repo_file "ros2_ws/src/tools/vslam_map_tools/vslam_map_tools/export_landmarks_png.py"
+    resolve_repo_file "ros2_ws/src/tools/vslam_map_tools/vslam_map_tools/export_aligned_landmarks_offline.py"
 }
 
 resolve_vslam_reference_recorder_script() {
@@ -494,6 +496,8 @@ run_post_vslam_map_alignment_prep() {
                 --input "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
                 --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
                 --odom-topic "${DEFAULT_VSLAM_ODOM_TOPIC}"
+                --landmarks-topic "${VSLAM_LANDMARK_TOPIC}"
+                --trajectory-topic "/trajectory_node_list"
                 --publish-rate-hz 5.0
             )
             launch_background_process "POST_ALIGNMENT_REFERENCE_PUBLISHER_PID" "POST_ALIGNMENT_REFERENCE_PUBLISHER_USES_SETSID" \
@@ -614,13 +618,14 @@ run_vslam_landmark_trace() {
         return 0
     fi
 
-    if [ -n "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ] && [ -f "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
+    if ! export_script_path="$(resolve_vslam_landmark_export_script)"; then
+        # Fallback if script not set, although resolve_repo_file should find it
         export_cmd=(
-            python3 "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}"
+            env PYTHONUNBUFFERED=1 ros2 run vslam_map_tools export_aligned_landmarks_offline.py
         )
     else
         export_cmd=(
-            env PYTHONUNBUFFERED=1 ros2 run vslam_map_tools export_landmarks_png.py
+            python3 "${export_script_path}"
         )
     fi
 
@@ -638,64 +643,18 @@ run_vslam_landmark_trace() {
         return 0
     fi
 
-    if [ -d "${VSLAM_MAP_DIR}" ]; then
-        trace_load_map_path="${VSLAM_MAP_DIR}"
-    fi
-
-    VSLAM_VIS_ENABLED=true
-
-    launch_vslam_stack \
-        "${VSLAM_LANDMARK_TF_LOG_PATH}" \
-        "${VSLAM_LANDMARK_LOG_PATH}" \
-        "" \
-        "${trace_load_map_path}"
-
-    if ! wait_for_service "/visual_slam/save_map" 60; then
-        echo "Warning: Visual SLAM service not ready for landmark export. Check log: ${VSLAM_LANDMARK_LOG_PATH}" >&2
-        stop_vslam
-        VSLAM_VIS_ENABLED="${old_vslam_vis_enabled}"
-        return 0
-    fi
-
     export_cmd+=(
-        --landmarks-topic "${VSLAM_LANDMARK_TOPIC}"
-        --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
-        --target-frame "${VSLAM_LANDMARK_TARGET_FRAME}"
+        --snapshot "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
+        --alignment "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"
         --reference-yaml "${VSLAM_LANDMARK_REFERENCE_YAML_PATH}"
         --output-image "${VSLAM_LANDMARK_IMAGE_PATH}"
         --output-yaml "${VSLAM_LANDMARK_YAML_PATH}"
-        --timeout-sec "${VSLAM_LANDMARK_EXPORT_TIMEOUT_SEC}"
+        --landmark-downsample-m 0.1
     )
 
-    launch_background_process "LANDMARK_EXPORT_PID" "LANDMARK_EXPORT_USES_SETSID" \
-        "${export_cmd[@]}" \
-        > "${VSLAM_LANDMARK_EXPORT_LOG_PATH}" 2>&1
-
-    sleep 2
-
-    build_online_source_play_topics
-    echo "  - replay source bag for VSLAM landmark export"
-    echo "  - topics: ${SOURCE_PLAY_TOPICS[*]}"
-    if ! play_rosbag \
-        "${SOURCE_BAG_PATH}" "${VSLAM_LANDMARK_PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"; then
-        echo "Warning: source bag replay failed during VSLAM landmark export." >&2
-        stop_background_process "LANDMARK_EXPORT_PID" "LANDMARK_EXPORT_USES_SETSID"
-        stop_vslam
-        VSLAM_VIS_ENABLED="${old_vslam_vis_enabled}"
-        return 0
-    fi
-
-    if [ -n "${LANDMARK_EXPORT_PID:-}" ]; then
-        wait "${LANDMARK_EXPORT_PID}" || export_status=$?
-        LANDMARK_EXPORT_PID=""
-        LANDMARK_EXPORT_USES_SETSID=false
-    fi
-
-    stop_vslam
-    VSLAM_VIS_ENABLED="${old_vslam_vis_enabled}"
-
-    if [ "${export_status}" -ne 0 ] || [ ! -f "${VSLAM_LANDMARK_IMAGE_PATH}" ]; then
-        echo "Warning: failed to export VSLAM landmarks. Check log: ${VSLAM_LANDMARK_EXPORT_LOG_PATH}" >&2
+    echo "  - running offline landmark exporter"
+    if ! "${export_cmd[@]}" > "${VSLAM_LANDMARK_EXPORT_LOG_PATH}" 2>&1; then
+        echo "Warning: failed to export offline VSLAM landmarks. Check log: ${VSLAM_LANDMARK_EXPORT_LOG_PATH}" >&2
         return 0
     fi
 

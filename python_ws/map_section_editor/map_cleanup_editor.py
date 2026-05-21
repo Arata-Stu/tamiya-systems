@@ -336,6 +336,15 @@ class MapCleanupEditor:
         if self.reference_overlay is None or not self.reference_visible:
             return canvas
 
+        if len(self.reference_overlay.shape) == 3:
+            # Color overlay: blend directly
+            return cv2.addWeighted(
+                canvas, 1.0 - self.reference_alpha,
+                self.reference_overlay, self.reference_alpha,
+                0.0
+            )
+
+        # Grayscale overlay: colorize and blend only non-white pixels
         ref_inv = 255 - self.reference_overlay
         if not np.any(ref_inv):
             return canvas
@@ -869,13 +878,23 @@ def main() -> int:
 
     if args.reference_image:
         reference_path = Path(args.reference_image).expanduser().resolve()
-        reference_overlay = load_grayscale(reference_path)
-        if reference_overlay.shape != raw_input.shape:
+        # Try loading in color first
+        color_ref = cv2.imread(str(reference_path), cv2.IMREAD_COLOR)
+        if color_ref is None:
+            raise RuntimeError(f"failed to load reference image: {reference_path}")
+            
+        # Check if it's actually grayscale
+        if np.array_equal(color_ref[:,:,0], color_ref[:,:,1]) and np.array_equal(color_ref[:,:,1], color_ref[:,:,2]):
+            reference_overlay = color_ref[:,:,0]
+        else:
+            reference_overlay = color_ref
+            
+        if reference_overlay.shape[:2] != raw_input.shape[:2]:
             raise RuntimeError(
-                f"reference image size {reference_overlay.shape} does not match input size {raw_input.shape}: "
+                f"reference image size {reference_overlay.shape[:2]} does not match input size {raw_input.shape[:2]}: "
                 f"{reference_path}"
             )
-        print(f"[INFO] Loaded explicit reference overlay: {reference_path}")
+        print(f"[INFO] Loaded explicit reference overlay: {reference_path} (Color: {len(reference_overlay.shape) == 3})")
 
     loaded_saved_output = output_path.exists()
     if loaded_saved_output:

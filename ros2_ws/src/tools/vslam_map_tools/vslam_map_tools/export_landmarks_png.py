@@ -156,9 +156,10 @@ class LandmarkRasterExporter(Node):
         self.timer.cancel()
         if error:
             self.get_logger().error(message)
+            raise SystemExit(1)
         else:
             self.get_logger().info(message)
-        rclpy.shutdown()
+            raise SystemExit(0)
 
     def on_landmarks(self, msg: PointCloud2) -> None:
         self.latest_landmarks = msg
