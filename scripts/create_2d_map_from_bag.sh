@@ -1116,6 +1116,7 @@ print_mode_summary() {
     fi
     echo "vslam execution : ${PIPELINE_MODE}"
     echo "odom source     : $(describe_odom_source)"
+    echo "vslam vis       : ${VSLAM_VIS_ENABLED}"
     if [ -n "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ] && [ -f "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ]; then
         echo "vslam alignment : ${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"
     else
@@ -1124,6 +1125,14 @@ print_mode_summary() {
     echo "live alignment  : ${VSLAM_LIVE_ALIGNMENT_MODE}"
     echo "================================================"
     echo ""
+}
+
+ensure_vslam_visualization_requirements() {
+    if [ "${VSLAM_LIVE_ALIGNMENT_ENABLED}" = true ] && [ "${VSLAM_VIS_ENABLED}" != true ]; then
+        VSLAM_VIS_ENABLED=true
+        echo "[align] Enable VSLAM visualization automatically for live alignment."
+        echo "[align] landmarks / slam_path を見るため enable_slam_visualization=true, enable_landmarks_view=true で起動します。"
+    fi
 }
 
 discover_rosbag_candidates() {
@@ -2534,6 +2543,7 @@ fi
 
 print_mode_summary
 prompt_live_vslam_alignment
+ensure_vslam_visualization_requirements
 
 # ==========================================
 # 1. Build maps
