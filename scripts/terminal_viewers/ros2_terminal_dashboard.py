@@ -18,7 +18,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Transform
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -75,6 +75,51 @@ def transform_xyz(x: float, y: float, z: float, transform: object) -> tuple[floa
     return tx + rx, ty + ry, tz + rz
 
 
+def quat_multiply(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    return (
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    )
+
+
+def compose_transforms(lhs: object, rhs: object) -> Transform:
+    q_lhs = (
+        float(lhs.rotation.x),
+        float(lhs.rotation.y),
+        float(lhs.rotation.z),
+        float(lhs.rotation.w),
+    )
+    q_rhs = (
+        float(rhs.rotation.x),
+        float(rhs.rotation.y),
+        float(rhs.rotation.z),
+        float(rhs.rotation.w),
+    )
+    tx, ty, tz = transform_xyz(
+        float(rhs.translation.x),
+        float(rhs.translation.y),
+        float(rhs.translation.z),
+        lhs,
+    )
+    out = Transform()
+    out.translation.x = tx
+    out.translation.y = ty
+    out.translation.z = tz
+    qx, qy, qz, qw = quat_multiply(q_lhs, q_rhs)
+    out.rotation.x = qx
+    out.rotation.y = qy
+    out.rotation.z = qz
+    out.rotation.w = qw
+    return out
+
+
 def stamp_to_ns(stamp: object) -> Optional[int]:
     if stamp is None:
         return None
@@ -93,6 +138,17 @@ class TimedImageFrame:
 
 
 @dataclass
+class TimedOdomState:
+    stamp: object
+    speed_mps: float
+    linear_x: float
+    linear_y: float
+    angular_z: float
+    frame_id: str
+    child_frame_id: str
+
+
+@dataclass
 class SelectionState:
     reference_source: str = "-"
     reference_stamp: Optional[object] = None
@@ -103,6 +159,11 @@ class SelectionState:
     image: Optional[TimedImageFrame] = None
     crop_image: Optional[TimedImageFrame] = None
     particles: Optional[PoseArray] = None
+    odom: Optional[TimedOdomState] = None
+    path: Optional[Path] = None
+    vo_path: Optional[Path] = None
+    global_path: Optional[Path] = None
+    local_path: Optional[Path] = None
 
 
 @dataclass
@@ -175,6 +236,12 @@ class TerminalDashboard(Node):
         self.crop_image_buffer: deque[TimedImageFrame] = deque(maxlen=args.sync_buffer_size)
         self.camera_info_buffer: deque[CameraInfo] = deque(maxlen=args.sync_buffer_size)
         self.particles_buffer: deque[PoseArray] = deque(maxlen=args.sync_buffer_size)
+        state_buffer_size = max(1, args.state_sync_buffer_size)
+        self.odom_buffer: deque[TimedOdomState] = deque(maxlen=state_buffer_size)
+        self.path_buffer: deque[Path] = deque(maxlen=state_buffer_size)
+        self.vo_path_buffer: deque[Path] = deque(maxlen=state_buffer_size)
+        self.global_path_buffer: deque[Path] = deque(maxlen=state_buffer_size)
+        self.local_path_buffer: deque[Path] = deque(maxlen=state_buffer_size)
 
         self.tf_buffer = None
         self.tf_listener = None
@@ -308,12 +375,24 @@ class TerminalDashboard(Node):
         twist = msg.twist.twist
         linear_x = float(twist.linear.x)
         linear_y = float(twist.linear.y)
-        self.state.odom_speed_mps = math.hypot(linear_x, linear_y)
+        speed_mps = math.hypot(linear_x, linear_y)
+        self.state.odom_speed_mps = speed_mps
         self.state.odom_linear_x = linear_x
         self.state.odom_linear_y = linear_y
         self.state.odom_angular_z = float(twist.angular.z)
         self.state.odom_frame_id = msg.header.frame_id
         self.state.odom_child_frame_id = msg.child_frame_id
+        self.odom_buffer.append(
+            TimedOdomState(
+                stamp=msg.header.stamp,
+                speed_mps=speed_mps,
+                linear_x=linear_x,
+                linear_y=linear_y,
+                angular_z=float(twist.angular.z),
+                frame_id=msg.header.frame_id,
+                child_frame_id=msg.child_frame_id,
+            )
+        )
 
     def on_camera_info(self, msg: CameraInfo) -> None:
         self.state.camera_info = msg
@@ -370,15 +449,19 @@ class TerminalDashboard(Node):
 
     def on_path(self, msg: Path) -> None:
         self.state.path = msg
+        self.path_buffer.append(msg)
 
     def on_vo_path(self, msg: Path) -> None:
         self.state.vo_path = msg
+        self.vo_path_buffer.append(msg)
 
     def on_global_path(self, msg: Path) -> None:
         self.state.global_path = msg
+        self.global_path_buffer.append(msg)
 
     def on_local_path(self, msg: Path) -> None:
         self.state.local_path = msg
+        self.local_path_buffer.append(msg)
 
     def on_current_section(self, msg: String) -> None:
         self.state.current_section = msg.data or "-"
@@ -416,6 +499,8 @@ class TerminalDashboard(Node):
         stamp_getter: object,
         *,
         prefer_past: bool = False,
+        allow_future_fallback: bool = True,
+        enforce_tolerance: bool = True,
     ) -> Optional[object]:
         if not buffer:
             return None
@@ -437,9 +522,16 @@ class TerminalDashboard(Node):
                 if delta == 0:
                     break
             if best_past is not None:
-                if self.sync_tolerance_ns > 0 and best_past_delta is not None and best_past_delta > self.sync_tolerance_ns:
+                if (
+                    enforce_tolerance
+                    and self.sync_tolerance_ns > 0
+                    and best_past_delta is not None
+                    and best_past_delta > self.sync_tolerance_ns
+                ):
                     return None
                 return best_past
+            if not allow_future_fallback:
+                return None
 
         best_item = None
         best_delta = None
@@ -456,7 +548,7 @@ class TerminalDashboard(Node):
 
         if best_item is None:
             return None
-        if self.sync_tolerance_ns > 0 and best_delta is not None and best_delta > self.sync_tolerance_ns:
+        if enforce_tolerance and self.sync_tolerance_ns > 0 and best_delta is not None and best_delta > self.sync_tolerance_ns:
             return None
         return best_item
 
@@ -504,6 +596,26 @@ class TerminalDashboard(Node):
             prefer_past=True,
         )
 
+    def select_timed_message(
+        self,
+        buffer: object,
+        fallback: Optional[object],
+        target_stamp: object,
+        *,
+        enforce_tolerance: bool = True,
+        allow_future_fallback: bool = True,
+    ) -> Optional[object]:
+        if target_stamp is None:
+            return self.latest_buffer_item(buffer, fallback)
+        return self.nearest_buffer_item(
+            buffer,
+            target_stamp,
+            lambda msg: msg.header.stamp,
+            prefer_past=True,
+            allow_future_fallback=allow_future_fallback,
+            enforce_tolerance=enforce_tolerance,
+        )
+
     def select_image_frame(self, target_stamp: object) -> Optional[TimedImageFrame]:
         if target_stamp is None:
             return self.latest_buffer_item(self.image_buffer)
@@ -537,6 +649,26 @@ class TerminalDashboard(Node):
         if nearest is not None:
             return nearest
         return self.camera_info_buffer[-1] if self.camera_info_buffer else self.state.camera_info
+
+    def select_odom(self, target_stamp: object) -> Optional[TimedOdomState]:
+        selected = self.select_timed_message(
+            self.odom_buffer,
+            None,
+            target_stamp,
+            enforce_tolerance=False,
+            allow_future_fallback=False,
+        )
+        return selected if isinstance(selected, TimedOdomState) else None
+
+    def select_path_message(self, buffer: object, fallback: Optional[Path], target_stamp: object) -> Optional[Path]:
+        selected = self.select_timed_message(
+            buffer,
+            fallback,
+            target_stamp,
+            enforce_tolerance=False,
+            allow_future_fallback=False,
+        )
+        return selected if isinstance(selected, Path) else None
 
     def select_reference(self) -> tuple[str, Optional[object]]:
         if self.toggles["localization"] and self.localization_buffer:
@@ -574,6 +706,11 @@ class TerminalDashboard(Node):
             image=self.select_image_frame(reference_stamp),
             crop_image=self.select_crop_image_frame(reference_stamp),
             particles=self.select_particles(reference_stamp),
+            odom=self.select_odom(reference_stamp),
+            path=self.select_path_message(self.path_buffer, self.state.path, reference_stamp),
+            vo_path=self.select_path_message(self.vo_path_buffer, self.state.vo_path, reference_stamp),
+            global_path=self.select_path_message(self.global_path_buffer, self.state.global_path, reference_stamp),
+            local_path=self.select_path_message(self.local_path_buffer, self.state.local_path, reference_stamp),
         )
 
         parts = [f"ref={reference_source}"]
@@ -590,7 +727,7 @@ class TerminalDashboard(Node):
                 parts.append(f"crop={self.stamp_delta_ms_text(crop_stamp, reference_stamp) if crop_stamp is not None else '-'}")
         self.last_sync_status = "sync " + " ".join(parts)
 
-    def lookup_transform_between(self, target_frame: str, source_frame: str, stamp: object) -> Optional[object]:
+    def lookup_transform_between_exact(self, target_frame: str, source_frame: str, stamp: object) -> Optional[object]:
         if not target_frame or not source_frame or source_frame == target_frame or self.tf_buffer is None:
             return None
         try:
@@ -602,23 +739,56 @@ class TerminalDashboard(Node):
                 timeout=Duration(seconds=self.args.tf_timeout),
             ).transform
         except Exception:
-            if not self.args.allow_latest_tf_fallback:
-                return None
-            try:
-                return self.tf_buffer.lookup_transform(
-                    target_frame,
-                    source_frame,
-                    Time(),
-                    timeout=Duration(seconds=self.args.tf_timeout),
-                ).transform
-            except Exception:
-                return None
+            return None
+
+    def lookup_transform_between(self, target_frame: str, source_frame: str, stamp: object) -> Optional[object]:
+        exact = self.lookup_transform_between_exact(target_frame, source_frame, stamp)
+        if exact is not None:
+            return exact
+        if not self.args.allow_latest_tf_fallback or self.tf_buffer is None:
+            return None
+        try:
+            return self.tf_buffer.lookup_transform(
+                target_frame,
+                source_frame,
+                Time(),
+                timeout=Duration(seconds=self.args.tf_timeout),
+            ).transform
+        except Exception:
+            return None
+
+    def lookup_transform_via_alignment_frame(
+        self,
+        target_frame: str,
+        source_frame: str,
+        stamp: object,
+    ) -> Optional[object]:
+        if not self.args.alignment_child_frame or self.tf_buffer is None:
+            return None
+        alignment_frame = self.args.alignment_child_frame
+        if source_frame == alignment_frame:
+            return self.lookup_transform_between(target_frame, alignment_frame, None)
+        source_to_alignment = self.lookup_transform_between_exact(alignment_frame, source_frame, stamp)
+        if source_to_alignment is None:
+            return None
+        target_to_alignment = self.lookup_transform_between(target_frame, alignment_frame, None)
+        if target_to_alignment is None:
+            return None
+        return compose_transforms(target_to_alignment, source_to_alignment)
 
     def lookup_transform(self, source_frame: str, stamp: object) -> Optional[object]:
         map_state = self.state.map_state
         if map_state is None:
             return None
-        return self.lookup_transform_between(map_state.frame_id, source_frame, stamp)
+        exact = self.lookup_transform_between_exact(map_state.frame_id, source_frame, stamp)
+        if exact is not None:
+            return exact
+        aligned = self.lookup_transform_via_alignment_frame(map_state.frame_id, source_frame, stamp)
+        if aligned is not None:
+            return aligned
+        if not self.args.allow_latest_tf_fallback:
+            return None
+        return self.lookup_transform_between(map_state.frame_id, source_frame, None)
 
     def pose_in_map(self, pose: Optional[Pose2D]) -> Optional[Pose2D]:
         map_state = self.state.map_state
@@ -670,13 +840,13 @@ class TerminalDashboard(Node):
         if self.toggles["sections"]:
             self.draw_sections(canvas, scale, ox, oy)
         if self.toggles["path"]:
-            self.draw_path(canvas, scale, ox, oy, self.state.path, (40, 180, 80))
+            self.draw_path(canvas, scale, ox, oy, self.selection.path, (40, 180, 80))
         if self.toggles["vo_path"]:
-            self.draw_path(canvas, scale, ox, oy, self.state.vo_path, (245, 140, 35))
+            self.draw_path(canvas, scale, ox, oy, self.selection.vo_path, (245, 140, 35))
         if self.toggles["global_path"]:
-            self.draw_path(canvas, scale, ox, oy, self.state.global_path, (180, 40, 180))
+            self.draw_path(canvas, scale, ox, oy, self.selection.global_path, (180, 40, 180))
         if self.toggles["local_path"]:
-            self.draw_path(canvas, scale, ox, oy, self.state.local_path, (40, 180, 180))
+            self.draw_path(canvas, scale, ox, oy, self.selection.local_path, (40, 180, 180))
         if self.toggles["scan"]:
             self.draw_scan_on_map(canvas, scale, ox, oy, selected_scan)
         if self.toggles["particles"]:
@@ -754,32 +924,29 @@ class TerminalDashboard(Node):
         if len(sampled_poses) < 2 and len(path.poses) >= 2:
             sampled_poses = [path.poses[0], path.poses[-1]]
 
-        common_frame_id = path.header.frame_id or sampled_poses[0].header.frame_id
-        all_same_frame = True
-        for stamped in sampled_poses:
-            frame_id = stamped.header.frame_id or path.header.frame_id
-            if frame_id != common_frame_id:
-                all_same_frame = False
-                break
-
-        common_tf = None
-        tf_cache: dict[str, Optional[object]] = {}
-        if all_same_frame and common_frame_id:
-            common_tf = self.lookup_transform(common_frame_id, path.header.stamp)
-
         pixels = []
+        tf_cache: dict[tuple[str, Optional[int]], Optional[object]] = {}
         for stamped in sampled_poses:
             frame_id = stamped.header.frame_id or path.header.frame_id
             x = float(stamped.pose.position.x)
             y = float(stamped.pose.position.y)
-            tf = common_tf
-            if not all_same_frame:
-                if frame_id not in tf_cache:
-                    tf_cache[frame_id] = self.lookup_transform(frame_id, stamped.header.stamp)
-                tf = tf_cache[frame_id]
+            if not frame_id or frame_id == map_state.frame_id:
+                pixels.append(self.world_to_view_px(x, y, scale, ox, oy))
+                continue
+
+            pose_stamp = stamped.header.stamp
+            pose_stamp_ns = stamp_to_ns(pose_stamp)
+            if pose_stamp_ns is None or pose_stamp_ns == 0:
+                pose_stamp = path.header.stamp
+                pose_stamp_ns = stamp_to_ns(pose_stamp)
+
+            cache_key = (frame_id, pose_stamp_ns)
+            if cache_key not in tf_cache:
+                tf_cache[cache_key] = self.lookup_transform(frame_id, pose_stamp)
+            tf = tf_cache[cache_key]
             if tf is not None:
                 x, y = transform_xy(x, y, tf)
-            elif frame_id != map_state.frame_id and not self.args.assume_same_frame:
+            elif not self.args.assume_same_frame:
                 continue
             pixels.append(self.world_to_view_px(x, y, scale, ox, oy))
         if len(pixels) >= 2:
@@ -1071,7 +1238,7 @@ class TerminalDashboard(Node):
         crop = "ok" if self.selection.crop_image is not None else ("stale" if self.crop_image_buffer else "-")
         camera_info = "yes" if self.state.camera_info is not None else "-"
         flags = self.toggle_status_summary()
-        odom = self.odom_status()
+        odom = self.odom_status(self.selection.odom)
         line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
         line2 = (
             f"odom={odom} img={image} crop={crop} cam={camera_info} {self.last_sync_status} tog={flags} "
@@ -1106,17 +1273,17 @@ class TerminalDashboard(Node):
             return pose.frame_id
         return f"{pose.frame_id}:{pose.covariance[0]:.2g}/{pose.covariance[7]:.2g}/{pose.covariance[35]:.2g}"
 
-    def odom_status(self) -> str:
-        if self.state.odom_speed_mps is None:
+    def odom_status(self, odom: Optional[TimedOdomState]) -> str:
+        if odom is None:
             return "-"
-        frame_id = self.state.odom_frame_id or "-"
-        child_frame_id = self.state.odom_child_frame_id or "-"
+        frame_id = odom.frame_id or "-"
+        child_frame_id = odom.child_frame_id or "-"
         return (
             f"{frame_id}->{child_frame_id} "
-            f"v={self.state.odom_speed_mps:.2f}m/s "
-            f"vx={self.state.odom_linear_x:.2f} "
-            f"vy={self.state.odom_linear_y:.2f} "
-            f"wz={self.state.odom_angular_z:.2f}"
+            f"v={odom.speed_mps:.2f}m/s "
+            f"vx={odom.linear_x:.2f} "
+            f"vy={odom.linear_y:.2f} "
+            f"wz={odom.angular_z:.2f}"
         )
 
 
@@ -1171,6 +1338,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--current-section-marker-topic", default="/localization/current_section_marker")
     parser.add_argument("--current-section-topic", default="/localization/current_section")
     parser.add_argument("--map-frame", default="map")
+    parser.add_argument(
+        "--alignment-child-frame",
+        default="vslam_map",
+        help="frame treated as manually aligned to map; latest TF is used for this link when replaying delayed logs",
+    )
     parser.add_argument("--width", type=int, default=1400)
     parser.add_argument("--height", type=int, default=850)
     parser.add_argument("--max-fps", type=float, default=3.0)
@@ -1188,6 +1360,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=24,
         help="recent message count kept per topic for nearest-timestamp matching",
+    )
+    parser.add_argument(
+        "--state-sync-buffer-size",
+        type=int,
+        default=180,
+        help="recent message count kept for path and odom history when replaying delayed logs",
     )
     parser.add_argument(
         "--sync-tolerance-ms",

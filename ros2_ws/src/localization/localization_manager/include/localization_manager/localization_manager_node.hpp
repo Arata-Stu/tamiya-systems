@@ -77,6 +77,7 @@ private:
   bool publish_localization_tf_ = true;
   std::string localization_tf_mode_ = "map_to_odom";
   std::string localization_tf_map_frame_ = "map";
+  std::string localization_tf_vslam_map_frame_ = "vslam_map";
   std::string localization_tf_odom_frame_ = "odom";
   std::string localization_tf_base_frame_ = "base_link";
   double localization_tf_publish_rate_hz_ = 20.0;

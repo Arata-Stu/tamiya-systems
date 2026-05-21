@@ -31,11 +31,21 @@ crop preview panel and uses BEST_EFFORT QoS for that topic.
 For evaluation use, the dashboard now matches recent messages by timestamp.
 It uses exact-time TF by default and hides overlays when a synced scan / image /
 pose cannot be found within `--sync-tolerance-ms` instead of silently mixing
-latest data. If you intentionally want the old forgiving behavior, pass
-`--allow-latest-tf-fallback`.
+latest data. Path and odom panels also use timestamped history, but they keep
+the latest message from the past rather than jumping ahead to a future update
+when delayed logs arrive. For the manual `map -> vslam_map` alignment workflow,
+the dashboard treats `vslam_map` as a manually corrected frame and can still use
+the latest alignment TF for that link while keeping downstream VSLAM motion at
+the message timestamp. If you intentionally want the old forgiving behavior,
+pass `--allow-latest-tf-fallback`.
 The default reference is the latest localization pose when that overlay is
 enabled, so the dashboard may lag slightly but it keeps the view aligned to the
 historical pose you want to inspect.
+
+If your bag playback or relay introduces longer delays for path / odom topics,
+increase `--state-sync-buffer-size`.
+If your manual alignment uses a different child frame, set
+`--alignment-child-frame`.
 
 For compressed images:
 

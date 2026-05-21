@@ -67,6 +67,9 @@ LocalizationManagerNode::LocalizationManagerNode()
   localization_tf_map_frame_ =
       this->declare_parameter<std::string>("localization_tf_map_frame",
                                            localization_tf_map_frame_);
+  localization_tf_vslam_map_frame_ =
+      this->declare_parameter<std::string>("localization_tf_vslam_map_frame",
+                                           localization_tf_vslam_map_frame_);
   localization_tf_odom_frame_ =
       this->declare_parameter<std::string>("localization_tf_odom_frame",
                                            localization_tf_odom_frame_);
@@ -78,6 +81,8 @@ LocalizationManagerNode::LocalizationManagerNode()
                                    localization_tf_publish_rate_hz_));
 
   const bool is_map_to_odom_mode = (localization_tf_mode_ == "map_to_odom");
+  const bool is_map_to_vslam_mode =
+      (localization_tf_mode_ == "map_to_vslam_map");
   const bool is_map_to_base_mode =
       (localization_tf_mode_ == "map_to_base_link" ||
        localization_tf_mode_ == "map_to_base");
@@ -85,9 +90,11 @@ LocalizationManagerNode::LocalizationManagerNode()
       (amcl_pose_update_mode_ == "continuous" ||
        amcl_pose_update_mode_ == "once" ||
        amcl_pose_update_mode_ == "never");
-  if (!is_map_to_odom_mode && !is_map_to_base_mode) {
+  if (!is_map_to_odom_mode && !is_map_to_vslam_mode && !is_map_to_base_mode) {
     RCLCPP_WARN(this->get_logger(),
-                "Invalid localization_tf_mode '%s'. Fallback to map_to_odom.",
+                "Invalid localization_tf_mode '%s'. "
+                "Expected map_to_odom, map_to_vslam_map, or map_to_base_link. "
+                "Fallback to map_to_odom.",
                 localization_tf_mode_.c_str());
     localization_tf_mode_ = "map_to_odom";
   }
@@ -173,10 +180,11 @@ LocalizationManagerNode::LocalizationManagerNode()
               localization_result_offset_pitch_rad_,
               localization_result_offset_yaw_rad_);
   RCLCPP_INFO(this->get_logger(),
-              "Localization TF bridge: %s (mode=%s, map=%s, odom=%s, base=%s, "
-              "publish_rate=%.2f Hz)",
+              "Localization TF bridge: %s (mode=%s, map=%s, vslam_map=%s, "
+              "odom=%s, base=%s, publish_rate=%.2f Hz)",
               publish_localization_tf_ ? "enabled" : "disabled",
               localization_tf_mode_.c_str(), localization_tf_map_frame_.c_str(),
+              localization_tf_vslam_map_frame_.c_str(),
               localization_tf_odom_frame_.c_str(),
               localization_tf_base_frame_.c_str(),
               localization_tf_publish_rate_hz_);
@@ -380,6 +388,35 @@ void LocalizationManagerNode::update_localization_tf(
 
     output_tf.child_frame_id = localization_tf_odom_frame_;
     output_tf.transform = tf2::toMsg(map_to_odom_tf);
+  } else if (localization_tf_mode_ == "map_to_vslam_map") {
+    if (!tf_buffer_) {
+      return;
+    }
+
+    geometry_msgs::msg::TransformStamped vslam_map_to_base_tf_msg;
+    try {
+      vslam_map_to_base_tf_msg = tf_buffer_->lookupTransform(
+          localization_tf_vslam_map_frame_, localization_tf_base_frame_,
+          tf2::TimePointZero);
+    } catch (const tf2::TransformException &ex) {
+      RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 1000,
+          "%s TF skipped: lookup %s <- %s (vslam_map<-base) failed: %s. "
+          "Ensure VSLAM publishes %s -> %s TF (for example publish_map_to_odom_tf:=true).",
+          source_name.c_str(), localization_tf_vslam_map_frame_.c_str(),
+          localization_tf_base_frame_.c_str(), ex.what(),
+          localization_tf_vslam_map_frame_.c_str(),
+          localization_tf_odom_frame_.c_str());
+      return;
+    }
+
+    tf2::Transform vslam_map_to_base_tf;
+    tf2::fromMsg(vslam_map_to_base_tf_msg.transform, vslam_map_to_base_tf);
+    const tf2::Transform map_to_vslam_map_tf =
+        map_to_base_tf * vslam_map_to_base_tf.inverse();
+
+    output_tf.child_frame_id = localization_tf_vslam_map_frame_;
+    output_tf.transform = tf2::toMsg(map_to_vslam_map_tf);
   } else {
     output_tf.child_frame_id = localization_tf_base_frame_;
     output_tf.transform.translation.x = corrected_pose.position.x;
