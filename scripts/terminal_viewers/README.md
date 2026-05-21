@@ -28,6 +28,12 @@ python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py \
 By default the dashboard also subscribes to `/perception/crop/image` for the
 crop preview panel and uses BEST_EFFORT QoS for that topic.
 
+For evaluation use, the dashboard now matches recent messages by timestamp.
+It uses exact-time TF by default and hides overlays when a synced scan / image /
+pose cannot be found within `--sync-tolerance-ms` instead of silently mixing
+latest data. If you intentionally want the old forgiving behavior, pass
+`--allow-latest-tf-fallback`.
+
 For compressed images:
 
 ```bash

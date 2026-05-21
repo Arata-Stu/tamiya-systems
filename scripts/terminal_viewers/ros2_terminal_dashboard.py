@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import math
 import select
 import signal
@@ -74,6 +75,36 @@ def transform_xyz(x: float, y: float, z: float, transform: object) -> tuple[floa
     return tx + rx, ty + ry, tz + rz
 
 
+def stamp_to_ns(stamp: object) -> Optional[int]:
+    if stamp is None:
+        return None
+    sec = getattr(stamp, "sec", None)
+    nanosec = getattr(stamp, "nanosec", None)
+    if sec is None or nanosec is None:
+        return None
+    return int(sec) * 1_000_000_000 + int(nanosec)
+
+
+@dataclass
+class TimedImageFrame:
+    rgb: np.ndarray
+    frame_id: str
+    stamp: object
+
+
+@dataclass
+class SelectionState:
+    reference_source: str = "-"
+    reference_stamp: Optional[object] = None
+    localization: Optional[Pose2D] = None
+    amcl_pose: Optional[Pose2D] = None
+    initial_pose: Optional[Pose2D] = None
+    scan: Optional[LaserScan] = None
+    image: Optional[TimedImageFrame] = None
+    crop_image: Optional[TimedImageFrame] = None
+    particles: Optional[PoseArray] = None
+
+
 @dataclass
 class DashboardState:
     map_state: Optional[MapState] = None
@@ -133,6 +164,17 @@ class TerminalDashboard(Node):
         }
         self.last_render_time = 0.0
         self.last_key_status = ""
+        self.selection = SelectionState()
+        self.last_sync_status = "sync=-"
+        self.sync_tolerance_ns = int(max(0.0, args.sync_tolerance_ms) * 1_000_000.0)
+        self.localization_buffer: deque[Pose2D] = deque(maxlen=args.sync_buffer_size)
+        self.amcl_pose_buffer: deque[Pose2D] = deque(maxlen=args.sync_buffer_size)
+        self.initial_pose_buffer: deque[Pose2D] = deque(maxlen=args.sync_buffer_size)
+        self.scan_buffer: deque[LaserScan] = deque(maxlen=args.sync_buffer_size)
+        self.image_buffer: deque[TimedImageFrame] = deque(maxlen=args.sync_buffer_size)
+        self.crop_image_buffer: deque[TimedImageFrame] = deque(maxlen=args.sync_buffer_size)
+        self.camera_info_buffer: deque[CameraInfo] = deque(maxlen=args.sync_buffer_size)
+        self.particles_buffer: deque[PoseArray] = deque(maxlen=args.sync_buffer_size)
 
         self.tf_buffer = None
         self.tf_listener = None
@@ -237,12 +279,15 @@ class TerminalDashboard(Node):
 
     def on_localization(self, msg: PoseWithCovarianceStamped) -> None:
         self.state.localization = self.pose_from_cov_msg(msg)
+        self.localization_buffer.append(self.state.localization)
 
     def on_amcl_pose(self, msg: PoseWithCovarianceStamped) -> None:
         self.state.amcl_pose = self.pose_from_cov_msg(msg)
+        self.amcl_pose_buffer.append(self.state.amcl_pose)
 
     def on_initial_pose(self, msg: PoseWithCovarianceStamped) -> None:
         self.state.initial_pose = self.pose_from_cov_msg(msg)
+        self.initial_pose_buffer.append(self.state.initial_pose)
 
     def pose_from_cov_msg(self, msg: PoseWithCovarianceStamped) -> Pose2D:
         pose = msg.pose.pose
@@ -257,6 +302,7 @@ class TerminalDashboard(Node):
 
     def on_scan(self, msg: LaserScan) -> None:
         self.state.scan = msg
+        self.scan_buffer.append(msg)
 
     def on_odom(self, msg: Odometry) -> None:
         twist = msg.twist.twist
@@ -271,46 +317,56 @@ class TerminalDashboard(Node):
 
     def on_camera_info(self, msg: CameraInfo) -> None:
         self.state.camera_info = msg
+        self.camera_info_buffer.append(msg)
         self.state.last_projection_error = ""
 
     def on_image(self, msg: Image) -> None:
         try:
-            self.state.image_rgb = raw_image_to_rgb(msg)
+            rgb = raw_image_to_rgb(msg)
+            self.state.image_rgb = rgb
             self.state.image_frame_id = msg.header.frame_id
             self.state.image_stamp = msg.header.stamp
+            self.image_buffer.append(TimedImageFrame(rgb=rgb, frame_id=msg.header.frame_id, stamp=msg.header.stamp))
             self.state.last_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_image_error = str(exc)
 
     def on_compressed_image(self, msg: CompressedImage) -> None:
         try:
-            self.state.image_rgb = compressed_image_to_rgb(msg)
+            rgb = compressed_image_to_rgb(msg)
+            self.state.image_rgb = rgb
             self.state.image_frame_id = msg.header.frame_id
             self.state.image_stamp = msg.header.stamp
+            self.image_buffer.append(TimedImageFrame(rgb=rgb, frame_id=msg.header.frame_id, stamp=msg.header.stamp))
             self.state.last_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_image_error = str(exc)
 
     def on_crop_image(self, msg: Image) -> None:
         try:
-            self.state.crop_image_rgb = raw_image_to_rgb(msg)
+            rgb = raw_image_to_rgb(msg)
+            self.state.crop_image_rgb = rgb
             self.state.crop_image_frame_id = msg.header.frame_id
             self.state.crop_image_stamp = msg.header.stamp
+            self.crop_image_buffer.append(TimedImageFrame(rgb=rgb, frame_id=msg.header.frame_id, stamp=msg.header.stamp))
             self.state.last_crop_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_crop_image_error = str(exc)
 
     def on_crop_compressed_image(self, msg: CompressedImage) -> None:
         try:
-            self.state.crop_image_rgb = compressed_image_to_rgb(msg)
+            rgb = compressed_image_to_rgb(msg)
+            self.state.crop_image_rgb = rgb
             self.state.crop_image_frame_id = msg.header.frame_id
             self.state.crop_image_stamp = msg.header.stamp
+            self.crop_image_buffer.append(TimedImageFrame(rgb=rgb, frame_id=msg.header.frame_id, stamp=msg.header.stamp))
             self.state.last_crop_image_error = ""
         except Exception as exc:  # noqa: BLE001
             self.state.last_crop_image_error = str(exc)
 
     def on_particles(self, msg: PoseArray) -> None:
         self.state.particles = msg
+        self.particles_buffer.append(msg)
 
     def on_path(self, msg: Path) -> None:
         self.state.path = msg
@@ -353,6 +409,156 @@ class TerminalDashboard(Node):
         else:
             self.section_markers[(marker.ns, marker.id)] = marker
 
+    def nearest_buffer_item(self, buffer: object, target_stamp: object, stamp_getter: object) -> Optional[object]:
+        if not buffer:
+            return None
+        target_ns = stamp_to_ns(target_stamp)
+        if target_ns is None:
+            return buffer[-1]
+
+        best_item = None
+        best_delta = None
+        for item in reversed(buffer):
+            item_ns = stamp_to_ns(stamp_getter(item))
+            if item_ns is None:
+                continue
+            delta = abs(item_ns - target_ns)
+            if best_delta is None or delta < best_delta:
+                best_item = item
+                best_delta = delta
+            if delta == 0:
+                break
+
+        if best_item is None:
+            return None
+        if self.sync_tolerance_ns > 0 and best_delta is not None and best_delta > self.sync_tolerance_ns:
+            return None
+        return best_item
+
+    def latest_buffer_item(self, buffer: object, fallback: Optional[object] = None) -> Optional[object]:
+        if buffer:
+            return buffer[-1]
+        return fallback
+
+    def select_pose_from_buffer(self, buffer: object, fallback: Optional[Pose2D], target_stamp: object) -> Optional[Pose2D]:
+        if target_stamp is None:
+            return self.latest_buffer_item(buffer, fallback)
+        return self.nearest_buffer_item(
+            buffer,
+            target_stamp,
+            lambda pose: pose.stamp,
+        )
+
+    def select_localization_pose(self, target_stamp: object) -> Optional[Pose2D]:
+        return self.select_pose_from_buffer(self.localization_buffer, self.state.localization, target_stamp)
+
+    def select_amcl_pose(self, target_stamp: object) -> Optional[Pose2D]:
+        return self.select_pose_from_buffer(self.amcl_pose_buffer, self.state.amcl_pose, target_stamp)
+
+    def select_initial_pose(self, target_stamp: object) -> Optional[Pose2D]:
+        return self.select_pose_from_buffer(self.initial_pose_buffer, self.state.initial_pose, target_stamp)
+
+    def select_scan(self, target_stamp: object) -> Optional[LaserScan]:
+        if target_stamp is None:
+            return self.latest_buffer_item(self.scan_buffer, self.state.scan)
+        return self.nearest_buffer_item(
+            self.scan_buffer,
+            target_stamp,
+            lambda msg: msg.header.stamp,
+        )
+
+    def select_particles(self, target_stamp: object) -> Optional[PoseArray]:
+        if target_stamp is None:
+            return self.latest_buffer_item(self.particles_buffer, self.state.particles)
+        return self.nearest_buffer_item(
+            self.particles_buffer,
+            target_stamp,
+            lambda msg: msg.header.stamp,
+        )
+
+    def select_image_frame(self, target_stamp: object) -> Optional[TimedImageFrame]:
+        if target_stamp is None:
+            return self.latest_buffer_item(self.image_buffer)
+        return self.nearest_buffer_item(
+            self.image_buffer,
+            target_stamp,
+            lambda frame: frame.stamp,
+        )
+
+    def select_crop_image_frame(self, target_stamp: object) -> Optional[TimedImageFrame]:
+        if target_stamp is None:
+            return self.latest_buffer_item(self.crop_image_buffer)
+        return self.nearest_buffer_item(
+            self.crop_image_buffer,
+            target_stamp,
+            lambda frame: frame.stamp,
+        )
+
+    def select_scan_for_image(self, image_stamp: object) -> Optional[LaserScan]:
+        return self.select_scan(image_stamp)
+
+    def select_camera_info_for_image(self, image_stamp: object) -> Optional[CameraInfo]:
+        nearest = self.nearest_buffer_item(
+            self.camera_info_buffer,
+            image_stamp,
+            lambda msg: msg.header.stamp,
+        )
+        if nearest is not None:
+            return nearest
+        return self.camera_info_buffer[-1] if self.camera_info_buffer else self.state.camera_info
+
+    def select_reference(self) -> tuple[str, Optional[object]]:
+        if self.toggles["image"] and self.image_buffer:
+            return "img", self.image_buffer[-1].stamp
+        if self.toggles["crop"] and self.crop_image_buffer:
+            return "crop", self.crop_image_buffer[-1].stamp
+        if self.toggles["scan"] and self.scan_buffer:
+            return "scan", self.scan_buffer[-1].header.stamp
+        if self.toggles["localization"] and self.localization_buffer:
+            return "loc", self.localization_buffer[-1].stamp
+        if self.toggles["amcl"] and self.amcl_pose_buffer:
+            return "amcl", self.amcl_pose_buffer[-1].stamp
+        if self.toggles["initialpose"] and self.initial_pose_buffer:
+            return "init", self.initial_pose_buffer[-1].stamp
+        if self.toggles["particles"] and self.particles_buffer:
+            return "particles", self.particles_buffer[-1].header.stamp
+        return "-", None
+
+    def stamp_delta_ms_text(self, stamp: object, reference_stamp: object) -> str:
+        stamp_ns = stamp_to_ns(stamp)
+        reference_ns = stamp_to_ns(reference_stamp)
+        if stamp_ns is None or reference_ns is None:
+            return "-"
+        return str(int(round(abs(stamp_ns - reference_ns) / 1_000_000.0)))
+
+    def update_selection_state(self) -> None:
+        reference_source, reference_stamp = self.select_reference()
+        self.selection = SelectionState(
+            reference_source=reference_source,
+            reference_stamp=reference_stamp,
+            localization=self.select_localization_pose(reference_stamp),
+            amcl_pose=self.select_amcl_pose(reference_stamp),
+            initial_pose=self.select_initial_pose(reference_stamp),
+            scan=self.select_scan(reference_stamp),
+            image=self.select_image_frame(reference_stamp),
+            crop_image=self.select_crop_image_frame(reference_stamp),
+            particles=self.select_particles(reference_stamp),
+        )
+
+        parts = [f"ref={reference_source}"]
+        if reference_stamp is not None:
+            scan_stamp = self.selection.scan.header.stamp if self.selection.scan is not None else None
+            parts.append(f"scan={self.stamp_delta_ms_text(scan_stamp, reference_stamp) if scan_stamp is not None else '-'}")
+            loc_stamp = self.selection.localization.stamp if self.selection.localization is not None else None
+            parts.append(f"loc={self.stamp_delta_ms_text(loc_stamp, reference_stamp) if loc_stamp is not None else '-'}")
+            if self.toggles["image"]:
+                image_stamp = self.selection.image.stamp if self.selection.image is not None else None
+                parts.append(f"img={self.stamp_delta_ms_text(image_stamp, reference_stamp) if image_stamp is not None else '-'}")
+            if self.toggles["crop"]:
+                crop_stamp = self.selection.crop_image.stamp if self.selection.crop_image is not None else None
+                parts.append(f"crop={self.stamp_delta_ms_text(crop_stamp, reference_stamp) if crop_stamp is not None else '-'}")
+        self.last_sync_status = "sync " + " ".join(parts)
+
     def lookup_transform_between(self, target_frame: str, source_frame: str, stamp: object) -> Optional[object]:
         if not target_frame or not source_frame or source_frame == target_frame or self.tf_buffer is None:
             return None
@@ -365,6 +571,8 @@ class TerminalDashboard(Node):
                 timeout=Duration(seconds=self.args.tf_timeout),
             ).transform
         except Exception:
+            if not self.args.allow_latest_tf_fallback:
+                return None
             try:
                 return self.tf_buffer.lookup_transform(
                     target_frame,
@@ -425,6 +633,8 @@ class TerminalDashboard(Node):
         resized = cv2.resize(map_state.image_bgr, (view_w, view_h), interpolation=cv2.INTER_NEAREST if scale >= 1 else cv2.INTER_AREA)
         canvas[y0 : y0 + h, x0 : x0 + w] = (34, 35, 38)
         canvas[oy : oy + view_h, ox : ox + view_w] = resized
+        selected_scan = self.selection.scan
+        selected_particles = self.selection.particles
 
         if self.toggles["sections"]:
             self.draw_sections(canvas, scale, ox, oy)
@@ -437,19 +647,19 @@ class TerminalDashboard(Node):
         if self.toggles["local_path"]:
             self.draw_path(canvas, scale, ox, oy, self.state.local_path, (40, 180, 180))
         if self.toggles["scan"]:
-            self.draw_scan_on_map(canvas, scale, ox, oy)
+            self.draw_scan_on_map(canvas, scale, ox, oy, selected_scan)
         if self.toggles["particles"]:
-            self.draw_particles(canvas, scale, ox, oy)
+            self.draw_particles(canvas, scale, ox, oy, selected_particles)
         if self.toggles["localization"]:
-            pose = self.pose_in_map(self.state.localization)
+            pose = self.pose_in_map(self.selection.localization)
             if pose is not None:
                 self.draw_pose(canvas, pose, scale, ox, oy, (45, 70, 245), "GL")
         if self.toggles["amcl"]:
-            pose = self.pose_in_map(self.state.amcl_pose)
+            pose = self.pose_in_map(self.selection.amcl_pose)
             if pose is not None:
                 self.draw_pose(canvas, pose, scale, ox, oy, (65, 205, 80), "AMCL")
         if self.toggles["initialpose"]:
-            pose = self.pose_in_map(self.state.initial_pose)
+            pose = self.pose_in_map(self.selection.initial_pose)
             if pose is not None:
                 self.draw_pose(canvas, pose, scale, ox, oy, (40, 220, 235), "INIT")
 
@@ -465,8 +675,7 @@ class TerminalDashboard(Node):
         cv2.putText(canvas, label, (px + 8, py - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (20, 20, 20), 3, cv2.LINE_AA)
         cv2.putText(canvas, label, (px + 8, py - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.42, color, 1, cv2.LINE_AA)
 
-    def draw_scan_on_map(self, canvas: np.ndarray, scale: float, ox: int, oy: int) -> None:
-        scan = self.state.scan
+    def draw_scan_on_map(self, canvas: np.ndarray, scale: float, ox: int, oy: int, scan: Optional[LaserScan]) -> None:
         map_state = self.state.map_state
         if scan is None or map_state is None:
             return
@@ -488,8 +697,7 @@ class TerminalDashboard(Node):
                 cv2.circle(canvas, (px, py), self.args.scan_radius, (245, 145, 30), -1, cv2.LINE_AA)
             angle += scan.angle_increment
 
-    def draw_particles(self, canvas: np.ndarray, scale: float, ox: int, oy: int) -> None:
-        particles = self.state.particles
+    def draw_particles(self, canvas: np.ndarray, scale: float, ox: int, oy: int, particles: Optional[PoseArray]) -> None:
         map_state = self.state.map_state
         if particles is None or map_state is None:
             return
@@ -601,18 +809,19 @@ class TerminalDashboard(Node):
             cv2.putText(canvas, marker.text[:32], (px + 4, py - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
 
     def draw_image_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int]) -> None:
-        image = self.state.image_rgb
+        selected_image = self.selection.image
         if not self.toggles["image"]:
             self.draw_empty_panel(canvas, rect, "image hidden", "image")
             return
-        if image is None:
-            text = self.state.last_image_error or "waiting for image"
+        if selected_image is None:
+            text = self.state.last_image_error or ("no synced image" if self.image_buffer else "waiting for image")
             self.draw_empty_panel(canvas, rect, text, "image")
             return
         x0, y0, w, h = rect
         canvas[y0 : y0 + h, x0 : x0 + w] = (18, 19, 22)
+        image = selected_image.rgb
         if self.toggles["scan"]:
-            image = self.draw_scan_on_image(image)
+            image = self.draw_scan_on_image(image, selected_image)
         rgb = resize_to_fit(image, w, h)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         ih, iw = bgr.shape[:2]
@@ -622,16 +831,17 @@ class TerminalDashboard(Node):
         self.draw_panel_title(canvas, rect, "image")
 
     def draw_crop_image_panel(self, canvas: np.ndarray, rect: tuple[int, int, int, int]) -> None:
-        image = self.state.crop_image_rgb
+        selected_crop = self.selection.crop_image
         if not self.toggles["crop"]:
             self.draw_empty_panel(canvas, rect, "crop hidden", "crop")
             return
-        if image is None:
-            text = self.state.last_crop_image_error or "waiting for crop image"
+        if selected_crop is None:
+            text = self.state.last_crop_image_error or ("no synced crop image" if self.crop_image_buffer else "waiting for crop image")
             self.draw_empty_panel(canvas, rect, text, "crop")
             return
         x0, y0, w, h = rect
         canvas[y0 : y0 + h, x0 : x0 + w] = (18, 19, 22)
+        image = selected_crop.rgb
         rgb = resize_to_fit(image, w, h)
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         ih, iw = bgr.shape[:2]
@@ -640,11 +850,8 @@ class TerminalDashboard(Node):
         canvas[oy : oy + ih, ox : ox + iw] = bgr
         self.draw_panel_title(canvas, rect, "crop")
 
-    def draw_scan_on_image(self, image_rgb: np.ndarray) -> np.ndarray:
-        scan = self.state.scan
-        if scan is None:
-            return image_rgb
-
+    def draw_scan_on_image(self, image_rgb: np.ndarray, image_frame: TimedImageFrame) -> np.ndarray:
+        scan = self.select_scan_for_image(image_frame.stamp)
         overlay = image_rgb.copy()
 
         def draw_status(text: str, color: Color) -> np.ndarray:
@@ -652,12 +859,16 @@ class TerminalDashboard(Node):
             cv2.putText(overlay, text[:48], (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1, cv2.LINE_AA)
             return overlay
 
-        camera_info = self.state.camera_info
+        if scan is None:
+            self.state.last_projection_error = "no synced scan"
+            return draw_status("scan proj: no synced scan", (255, 120, 120))
+
+        camera_info = self.select_camera_info_for_image(image_frame.stamp)
         if camera_info is None:
             self.state.last_projection_error = "camera_info missing"
             return draw_status("scan proj: camera_info missing", (255, 120, 120))
 
-        camera_frame = camera_info.header.frame_id or self.state.image_frame_id
+        camera_frame = camera_info.header.frame_id or image_frame.frame_id
         if not camera_frame:
             self.state.last_projection_error = "camera frame unavailable"
             return draw_status("scan proj: camera frame unavailable", (255, 120, 120))
@@ -776,6 +987,7 @@ class TerminalDashboard(Node):
             return
         self.last_render_time = now
         self.state.frames += 1
+        self.update_selection_state()
 
         canvas = np.full((self.args.height, self.args.width, 3), (20, 21, 24), dtype=np.uint8)
         header_h = 52
@@ -820,18 +1032,18 @@ class TerminalDashboard(Node):
     def draw_header(self, canvas: np.ndarray) -> None:
         header_h = 52
         cv2.rectangle(canvas, (0, 0), (self.args.width, header_h), (14, 15, 18), -1)
-        loc = self.state.localization.frame_id if self.state.localization is not None else "-"
-        amcl = self.pose_status(self.state.amcl_pose)
-        init = self.pose_status(self.state.initial_pose)
-        scan = self.state.scan.header.frame_id if self.state.scan is not None else "-"
-        image = "yes" if self.state.image_rgb is not None else "-"
-        crop = "yes" if self.state.crop_image_rgb is not None else "-"
+        loc = self.pose_status(self.selection.localization)
+        amcl = self.pose_status(self.selection.amcl_pose)
+        init = self.pose_status(self.selection.initial_pose)
+        scan = self.selection.scan.header.frame_id if self.selection.scan is not None else ("stale" if self.scan_buffer else "-")
+        image = "ok" if self.selection.image is not None else ("stale" if self.image_buffer else "-")
+        crop = "ok" if self.selection.crop_image is not None else ("stale" if self.crop_image_buffer else "-")
         camera_info = "yes" if self.state.camera_info is not None else "-"
         flags = self.toggle_status_summary()
         odom = self.odom_status()
         line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
         line2 = (
-            f"odom={odom} img={image} crop={crop} cam={camera_info} tog={flags} "
+            f"odom={odom} img={image} crop={crop} cam={camera_info} {self.last_sync_status} tog={flags} "
             f"keys=m/l/a/u/s/i/r/c/g/p/t/v/y/h space q {self.last_key_status}"
         )
         cv2.putText(canvas, line1[:180], (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
@@ -935,6 +1147,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-tf", action="store_true")
     parser.add_argument("--assume-same-frame", action="store_true")
     parser.add_argument("--tf-timeout", type=float, default=0.02)
+    parser.add_argument(
+        "--allow-latest-tf-fallback",
+        action="store_true",
+        help="if exact-timestamp TF is unavailable, fall back to latest TF instead of hiding the overlay",
+    )
+    parser.add_argument(
+        "--sync-buffer-size",
+        type=int,
+        default=8,
+        help="recent message count kept per topic for nearest-timestamp matching",
+    )
+    parser.add_argument(
+        "--sync-tolerance-ms",
+        type=float,
+        default=120.0,
+        help="max timestamp delta for nearest-message matching before overlays are hidden",
+    )
     parser.add_argument("--scan-stride", type=int, default=3)
     parser.add_argument("--scan-radius", type=int, default=2)
     parser.add_argument("--particle-stride", type=int, default=1)

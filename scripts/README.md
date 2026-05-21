@@ -31,7 +31,10 @@ map, localization, scan, image, crop image, sections, gates, particles,
 `slam_path`, `vo_path`, and planning paths from the keyboard.
 `--camera-info-topic` を与えると image panel にも LaserScan を投影します。
 crop preview は既定で `/perception/crop/image` を購読し、BEST_EFFORT QoS で
-受け取ります。
+受け取ります。評価用途では topic 時刻の近い message だけを組み合わせ、
+exact-time TF が引けないときは overlay を隠す既定動作です。旧来どおり
+latest TF へ緩く fallback したい場合だけ `--allow-latest-tf-fallback` を
+明示してください。
 
 ## Shared helpers
 
