@@ -65,6 +65,9 @@ class VslamReferenceSnapshotRecorder(Node):
         if args.odom_topic:
             self.create_subscription(Odometry, args.odom_topic, self.on_odom, best_effort_qos)
         self.create_timer(1.0, self.flush_if_dirty)
+        self.get_logger().info(
+            f"Recording VSLAM reference snapshot: path={args.path_topic}, odom={args.odom_topic}, output={self.output_path}"
+        )
 
     def on_path(self, msg: PathMsg) -> None:
         self.latest_path = msg
@@ -110,9 +113,9 @@ class VslamReferenceSnapshotRecorder(Node):
 
         return data
 
-    def write_snapshot(self) -> None:
+    def write_snapshot(self) -> bool:
         if self.latest_path is None and self.latest_odom is None:
-            return
+            return False
 
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self.output_path.with_suffix(self.output_path.suffix + ".tmp")
@@ -121,6 +124,7 @@ class VslamReferenceSnapshotRecorder(Node):
             encoding="utf-8",
         )
         tmp_path.replace(self.output_path)
+        return True
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -142,7 +146,11 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        node.write_snapshot()
+        snapshot_written = node.write_snapshot()
+        if snapshot_written:
+            node.get_logger().info(f"Saved VSLAM reference snapshot to {node.output_path}")
+        else:
+            node.get_logger().warn("No VSLAM path/odometry messages were received; snapshot file was not written.")
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

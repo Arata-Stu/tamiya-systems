@@ -1189,9 +1189,17 @@ start_vslam_reference_capture() {
         --output "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
     )
 
+    mkdir -p "$(dirname "${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}")"
+    {
+        echo "[info] Launch saved VSLAM reference recorder"
+        echo "[info] path topic : ${VSLAM_LANDMARK_PATH_TOPIC}"
+        echo "[info] odom topic : ${DEFAULT_VSLAM_ODOM_TOPIC}"
+        echo "[info] output     : ${VSLAM_REFERENCE_SNAPSHOT_PATH}"
+    } > "${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}"
+
     launch_background_process "VSLAM_REFERENCE_RECORDER_PID" "VSLAM_REFERENCE_RECORDER_USES_SETSID" \
         "${recorder_cmd[@]}" \
-        > "${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" 2>&1
+        >> "${VSLAM_REFERENCE_SNAPSHOT_LOG_PATH}" 2>&1
 }
 
 discover_rosbag_candidates() {
