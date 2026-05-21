@@ -36,7 +36,6 @@
     <arg name="publish_localization_tf" default="false" />
     <arg name="localization_tf_mode" default="map_to_odom" />
     <arg name="localization_tf_map_frame" default="map" />
-    <arg name="localization_tf_vslam_map_frame" default="vslam_map" />
     <arg name="localization_tf_odom_frame" default="odom" />
     <arg name="localization_tf_base_frame" default="base_link" />
     <arg name="localization_tf_publish_rate_hz" default="20.0" />
@@ -139,7 +138,6 @@
             <arg name="publish_localization_tf" value="$(var publish_localization_tf)"/>
             <arg name="localization_tf_mode" value="$(var localization_tf_mode)"/>
             <arg name="localization_tf_map_frame" value="$(var localization_tf_map_frame)"/>
-            <arg name="localization_tf_vslam_map_frame" value="$(var localization_tf_vslam_map_frame)"/>
             <arg name="localization_tf_odom_frame" value="$(var localization_tf_odom_frame)"/>
             <arg name="localization_tf_base_frame" value="$(var localization_tf_base_frame)"/>
             <arg name="localization_tf_publish_rate_hz" value="$(var localization_tf_publish_rate_hz)"/>

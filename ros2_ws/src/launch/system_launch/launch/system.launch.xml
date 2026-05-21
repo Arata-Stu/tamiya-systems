@@ -196,21 +196,6 @@
     <let name="resolved_vslam_map_dir"
          value="$(eval '\'$(var resolved_map_dir)/cuvslam_map\'')"
          if="$(eval '\'$(var vslam_map_dir)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
-    <let name="resolved_vslam_map_alignment_config"
-         value="$(var vslam_map_alignment_config)"
-         if="$(eval '\'$(var vslam_map_alignment_config)\'.strip() != \'\'')" />
-    <let name="resolved_vslam_map_alignment_config"
-         value=""
-         unless="$(eval '\'$(var vslam_map_alignment_config)\'.strip() != \'\' or \'$(var resolved_map_dir)\'.strip() != \'\'')" />
-    <let name="resolved_vslam_map_alignment_config"
-         value="$(eval '\'$(var resolved_map_dir)/vslam_map_alignment.yaml\'')"
-         if="$(eval '\'$(var vslam_map_alignment_config)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
-    <let name="resolved_publish_map_to_odom_tf"
-         value="true"
-         if="$(eval '\'$(var publish_map_to_odom_tf)\' == \'true\' or \'$(var localization_tf_mode)\' == \'map_to_vslam_map\'')" />
-    <let name="resolved_publish_map_to_odom_tf"
-         value="false"
-         unless="$(eval '\'$(var publish_map_to_odom_tf)\' == \'true\' or \'$(var localization_tf_mode)\' == \'map_to_vslam_map\'')" />
     <let name="resolved_planning_raceline_csv"
          value="$(var planning_raceline_csv)"
          if="$(eval '\'$(var planning_raceline_csv)\'.strip() != \'\'')" />
@@ -427,7 +412,7 @@
             <arg name="vslam_map_parent_frame" value="$(var map_frame)"/>
             <arg name="publish_vslam_map_identity_tf" value="$(var publish_vslam_map_identity_tf)"/>
             <arg name="use_vslam_map_alignment_node" value="$(var use_vslam_map_alignment_node)"/>
-            <arg name="vslam_map_alignment_config" value="$(var resolved_vslam_map_alignment_config)"/>
+            <arg name="vslam_map_alignment_config" value="$(var vslam_map_alignment_config)"/>
             <arg name="vslam_map_alignment_enable_keyboard" value="$(var vslam_map_alignment_enable_keyboard)"/>
             <arg name="vslam_map_alignment_publish_rate_hz" value="$(var vslam_map_alignment_publish_rate_hz)"/>
             <arg name="vslam_map_alignment_translation_step_m" value="$(var vslam_map_alignment_translation_step_m)"/>
@@ -441,7 +426,7 @@
             <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
             <arg name="load_map_path" value="$(var resolved_vslam_map_dir)"/>
             <arg name="save_map_path" value="$(var vslam_save_map_dir)"/>
-            <arg name="publish_map_to_odom_tf" value="$(var resolved_publish_map_to_odom_tf)"/>
+            <arg name="publish_map_to_odom_tf" value="$(var publish_map_to_odom_tf)"/>
             <arg name="enable_slam_visualization" value="$(var enable_slam_visualization)"/>
             <arg name="enable_observations_view" value="$(var enable_observations_view)"/>
             <arg name="enable_landmarks_view" value="$(var enable_landmarks_view)"/>
@@ -472,7 +457,6 @@
             <arg name="publish_localization_tf" value="$(var publish_localization_tf)"/>
             <arg name="localization_tf_mode" value="$(var localization_tf_mode)"/>
             <arg name="localization_tf_map_frame" value="$(var localization_tf_map_frame)"/>
-            <arg name="localization_tf_vslam_map_frame" value="$(var vslam_map_frame)"/>
             <arg name="localization_tf_odom_frame" value="$(var localization_tf_odom_frame)"/>
             <arg name="localization_tf_base_frame" value="$(var localization_tf_base_frame)"/>
             <arg name="localization_tf_publish_rate_hz" value="$(var localization_tf_publish_rate_hz)"/>

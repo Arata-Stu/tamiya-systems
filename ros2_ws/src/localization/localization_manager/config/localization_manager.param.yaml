@@ -26,11 +26,9 @@
 
     # TF bridge settings
     publish_localization_tf: true
-    # "map_to_odom", "map_to_vslam_map", or "map_to_base_link"
-    # map_to_vslam_map expects VSLAM TF to provide vslam_map -> odom -> base_link.
+    # "map_to_odom" or "map_to_base_link"
     localization_tf_mode: "map_to_odom"
     localization_tf_map_frame: "map"
-    localization_tf_vslam_map_frame: "vslam_map"
     localization_tf_odom_frame: "odom"
     localization_tf_base_frame: "base_link"
     localization_tf_publish_rate_hz: 20.0

@@ -6,8 +6,11 @@ from __future__ import annotations
 import argparse
 from collections import deque
 import math
+import os
+import re
 import select
 import signal
+import shutil
 import sys
 import termios
 import time
@@ -18,7 +21,7 @@ from typing import Optional
 import cv2
 import numpy as np
 import rclpy
-from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped, Transform
+from geometry_msgs.msg import PoseArray, PoseWithCovarianceStamped
 from nav_msgs.msg import OccupancyGrid, Odometry, Path
 from rclpy.duration import Duration
 from rclpy.node import Node
@@ -73,51 +76,6 @@ def transform_xyz(x: float, y: float, z: float, transform: object) -> tuple[floa
     ry = 2.0 * (xy + wz) * x + (1.0 - 2.0 * (xx + zz)) * y + 2.0 * (yz - wx) * z
     rz = 2.0 * (xz - wy) * x + 2.0 * (yz + wx) * y + (1.0 - 2.0 * (xx + yy)) * z
     return tx + rx, ty + ry, tz + rz
-
-
-def quat_multiply(
-    a: tuple[float, float, float, float],
-    b: tuple[float, float, float, float],
-) -> tuple[float, float, float, float]:
-    ax, ay, az, aw = a
-    bx, by, bz, bw = b
-    return (
-        aw * bx + ax * bw + ay * bz - az * by,
-        aw * by - ax * bz + ay * bw + az * bx,
-        aw * bz + ax * by - ay * bx + az * bw,
-        aw * bw - ax * bx - ay * by - az * bz,
-    )
-
-
-def compose_transforms(lhs: object, rhs: object) -> Transform:
-    q_lhs = (
-        float(lhs.rotation.x),
-        float(lhs.rotation.y),
-        float(lhs.rotation.z),
-        float(lhs.rotation.w),
-    )
-    q_rhs = (
-        float(rhs.rotation.x),
-        float(rhs.rotation.y),
-        float(rhs.rotation.z),
-        float(rhs.rotation.w),
-    )
-    tx, ty, tz = transform_xyz(
-        float(rhs.translation.x),
-        float(rhs.translation.y),
-        float(rhs.translation.z),
-        lhs,
-    )
-    out = Transform()
-    out.translation.x = tx
-    out.translation.y = ty
-    out.translation.z = tz
-    qx, qy, qz, qw = quat_multiply(q_lhs, q_rhs)
-    out.rotation.x = qx
-    out.rotation.y = qy
-    out.rotation.z = qz
-    out.rotation.w = qw
-    return out
 
 
 def stamp_to_ns(stamp: object) -> Optional[int]:
@@ -198,6 +156,15 @@ class DashboardState:
     last_projection_error: str = ""
 
 
+@dataclass
+class InputEvent:
+    key: str = ""
+    mouse_x: Optional[int] = None
+    mouse_y: Optional[int] = None
+    mouse_button: Optional[int] = None
+    mouse_pressed: bool = False
+
+
 class TerminalDashboard(Node):
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__("terminal_dashboard")
@@ -227,6 +194,7 @@ class TerminalDashboard(Node):
         self.last_key_status = ""
         self.selection = SelectionState()
         self.last_sync_status = "sync=-"
+        self.toggle_button_rects: dict[str, tuple[int, int, int, int]] = {}
         self.sync_tolerance_ns = int(max(0.0, args.sync_tolerance_ms) * 1_000_000.0)
         self.localization_buffer: deque[Pose2D] = deque(maxlen=args.sync_buffer_size)
         self.amcl_pose_buffer: deque[Pose2D] = deque(maxlen=args.sync_buffer_size)
@@ -325,6 +293,66 @@ class TerminalDashboard(Node):
             self.create_subscription(Marker, args.current_section_marker_topic, self.on_current_section_marker, marker_qos)
         if args.current_section_topic:
             self.create_subscription(String, args.current_section_topic, self.on_current_section, marker_qos)
+
+    def header_toggle_specs(self) -> tuple[tuple[str, str, str], ...]:
+        specs = [
+            ("map", "m", "Map"),
+            ("localization", "l", "GL"),
+            ("amcl", "a", "AMCL"),
+            ("initialpose", "u", "Init"),
+            ("scan", "s", "Scan"),
+        ]
+        if self.args.image_topic:
+            specs.append(("image", "i", "Image"))
+        if self.args.crop_image_topic:
+            specs.append(("crop", "r", "Crop"))
+        specs.extend(
+            [
+                ("sections", "c", "Sect"),
+                ("gates", "g", "Gate"),
+            ]
+        )
+        if self.args.particles_topic:
+            specs.append(("particles", "p", "Part"))
+        specs.extend(
+            [
+                ("path", "t", "Slam"),
+                ("vo_path", "v", "VO"),
+                ("global_path", "y", "Global"),
+                ("local_path", "h", "Local"),
+            ]
+        )
+        return tuple(specs)
+
+    def layout_toggle_buttons(self, canvas_width: int) -> list[tuple[str, str, str, tuple[int, int, int, int]]]:
+        x = 8
+        y = 50
+        row_h = 24
+        gap_x = 6
+        gap_y = 6
+        right_margin = 8
+        font_scale = 0.48
+        layout = []
+
+        for name, key, label in self.header_toggle_specs():
+            text = f"{label} [{key}]"
+            (text_w, text_h), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, 1)
+            btn_w = text_w + 16
+            btn_h = max(row_h, text_h + baseline + 10)
+            if x + btn_w > canvas_width - right_margin:
+                x = 8
+                y += row_h + gap_y
+            layout.append((name, key, text, (x, y, btn_w, btn_h)))
+            x += btn_w + gap_x
+
+        return layout
+
+    def header_height(self) -> int:
+        layout = self.layout_toggle_buttons(self.args.width)
+        if not layout:
+            return 52
+        bottom = max(rect[1] + rect[3] for _, _, _, rect in layout)
+        return max(52, bottom + 8)
 
     def on_map(self, msg: OccupancyGrid) -> None:
         data = np.asarray(msg.data, dtype=np.int16).reshape((msg.info.height, msg.info.width))
@@ -757,25 +785,6 @@ class TerminalDashboard(Node):
         except Exception:
             return None
 
-    def lookup_transform_via_alignment_frame(
-        self,
-        target_frame: str,
-        source_frame: str,
-        stamp: object,
-    ) -> Optional[object]:
-        if not self.args.alignment_child_frame or self.tf_buffer is None:
-            return None
-        alignment_frame = self.args.alignment_child_frame
-        if source_frame == alignment_frame:
-            return self.lookup_transform_between(target_frame, alignment_frame, None)
-        source_to_alignment = self.lookup_transform_between_exact(alignment_frame, source_frame, stamp)
-        if source_to_alignment is None:
-            return None
-        target_to_alignment = self.lookup_transform_between(target_frame, alignment_frame, None)
-        if target_to_alignment is None:
-            return None
-        return compose_transforms(target_to_alignment, source_to_alignment)
-
     def lookup_transform(self, source_frame: str, stamp: object) -> Optional[object]:
         map_state = self.state.map_state
         if map_state is None:
@@ -783,9 +792,6 @@ class TerminalDashboard(Node):
         exact = self.lookup_transform_between_exact(map_state.frame_id, source_frame, stamp)
         if exact is not None:
             return exact
-        aligned = self.lookup_transform_via_alignment_frame(map_state.frame_id, source_frame, stamp)
-        if aligned is not None:
-            return aligned
         if not self.args.allow_latest_tf_fallback:
             return None
         return self.lookup_transform_between(map_state.frame_id, source_frame, None)
@@ -1148,6 +1154,12 @@ class TerminalDashboard(Node):
         text_y = y0 + (54 if title else 30)
         cv2.putText(canvas, text[:60], (x0 + 12, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (190, 195, 205), 1, cv2.LINE_AA)
 
+    def toggle_named(self, name: str, source: str = "") -> None:
+        self.toggles[name] = not self.toggles[name]
+        state = "on" if self.toggles[name] else "off"
+        prefix = f"{source} " if source else ""
+        self.last_key_status = f"{prefix}{name}={state}"
+
     def handle_key(self, key: str) -> None:
         mapping = {
             "m": "map",
@@ -1173,9 +1185,27 @@ class TerminalDashboard(Node):
             self.last_key_status = "paused" if self.paused else "running"
             return
         if key in mapping:
-            name = mapping[key]
-            self.toggles[name] = not self.toggles[name]
-            self.last_key_status = f"{name}={'on' if self.toggles[name] else 'off'}"
+            self.toggle_named(mapping[key], "key")
+
+    def mouse_to_canvas(self, x: int, y: int) -> tuple[int, int]:
+        cols, lines = shutil.get_terminal_size(fallback=(80, 24))
+        if 0 <= x < self.args.width and 0 <= y < self.args.height:
+            return x, y
+        if 0 <= x < cols and 0 <= y < lines:
+            mapped_x = int(round((x + 0.5) * self.args.width / max(1, cols)))
+            mapped_y = int(round((y + 0.5) * self.args.height / max(1, lines)))
+            return mapped_x, mapped_y
+        return x, y
+
+    def handle_mouse(self, x: int, y: int, button: int, pressed: bool) -> None:
+        if button != 0 or not pressed:
+            return
+        canvas_x, canvas_y = self.mouse_to_canvas(x, y)
+        for name, rect in self.toggle_button_rects.items():
+            rx, ry, rw, rh = rect
+            if rx <= canvas_x < rx + rw and ry <= canvas_y < ry + rh:
+                self.toggle_named(name, "click")
+                return
 
     def render(self) -> None:
         if self.paused:
@@ -1188,7 +1218,7 @@ class TerminalDashboard(Node):
         self.update_selection_state()
 
         canvas = np.full((self.args.height, self.args.width, 3), (20, 21, 24), dtype=np.uint8)
-        header_h = 52
+        header_h = self.header_height()
         gap = 6
         has_main_image_panel = bool(self.args.image_topic)
         has_crop_image_panel = bool(self.args.crop_image_topic)
@@ -1228,7 +1258,7 @@ class TerminalDashboard(Node):
         sys.stdout.flush()
 
     def draw_header(self, canvas: np.ndarray) -> None:
-        header_h = 52
+        header_h = self.header_height()
         cv2.rectangle(canvas, (0, 0), (self.args.width, header_h), (14, 15, 18), -1)
         loc = self.pose_status(self.selection.localization)
         amcl = self.pose_status(self.selection.amcl_pose)
@@ -1237,15 +1267,31 @@ class TerminalDashboard(Node):
         image = "ok" if self.selection.image is not None else ("stale" if self.image_buffer else "-")
         crop = "ok" if self.selection.crop_image is not None else ("stale" if self.crop_image_buffer else "-")
         camera_info = "yes" if self.state.camera_info is not None else "-"
-        flags = self.toggle_status_summary()
         odom = self.odom_status(self.selection.odom)
         line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
         line2 = (
-            f"odom={odom} img={image} crop={crop} cam={camera_info} {self.last_sync_status} tog={flags} "
-            f"keys=m/l/a/u/s/i/r/c/g/p/t/v/y/h space q {self.last_key_status}"
+            f"odom={odom} img={image} crop={crop} cam={camera_info} {self.last_sync_status} "
+            f"click buttons below or use keys, space pause, q quit {self.last_key_status}"
         )
         cv2.putText(canvas, line1[:180], (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         cv2.putText(canvas, line2[:180], (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (215, 220, 228), 1, cv2.LINE_AA)
+        self.draw_toggle_buttons(canvas)
+
+    def draw_toggle_buttons(self, canvas: np.ndarray) -> None:
+        self.toggle_button_rects = {}
+        font_scale = 0.48
+        for name, _key, text, rect in self.layout_toggle_buttons(self.args.width):
+            x, y, w, h = rect
+            self.toggle_button_rects[name] = rect
+            enabled = self.toggles.get(name, False)
+            bg = (58, 116, 210) if enabled else (46, 48, 54)
+            border = (135, 180, 255) if enabled else (92, 96, 106)
+            fg = (245, 247, 250) if enabled else (200, 204, 212)
+            cv2.rectangle(canvas, (x, y), (x + w, y + h), bg, -1, cv2.LINE_AA)
+            cv2.rectangle(canvas, (x, y), (x + w, y + h), border, 1, cv2.LINE_AA)
+            text_y = y + h - 7
+            cv2.putText(canvas, text, (x + 8, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), 3, cv2.LINE_AA)
+            cv2.putText(canvas, text, (x + 8, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, fg, 1, cv2.LINE_AA)
 
     def toggle_status_summary(self) -> str:
         labels = (
@@ -1288,20 +1334,80 @@ class TerminalDashboard(Node):
 
 
 class RawTerminal:
+    mouse_event_re = re.compile(r"^\x1b\[<(\d+);(\d+);(\d+)([mM])")
+
+    def __init__(self, enable_mouse: bool = True) -> None:
+        self.enable_mouse = enable_mouse
+        self.buffer = ""
+
     def __enter__(self) -> "RawTerminal":
         self.fd = sys.stdin.fileno()
         self.old = termios.tcgetattr(self.fd)
         tty.setcbreak(self.fd)
+        if self.enable_mouse:
+            sys.stdout.write("\033[?1000h\033[?1006h\033[?1016h")
+            sys.stdout.flush()
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
+        if self.enable_mouse:
+            sys.stdout.write("\033[?1016l\033[?1006l\033[?1000l")
+            sys.stdout.flush()
         termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old)
 
-    def read_key(self) -> str:
+    def read_events(self) -> list[InputEvent]:
         ready, _, _ = select.select([sys.stdin], [], [], 0.0)
-        if not ready:
-            return ""
-        return sys.stdin.read(1)
+        if ready:
+            self.buffer += os.read(self.fd, 256).decode("utf-8", errors="ignore")
+
+        events: list[InputEvent] = []
+        while self.buffer:
+            if not self.buffer.startswith("\x1b"):
+                events.append(InputEvent(key=self.buffer[0]))
+                self.buffer = self.buffer[1:]
+                continue
+
+            if self.buffer.startswith("\x1b[<"):
+                match = self.mouse_event_re.match(self.buffer)
+                if match is None:
+                    if "M" not in self.buffer and "m" not in self.buffer:
+                        break
+                    self.buffer = self.buffer[1:]
+                    continue
+                code = int(match.group(1))
+                x = max(0, int(match.group(2)) - 1)
+                y = max(0, int(match.group(3)) - 1)
+                pressed = match.group(4) == "M"
+                button = code & 0b11
+                events.append(
+                    InputEvent(
+                        mouse_x=x,
+                        mouse_y=y,
+                        mouse_button=button,
+                        mouse_pressed=pressed,
+                    )
+                )
+                self.buffer = self.buffer[match.end() :]
+                continue
+
+            if self.buffer.startswith("\x1b["):
+                if len(self.buffer) < 3:
+                    break
+                seq_end = None
+                for idx, ch in enumerate(self.buffer[2:], start=2):
+                    if ch.isalpha() or ch == "~":
+                        seq_end = idx
+                        break
+                if seq_end is None:
+                    break
+                self.buffer = self.buffer[seq_end + 1 :]
+                continue
+
+            if len(self.buffer) == 1:
+                break
+            self.buffer = self.buffer[1:]
+
+        return events
 
 
 def parse_args() -> argparse.Namespace:
@@ -1338,11 +1444,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--current-section-marker-topic", default="/localization/current_section_marker")
     parser.add_argument("--current-section-topic", default="/localization/current_section")
     parser.add_argument("--map-frame", default="map")
-    parser.add_argument(
-        "--alignment-child-frame",
-        default="vslam_map",
-        help="frame treated as manually aligned to map; latest TF is used for this link when replaying delayed logs",
-    )
     parser.add_argument("--width", type=int, default=1400)
     parser.add_argument("--height", type=int, default=850)
     parser.add_argument("--max-fps", type=float, default=3.0)
@@ -1379,6 +1480,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path-max-points", type=int, default=600)
     parser.add_argument("--image-panel-ratio", type=float, default=0.34)
     parser.add_argument("--png-compression", type=int, default=3)
+    parser.add_argument(
+        "--no-mouse",
+        action="store_true",
+        help="disable terminal mouse support and use keyboard toggles only",
+    )
     args = parser.parse_args()
     if args.camera_info_topic is None and args.image_topic:
         args.camera_info_topic = derive_camera_info_topic(args.image_topic)
@@ -1398,12 +1504,14 @@ def main() -> int:
     sys.stdout.write("\033[?1049h\033[?25l\033[H\033[2J")
     sys.stdout.flush()
     try:
-        with RawTerminal() if sys.stdin.isatty() else null_terminal() as terminal:
+        with RawTerminal(enable_mouse=not args.no_mouse) if sys.stdin.isatty() else null_terminal() as terminal:
             while rclpy.ok() and node.running:
                 rclpy.spin_once(node, timeout_sec=0.02)
-                key = terminal.read_key()
-                if key:
-                    node.handle_key(key)
+                for event in terminal.read_events():
+                    if event.key:
+                        node.handle_key(event.key)
+                    elif event.mouse_x is not None and event.mouse_y is not None and event.mouse_button is not None:
+                        node.handle_mouse(event.mouse_x, event.mouse_y, event.mouse_button, event.mouse_pressed)
                 node.render()
     finally:
         node.destroy_node()
@@ -1420,8 +1528,8 @@ class null_terminal:
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
         return None
 
-    def read_key(self) -> str:
-        return ""
+    def read_events(self) -> list[InputEvent]:
+        return []
 
 
 if __name__ == "__main__":

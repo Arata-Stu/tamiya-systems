@@ -17,7 +17,6 @@ normalize_bool() {
 
 apply_mode() {
   clear_extra_arg_value "vehicle_param"
-  clear_extra_arg_value "localization_tf_mode"
 
   case "$1" in
     rule_base)
@@ -45,7 +44,6 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      set_extra_arg_value "localization_tf_mode" "map_to_vslam_map"
       ;;
     production|base)
       ARG_record="false"
@@ -72,7 +70,6 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      set_extra_arg_value "localization_tf_mode" "map_to_vslam_map"
       ;;
     sensor_data_recording|mapping|vslam_map)
       ARG_record="true"
@@ -161,7 +158,6 @@ apply_mode() {
       ARG_section_localizer_debug_mode="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      set_extra_arg_value "localization_tf_mode" "map_to_vslam_map"
       set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
       set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
       set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"

@@ -72,7 +72,7 @@ latest TF へ緩く fallback したい場合だけ `--allow-latest-tf-fallback` 
 `launch_system.sh` の lean preset は以下を想定しています。
 
 - `identification`: `stereo camera + VSLAM + vehicle + rosbag manager`。MAP lookup 用の `odom + cmd_drive` 収録向けです。global localization や LiDAR は起動しません。
-- `localization_eval`: `LiDAR + stereo camera + VSLAM + global localization + localization_manager`。車両 driver や perception は起動しません。既定で `localization_tf_mode=map_to_vslam_map` を使い、GL の `map` 座標と VSLAM の `vslam_map` 系 pose から `map -> vslam_map` を更新します。
+- `localization_eval`: `LiDAR + stereo camera + VSLAM + global localization + localization_manager`。車両 driver や perception は起動しません。
 - `perception_eval`: `LiDAR + stereo left/right + perception cropper + classifier`。localization や vehicle 制御は起動しません。
 - `vslam_eval`: `stereo camera + VSLAM` のみ。global localization や perception は起動しません。
 
