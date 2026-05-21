@@ -171,7 +171,10 @@
     # ============================================
     # Frame Parameters
     # ============================================
-    map_frame: "map"
+    # VSLAM's internal map frame. Keep it distinct from the 2D occupancy map's
+    # "map" frame so SLAM-only outputs such as slam_path do not get conflated
+    # with the external localization map.
+    map_frame: "vslam_map"
     odom_frame: "odom"
     base_frame: "base_link"
     # Match the camera_info frame_id used by both RealSense and ELP launch paths.

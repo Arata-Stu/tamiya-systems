@@ -158,6 +158,8 @@
     <arg name="map_dir" default="" description="directory containing map-name.yaml and optional cuvslam_map/" />
     <arg name="vslam_map_dir" default="" description="explicit cuvslam map directory override" />
     <arg name="vslam_save_map_dir" default="" description="directory to save/update cuvslam map" />
+    <arg name="vslam_map_frame" default="vslam_map" />
+    <arg name="publish_vslam_map_identity_tf" default="true" />
     <arg name="publish_map_to_odom_tf" default="false" />
     <arg name="enable_slam_visualization" default="false" />
     <arg name="enable_observations_view" default="false" />
@@ -394,6 +396,9 @@
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="camera_container_name" value="$(var camera_container_name)"/>
             <arg name="use_sim_time" value="$(var use_sim_time)"/>
+            <arg name="vslam_map_frame" value="$(var vslam_map_frame)"/>
+            <arg name="vslam_map_parent_frame" value="$(var map_frame)"/>
+            <arg name="publish_vslam_map_identity_tf" value="$(var publish_vslam_map_identity_tf)"/>
             <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
             <arg name="load_map_path" value="$(var resolved_vslam_map_dir)"/>
             <arg name="save_map_path" value="$(var vslam_save_map_dir)"/>
