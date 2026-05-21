@@ -35,6 +35,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="true"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="true"
       ARG_map_server_use_sim_time="false"
@@ -61,6 +63,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="true"
       ARG_map_server_use_sim_time="false"
@@ -87,6 +91,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -120,6 +126,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -149,6 +157,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="true"
       ARG_publish_map="true"
       ARG_map_server_use_sim_time="true"
@@ -178,6 +188,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="true"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -207,6 +219,8 @@ apply_mode() {
       ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_e2e="false"
       ARG_use_sim_time="true"
       ARG_publish_map="false"
       ARG_map_server_use_sim_time="false"
@@ -272,6 +286,36 @@ current_vehicle_param() {
   echo ""
 }
 
+current_control_filter_param() {
+  local arg
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    case "$arg" in
+      control_filter_param:=*|control_filter_param=*)
+        echo "${arg#*=}"
+        return
+        ;;
+    esac
+  done
+
+  echo ""
+}
+
+current_e2e_variant() {
+  local arg
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    case "$arg" in
+      e2e_variant:=*|e2e_variant=*)
+        echo "${arg#*=}"
+        return
+        ;;
+    esac
+  done
+
+  echo ""
+}
+
 mapping_vehicle_profile_applicable() {
   [[ "$(get_arg use_vehicle)" == "true" ]] || return 1
 
@@ -289,8 +333,9 @@ apply_mode_derived_args() {
   local map_dir
   local section_csv
   local gate_csv
+  local control_filter_yaml
 
-  if [[ "$MODE" != "production" && "$MODE" != "base" && "$(get_arg use_section_localizer)" != "true" ]]; then
+  if [[ "$MODE" != "production" && "$MODE" != "base" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" ]]; then
     return
   fi
 
@@ -308,5 +353,10 @@ apply_mode_derived_args() {
 
   if [[ -f "$gate_csv" ]]; then
     set_extra_arg_value "gate_definition_path" "$gate_csv"
+  fi
+
+  control_filter_yaml="${map_dir%/}/control_filter.param.yaml"
+  if [[ -f "$control_filter_yaml" && -z "$(current_control_filter_param)" ]]; then
+    set_extra_arg_value "control_filter_param" "$control_filter_yaml"
   fi
 }

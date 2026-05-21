@@ -3,6 +3,7 @@
 2D map 向けの GUI ツール置き場です。
 
 - `section_editor.py`: `map.yaml` 上でセクションをポリゴン分割し、ROS2ノード用のセクション定義CSVを作ります。
+- `control_filter_config_editor.py`: `sections_pixels.csv` を読み、section ごとの class 割り当てと class 別 `control_filter` パラメータを terminal で編集して YAML を生成します。
 - `map_cleanup_editor.py`: centerline 前処理用。起動時に map を黒白へ二値化したうえで、黒塗り/白戻しして cleaned PNG を保存します。
 
 ## map_cleanup_editor.py
@@ -131,3 +132,27 @@ gate,gate_01,section_01,section_02,u0,v0,u1,v1
 - `u0,v0 -> u1,v1` の向きが遷移方向の基準です
 - 右側から左側へ横切ると `section_01 -> section_02`
 - ゲート線は、隣接セクションの共通境界点から「直線フィット」で作成されます
+
+## control_filter_config_editor.py
+
+`section_editor.py` で作った `sections_pixels.csv` から、section ごとの
+class 切り替えつき `control_filter.param.yaml` を作る terminal editor です。
+
+```bash
+cd python_ws
+python3 map_section_editor/control_filter_config_editor.py \
+  --sections-csv /map/course_a/sections_pixels.csv \
+  --output /map/course_a/control_filter.param.yaml \
+  --base-config ../ros2_ws/src/control/control_filter/config/control_filter.param.yaml
+```
+
+操作の流れ:
+
+- `a`: section へ class を割り当て
+- `c`: class ごとの filter / scale パラメータを編集
+- `d`: default パラメータを編集
+- `p`: YAML preview
+- `s`: 保存
+
+`control_filter_node` は `section_classes` に現れる class だけを読み込むため、
+未割り当ての class は出力 YAML へ書かれません。

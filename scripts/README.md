@@ -8,6 +8,7 @@ directly.
 
 - `run_docker.sh`: start the Isaac ROS development container.
 - `launch_system.sh`: launch system presets. `sensor_data_recording` / `mapping` / `vslam_map` は canonical な sensor-bag recording preset で、mono/stereo を `424x240x90` で起動します。interactive 起動時は `jetracer` の速度プロファイルを `slow (throttle_gain=0.1)` と `normal (throttle_gain=1.0)` から選べます。非 interactive では従来どおり mapping 系 preset の既定値として `slow` を使います。MAP 用の LUT 収集には `identification` を使います。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。Perception は `--set use_perception=true` や interactive toggle で有効化できます。crop 後の分類器も使う場合は `--set use_perception_classifier=true` を追加します。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
+- `edit_control_filter_config.sh`: `sections_pixels.csv` を読み、section ごとの class 割り当てと class 別 filter/scale パラメータを対話編集して `control_filter.param.yaml` を生成します。
 - `tmux.sh`: create tmux layouts for robot, map creation, identification / MAP lookup recording, localization evaluation, perception evaluation, VSLAM evaluation, Python work, and simulator work. `map` mode は `create_2d_map_from_bag.sh --prepare-vslam-map-alignment --trace-vslam-landmarks` を prefill し、alignment 用 RViz pane と manual TF node 用の空 pane も並べます。
 - `monitor.sh`: terminal monitoring dashboard.
 - `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `424x240x90` 録画に合わせた preset。
@@ -66,6 +67,52 @@ latest TF へ緩く fallback したい場合だけ `--allow-latest-tf-fallback` 
 ## Shared helpers
 
 - `common/tui.sh`: shared shell UI helpers.
+
+## Control Filter Config
+
+section localizer の `sections_pixels.csv` から `control_filter` 用の
+section-class mapping YAML を作るには:
+
+```bash
+./scripts/edit_control_filter_config.sh --map-dir /map/course_a
+```
+
+既定では `sections_pixels.csv` を読み、`/map/course_a/control_filter.param.yaml`
+へ保存します。保存後は例えば次のように使えます:
+
+```bash
+./scripts/launch_system.sh production \
+  --set map_dir=/map/course_a \
+  --set use_control_filter=true
+```
+
+`use_control_filter=true` のとき controller 群は `..._raw` topic へ publish し、
+`control_filter` が filtered な `autonomous_control_cmd` へ戻します。
+`/map/course_a/control_filter.param.yaml` が存在すれば自動で読みます。明示的に
+別ファイルを使いたい場合だけ `--set control_filter_param=/path/to/file.yaml`
+を追加してください。
+
+## Unified E2E
+
+`launch_system.sh` から E2E 系をまとめて扱う場合は `use_e2e=true` と
+`e2e_variant=...` を使います。現状の variant は
+`camera` / `lidar` / `camera_trajectory` / `lidar_trajectory` です。
+
+```bash
+./scripts/launch_system.sh production \
+  --set use_e2e=true \
+  --set e2e_variant=camera
+```
+
+```bash
+./scripts/launch_system.sh production \
+  --set use_e2e=true \
+  --set e2e_variant=lidar_trajectory
+```
+
+`lidar_trajectory` は既存の MAGP RL trajectory launch をこの unified interface
+から起動する alias です。必要なら `--set e2e_run_pure_pursuit=false` で
+trajectory のみ出す構成にもできます。
 
 ## Evaluation presets
 

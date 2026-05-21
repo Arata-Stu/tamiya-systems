@@ -39,6 +39,8 @@ Examples:
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} production --set use_perception=true
   ${SCRIPT_NAME} production --set use_perception=true --set use_perception_classifier=true
+  ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse --set use_control_filter=true
+  ${SCRIPT_NAME} production --set use_e2e=true --set e2e_variant=lidar_trajectory
   ${SCRIPT_NAME} identification
   ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
 EOF
@@ -343,8 +345,16 @@ toggle_bool_key() {
 }
 
 render_launch_extra_interactive() {
+  local e2e_variant
+
+  e2e_variant="$(current_e2e_variant)"
+  if [[ -z "$e2e_variant" ]]; then
+    e2e_variant="(unset)"
+  fi
+
   printf "   %-38s %s (%s)\n" "bag_manager_param" "$ARG_bag_manager_param" "$(bag_manager_label)"
   printf "   %-38s %s\n" "map_dir" "$(map_dir_label)"
+  printf "   %-38s %s\n" "e2e_variant" "$e2e_variant"
   printf "   %-38s %s\n" "camera_resolution" "$(camera_resolution_label)"
   if mapping_vehicle_profile_applicable; then
     printf "   %-38s %s\n" "vehicle_speed_profile" "$(vehicle_profile_label)"
@@ -464,6 +474,35 @@ warn_if_mode_incomplete() {
       echo "Warning: ${MODE} mode expects map_dir to be set." >&2
     fi
   fi
+
+  if [[ "$(get_arg use_e2e)" == "true" ]]; then
+    local e2e_variant
+    e2e_variant="$(current_e2e_variant)"
+    if [[ -z "$e2e_variant" ]]; then
+      echo "Warning: use_e2e=true but e2e_variant is not set. Choose camera|lidar|camera_trajectory|lidar_trajectory." >&2
+      return
+    fi
+
+    case "$e2e_variant" in
+      camera|camera_control|camera_e2e|camera_trajectory|camera_traj)
+        if [[ "$(get_arg use_camera)" != "true" ]]; then
+          echo "Warning: e2e_variant=${e2e_variant} expects use_camera=true." >&2
+        fi
+        ;;
+      lidar|lidar_control|lidar_e2e|lidar_trajectory|lidar_traj|magp_rl_trajectory)
+        if [[ "$(get_arg use_lidar)" != "true" ]]; then
+          echo "Warning: e2e_variant=${e2e_variant} expects use_lidar=true." >&2
+        fi
+        ;;
+      *)
+        echo "Warning: unknown e2e_variant=${e2e_variant}. Supported values: camera, lidar, camera_trajectory, lidar_trajectory." >&2
+        ;;
+    esac
+
+    if [[ "$(get_arg use_magp_rl_trajectory)" == "true" ]]; then
+      echo "Warning: use_e2e=true and use_magp_rl_trajectory=true may launch duplicate E2E pipelines." >&2
+    fi
+  fi
 }
 
 toggle_interactive_checkbox() {
@@ -490,4 +529,3 @@ toggle_interactive() {
     toggle_interactive_checkbox
   fi
 }
-

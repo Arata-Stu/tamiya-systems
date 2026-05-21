@@ -665,9 +665,13 @@ class TerminalDashboard(Node):
         )
 
     def select_scan_for_image(self, image_stamp: object) -> Optional[LaserScan]:
+        if not self.args.historical_sync:
+            return self.state.scan
         return self.select_scan(image_stamp)
 
     def select_camera_info_for_image(self, image_stamp: object) -> Optional[CameraInfo]:
+        if not self.args.historical_sync:
+            return self.camera_info_buffer[-1] if self.camera_info_buffer else self.state.camera_info
         nearest = self.nearest_buffer_item(
             self.camera_info_buffer,
             image_stamp,
@@ -726,6 +730,26 @@ class TerminalDashboard(Node):
         return str(int(round(abs(stamp_ns - reference_ns) / 1_000_000.0)))
 
     def update_selection_state(self) -> None:
+        if not self.args.historical_sync:
+            self.selection = SelectionState(
+                reference_source="latest",
+                reference_stamp=None,
+                localization=self.state.localization,
+                amcl_pose=self.state.amcl_pose,
+                initial_pose=self.state.initial_pose,
+                scan=self.state.scan,
+                image=self.latest_buffer_item(self.image_buffer),
+                crop_image=self.latest_buffer_item(self.crop_image_buffer),
+                particles=self.state.particles,
+                odom=self.latest_buffer_item(self.odom_buffer),
+                path=self.state.path,
+                vo_path=self.state.vo_path,
+                global_path=self.state.global_path,
+                local_path=self.state.local_path,
+            )
+            self.last_sync_status = "sync latest"
+            return
+
         reference_source, reference_stamp = self.select_reference()
         self.selection = SelectionState(
             reference_source=reference_source,
@@ -792,6 +816,8 @@ class TerminalDashboard(Node):
         map_state = self.state.map_state
         if map_state is None:
             return None
+        if not self.args.historical_sync:
+            stamp = None
         exact = self.lookup_transform_between_exact(map_state.frame_id, source_frame, stamp)
         if exact is not None:
             return exact
@@ -934,6 +960,28 @@ class TerminalDashboard(Node):
             sampled_poses = [path.poses[0], path.poses[-1]]
 
         pixels = []
+        if not self.args.historical_sync:
+            tf_cache_simple: dict[str, Optional[object]] = {}
+            for stamped in sampled_poses:
+                frame_id = stamped.header.frame_id or path.header.frame_id
+                x = float(stamped.pose.position.x)
+                y = float(stamped.pose.position.y)
+                if not frame_id or frame_id == map_state.frame_id:
+                    pixels.append(self.world_to_view_px(x, y, scale, ox, oy))
+                    continue
+
+                if frame_id not in tf_cache_simple:
+                    tf_cache_simple[frame_id] = self.lookup_transform(frame_id, None)
+                tf = tf_cache_simple[frame_id]
+                if tf is not None:
+                    x, y = transform_xy(x, y, tf)
+                elif not self.args.assume_same_frame:
+                    continue
+                pixels.append(self.world_to_view_px(x, y, scale, ox, oy))
+            if len(pixels) >= 2:
+                cv2.polylines(canvas, [np.asarray(pixels, dtype=np.int32)], False, color, 3, cv2.LINE_AA)
+            return
+
         tf_cache: dict[tuple[str, Optional[int]], Optional[object]] = {}
         for stamped in sampled_poses:
             frame_id = stamped.header.frame_id or path.header.frame_id
@@ -1080,7 +1128,8 @@ class TerminalDashboard(Node):
             self.state.last_projection_error = "camera frame unavailable"
             return draw_status("scan proj: camera frame unavailable", (255, 120, 120))
 
-        tf = self.lookup_transform_between(camera_frame, scan.header.frame_id, scan.header.stamp)
+        tf_stamp = scan.header.stamp if self.args.historical_sync else None
+        tf = self.lookup_transform_between(camera_frame, scan.header.frame_id, tf_stamp)
         if tf is None and scan.header.frame_id != camera_frame and not self.args.assume_same_frame:
             self.state.last_projection_error = f"no TF {scan.header.frame_id}->{camera_frame}"
             return draw_status("scan proj: TF unavailable", (255, 120, 120))
@@ -1483,6 +1532,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--path-max-points", type=int, default=600)
     parser.add_argument("--image-panel-ratio", type=float, default=0.34)
     parser.add_argument("--png-compression", type=int, default=3)
+    parser.add_argument(
+        "--historical-sync",
+        action="store_true",
+        help="match scan/image/path/odom to past timestamps for delayed-log inspection; default is latest-data view",
+    )
     parser.add_argument(
         "--no-mouse",
         action="store_true",

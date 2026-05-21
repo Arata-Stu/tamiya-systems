@@ -74,6 +74,8 @@ BOOL_KEYS=(
   magp_rl_run_pure_pursuit
   use_pure_pursuit
   use_map_controller
+  use_control_filter
+  use_e2e
   use_sim_time
   publish_map
   map_server_use_sim_time
@@ -99,6 +101,8 @@ ARG_use_magp_rl_trajectory="false"
 ARG_magp_rl_run_pure_pursuit="false"
 ARG_use_pure_pursuit="false"
 ARG_use_map_controller="false"
+ARG_use_control_filter="false"
+ARG_use_e2e="false"
 ARG_use_sim_time="false"
 ARG_publish_map="false"
 ARG_map_server_use_sim_time="false"
@@ -221,7 +225,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    production|base|sensor_data_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval)
+    production|base|sensor_data_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval|rule_base)
       MODE="$1"
       shift
       ;;
@@ -282,6 +286,8 @@ exec ros2 launch system_launch system.launch.xml \
   "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}" \
   "use_pure_pursuit:=${ARG_use_pure_pursuit}" \
   "use_map_controller:=${ARG_use_map_controller}" \
+  "use_control_filter:=${ARG_use_control_filter}" \
+  "use_e2e:=${ARG_use_e2e}" \
   "use_sim_time:=${ARG_use_sim_time}" \
   "publish_map:=${ARG_publish_map}" \
   "map_server_use_sim_time:=${ARG_map_server_use_sim_time}" \

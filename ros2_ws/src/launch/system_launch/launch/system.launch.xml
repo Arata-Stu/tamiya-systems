@@ -15,6 +15,8 @@
     <arg name="magp_rl_run_pure_pursuit" default="false" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
     <arg name="use_map_controller" default="false" description="run MAP controller for trajectory_reference"/>
+    <arg name="use_control_filter" default="false" description="run section-aware control filter between controller output and teleop/emergency consumers"/>
+    <arg name="use_e2e" default="false" description="run one of the unified end-to-end controller pipelines selected by e2e_variant"/>
     <arg name="use_sim_time" default="false" />
     <arg name="publish_map" default="false" />
     <arg name="map_server_use_sim_time" default="false" />
@@ -57,6 +59,19 @@
     <arg name="map_controller_lookup_table_csv" default="" />
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
+    <arg name="control_filter_param" default="$(find-pkg-share system_launch)/config/control/control_filter.param.yaml" />
+    <arg name="control_filter_raw_control_cmd" default="" />
+    <arg name="e2e_variant" default="" description="camera|lidar|camera_trajectory|lidar_trajectory" />
+    <arg name="e2e_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
+    <arg name="e2e_run_pure_pursuit" default="true" />
+    <arg name="e2e_camera_model_name" default="pilotnet" />
+    <arg name="e2e_camera_trajectory_model_name" default="pilotnet_trajectory" />
+    <arg name="e2e_camera_input_image_topic" default="/camera/left/image_raw" />
+    <arg name="e2e_camera_input_camera_info_topic" default="/camera/left/camera_info" />
+    <arg name="e2e_lidar_model_name" default="tinylidarnet" />
+    <arg name="e2e_lidar_trajectory_model_name" default="magp_rl_trajectory" />
+    <arg name="e2e_lidar_scan_topic" default="/scan" />
+    <arg name="e2e_lidar_scan_tensor_topic" default="/encoder/scan_tensor" />
     <arg name="emergency_param" default="$(find-pkg-share emergency_controller)/config/emergency_controller.param.yaml" />
     <arg name="magp_rl_model_name" default="magp_rl_trajectory" />
     <arg name="magp_rl_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
@@ -205,6 +220,15 @@
     <let name="resolved_planning_raceline_csv"
          value=""
          if="$(eval '\'$(var planning_raceline_csv)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() == \'\'')" />
+    <let name="resolved_controller_control_cmd"
+         value="$(var autonomous_control_cmd)"
+         unless="$(var use_control_filter)" />
+    <let name="resolved_controller_control_cmd"
+         value="$(var control_filter_raw_control_cmd)"
+         if="$(eval '\'$(var use_control_filter)\'.lower() == \'true\' and \'$(var control_filter_raw_control_cmd)\'.strip() != \'\'')" />
+    <let name="resolved_controller_control_cmd"
+         value="$(eval '\'$(var autonomous_control_cmd)_raw\'')"
+         if="$(eval '\'$(var use_control_filter)\'.lower() == \'true\' and \'$(var control_filter_raw_control_cmd)\'.strip() == \'\'')" />
     <let name="resolved_vehicle_camera_frame"
          value="$(var camera_mount_frame)" />
     <let name="resolved_publish_camera_stereo_tf"
@@ -265,12 +289,80 @@
         <arg name="publish_realsense_mount_tf" value="false"/>
     </include>
 
+    <!-- Unified E2E Pipelines -->
+    <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'camera\', \'camera_control\', \'camera_e2e\']')">
+        <include file="$(find-pkg-share isaac_ros_camera_e2e_control)/launch/isaac_ros_camera_e2e.launch.xml">
+            <arg name="control_filter" value="false" />
+            <arg name="container_name" value="$(var camera_container_name)" />
+            <arg name="model_repository_path" value="$(var e2e_model_repository_path)" />
+            <arg name="model_name" value="$(var e2e_camera_model_name)" />
+            <arg name="input_image_topic" value="$(var e2e_camera_input_image_topic)" />
+            <arg name="input_camera_info_topic" value="$(var e2e_camera_input_camera_info_topic)" />
+            <arg name="original_image_width" value="$(var image_width)" />
+            <arg name="original_image_height" value="$(var image_height)" />
+            <arg name="output_filtered_control_topic" value="$(var resolved_controller_control_cmd)" />
+        </include>
+    </group>
+
+    <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\']')">
+        <include file="$(find-pkg-share isaac_ros_lidar_e2e_control)/launch/isaac_ros_lidar_e2e.launch.xml">
+            <arg name="control_filter" value="false" />
+            <arg name="container_name" value="$(var lidar_container_name)" />
+            <arg name="model_repository_path" value="$(var e2e_model_repository_path)" />
+            <arg name="model_name" value="$(var e2e_lidar_model_name)" />
+            <arg name="scan_topic" value="$(var e2e_lidar_scan_topic)" />
+            <arg name="scan_tensor_topic" value="$(var e2e_lidar_scan_tensor_topic)" />
+            <arg name="output_filtered_control_topic" value="$(var resolved_controller_control_cmd)" />
+        </include>
+    </group>
+
+    <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'camera_trajectory\', \'camera_traj\']')">
+        <include file="$(find-pkg-share isaac_ros_camera_trajectory)/launch/isaac_ros_camera_trajectory.launch.xml">
+            <arg name="container_name" value="$(var camera_container_name)" />
+            <arg name="model_repository_path" value="$(var e2e_model_repository_path)" />
+            <arg name="model_name" value="$(var e2e_camera_trajectory_model_name)" />
+            <arg name="input_image_topic" value="$(var e2e_camera_input_image_topic)" />
+            <arg name="input_camera_info_topic" value="$(var e2e_camera_input_camera_info_topic)" />
+            <arg name="original_image_width" value="$(var image_width)" />
+            <arg name="original_image_height" value="$(var image_height)" />
+            <arg name="output_trajectory_topic" value="$(var pure_pursuit_trajectory_topic)" />
+        </include>
+
+        <group if="$(var e2e_run_pure_pursuit)">
+            <include file="$(find-pkg-share pure_pursuit_controller)/launch/pure_pursuit_controller.launch.xml">
+                <arg name="pure_pursuit_controller_param" value="$(var pure_pursuit_param)"/>
+                <arg name="trajectory_topic" value="$(var pure_pursuit_trajectory_topic)"/>
+                <arg name="drive_topic" value="$(var resolved_controller_control_cmd)"/>
+                <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)"/>
+                <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)"/>
+            </include>
+        </group>
+    </group>
+
+    <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\']')">
+        <include file="$(find-pkg-share isaac_ros_lidar_e2e_control)/launch/magp_rl_lidar_trajectory.launch.xml">
+            <arg name="lidar_encoder_node_param" value="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/lidar_encoder_node.param.yaml" />
+            <arg name="rl_trajectory_decoder_node_param" value="$(var magp_rl_decoder_param)" />
+            <arg name="pure_pursuit_controller_param" value="$(var pure_pursuit_param)" />
+            <arg name="container_name" value="$(var lidar_container_name)" />
+            <arg name="model_repository_path" value="$(var e2e_model_repository_path)" />
+            <arg name="model_name" value="$(var e2e_lidar_trajectory_model_name)" />
+            <arg name="scan_topic" value="$(var e2e_lidar_scan_topic)" />
+            <arg name="scan_tensor_topic" value="$(var e2e_lidar_scan_tensor_topic)" />
+            <arg name="output_trajectory_topic" value="$(var pure_pursuit_trajectory_topic)" />
+            <arg name="output_control_topic" value="$(var resolved_controller_control_cmd)" />
+            <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)" />
+            <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)" />
+            <arg name="run_pure_pursuit" value="$(var e2e_run_pure_pursuit)" />
+        </include>
+    </group>
+
     <!-- FTG Controller (Composable) -->
     <group if="$(var use_ftg)">
         <include file="$(find-pkg-share ftg_controller)/launch/ftg_controller_component.launch.xml">
             <arg name="ftg_controller_param" value="$(var ftg_param)"/>
             <arg name="scan_topic" value="$(var ftg_scan_topic)"/>
-            <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="drive_topic" value="$(var resolved_controller_control_cmd)"/>
             <arg name="container_name" value="$(var lidar_container_name)"/>
             <arg name="create_container" value="false"/>
         </include>
@@ -288,7 +380,7 @@
             <arg name="scan_topic" value="$(var magp_rl_scan_topic)" />
             <arg name="scan_tensor_topic" value="$(var magp_rl_scan_tensor_topic)" />
             <arg name="output_trajectory_topic" value="$(var pure_pursuit_trajectory_topic)" />
-            <arg name="output_control_topic" value="$(var autonomous_control_cmd)" />
+            <arg name="output_control_topic" value="$(var resolved_controller_control_cmd)" />
             <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)" />
             <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)" />
             <arg name="run_pure_pursuit" value="$(var magp_rl_run_pure_pursuit)" />
@@ -300,7 +392,7 @@
         <include file="$(find-pkg-share pure_pursuit_controller)/launch/pure_pursuit_controller.launch.xml">
             <arg name="pure_pursuit_controller_param" value="$(var pure_pursuit_param)"/>
             <arg name="trajectory_topic" value="$(var pure_pursuit_trajectory_topic)"/>
-            <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="drive_topic" value="$(var resolved_controller_control_cmd)"/>
             <arg name="velocity_topic" value="$(var pure_pursuit_velocity_topic)"/>
             <arg name="odometry_topic" value="$(var pure_pursuit_odometry_topic)"/>
         </include>
@@ -319,9 +411,18 @@
         <include file="$(find-pkg-share map_controller)/launch/map_controller.launch.xml">
             <arg name="map_controller_param" value="$(var map_controller_param)"/>
             <arg name="trajectory_reference_topic" value="$(var map_controller_reference_topic)"/>
-            <arg name="drive_topic" value="$(var autonomous_control_cmd)"/>
+            <arg name="drive_topic" value="$(var resolved_controller_control_cmd)"/>
             <arg name="odometry_topic" value="$(var map_controller_odometry_topic)"/>
             <arg name="lookup_table_csv_path" value="$(var map_controller_lookup_table_csv)"/>
+        </include>
+    </group>
+
+    <!-- Control Filter -->
+    <group if="$(var use_control_filter)">
+        <include file="$(find-pkg-share control_filter)/launch/control_filter.launch.xml">
+            <arg name="raw_control_cmd" value="$(var resolved_controller_control_cmd)"/>
+            <arg name="filtered_control_cmd" value="$(var autonomous_control_cmd)"/>
+            <arg name="control_filter_param" value="$(var control_filter_param)"/>
         </include>
     </group>
 

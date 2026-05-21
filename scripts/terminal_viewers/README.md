@@ -31,19 +31,20 @@ Section-localizer debugging is also wired in by default through
 `/localization/current_section`, `/localization/section_markers`, and
 `/localization/current_section_marker`.
 
-For evaluation use, the dashboard now matches recent messages by timestamp.
-It uses exact-time TF by default and hides overlays when a synced scan / image /
-pose cannot be found within `--sync-tolerance-ms` instead of silently mixing
-latest data. Path and odom panels also use timestamped history, but they keep
-the latest message from the past rather than jumping ahead to a future update
-when delayed logs arrive. If you intentionally want the old forgiving behavior,
-pass `--allow-latest-tf-fallback`.
-The default reference is the latest localization pose when that overlay is
-enabled, so the dashboard may lag slightly but it keeps the view aligned to the
-historical pose you want to inspect.
+By default the dashboard shows the latest data from each topic so it stays
+responsive during normal SSH debugging.
+
+If you need delayed-log inspection, pass `--historical-sync`. In that mode the
+dashboard matches recent messages by timestamp. It uses exact-time TF by
+default and hides overlays when a synced scan / image / pose cannot be found
+within `--sync-tolerance-ms` instead of silently mixing latest data. Path and
+odom panels also use timestamped history, but they keep the latest message from
+the past rather than jumping ahead to a future update when delayed logs arrive.
+If you intentionally want the old forgiving behavior, pass
+`--allow-latest-tf-fallback`.
 
 If your bag playback or relay introduces longer delays for path / odom topics,
-increase `--state-sync-buffer-size`.
+increase `--state-sync-buffer-size` when `--historical-sync` is enabled.
 If terminal mouse handling gets in the way, pass `--no-mouse`.
 
 For compressed images:
