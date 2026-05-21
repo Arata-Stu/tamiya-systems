@@ -1873,6 +1873,7 @@ run_live_vslam_alignment_session() {
 run_post_vslam_map_alignment_prep() {
     local rviz_config_path=""
     local manual_alignment_cmd=""
+    local manual_alignment_cmd_single_line=""
     local rviz_cmd=""
     local dummy=""
     local -a launch_args
@@ -1964,6 +1965,7 @@ ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args \\
   -p enable_keyboard:=true
 EOF
 )"
+    manual_alignment_cmd_single_line="ros2 run vslam_map_tools manual_tf_alignment_node.py --ros-args -p use_sim_time:=false -p parent_frame:=map -p child_frame:=vslam_map -p config_path:=${VSLAM_MAP_ALIGNMENT_CONFIG_PATH} -p enable_keyboard:=true"
 
     echo ""
     echo "[prep] Alignment helper stack is running."
@@ -1971,8 +1973,15 @@ EOF
     echo "  - vslam map dir: ${VSLAM_MAP_DIR}"
     echo "  - log          : ${POST_ALIGNMENT_LOG_PATH}"
     echo ""
-    echo "[prep] In another pane/window, run this command:"
+    echo "[prep] In another pane/window, first source your workspace if needed:"
+    echo "  source install/setup.bash"
+    echo ""
+    echo "[prep] Then run either of these:"
+    echo "[prep] Multiline:"
     printf '%s\n' "${manual_alignment_cmd}"
+    echo ""
+    echo "[prep] Single line:"
+    echo "  ${manual_alignment_cmd_single_line}"
     echo ""
     echo "[prep] identity TF is intentionally disabled here."
     echo "[prep] Start the manual node before expecting map <-> vslam_map to connect in RViz."
