@@ -2016,7 +2016,7 @@ EOF
     manual_alignment_helper_path="${OUT_DIR}/run_manual_tf_alignment.sh"
     cat > "${manual_alignment_helper_path}" <<EOF
 #!/bin/bash
-set -euo pipefail
+set -eo pipefail
 
 for candidate in \\
   "${REPO_ROOT}/install/setup.bash" \\
@@ -2024,7 +2024,9 @@ for candidate in \\
   "install/setup.bash"; do
   if [ -f "\${candidate}" ]; then
     # shellcheck disable=SC1090
+    set +u
     source "\${candidate}"
+    set -u
     break
   fi
 done
