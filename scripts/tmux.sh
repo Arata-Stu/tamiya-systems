@@ -363,7 +363,7 @@ Usage:
 
 Notes:
   - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
-  - map mode prepares online map creation, then post-map VSLAM(load_map) alignment prep + landmark tracing.
+  - map mode prepares online map creation, then post-map map-only alignment prep + landmark tracing.
 EOF
 }
 

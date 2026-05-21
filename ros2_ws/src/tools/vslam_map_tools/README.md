@@ -62,3 +62,27 @@ ros2 run vslam_map_tools export_landmarks_png.py -- \
 ```
 
 `--path-topic /visual_slam/tracking/slam_path` は既定で有効です。landmarks に加えて SLAM path も下絵に含めたいときに使えます。
+
+## record_vslam_reference_snapshot.py / publish_saved_vslam_reference.py
+
+`/visual_slam/tracking/slam_path` と `/visual_slam/tracking/odometry` の最後の状態を JSON に保存し、
+後で current time 付きで再 publish する補助です。`create_2d_map_from_bag.sh --prepare-vslam-map-alignment`
+ではこの組み合わせを使って、2D map と saved path を見ながら `map -> vslam_map` を後追い調整できます。
+
+保存:
+
+```bash
+ros2 run vslam_map_tools record_vslam_reference_snapshot.py -- \
+  --path-topic /visual_slam/tracking/slam_path \
+  --odom-topic /visual_slam/tracking/odometry \
+  --output /tmp/vslam_reference.json
+```
+
+再 publish:
+
+```bash
+ros2 run vslam_map_tools publish_saved_vslam_reference.py -- \
+  --input /tmp/vslam_reference.json \
+  --path-topic /visual_slam/tracking/slam_path \
+  --odom-topic /visual_slam/tracking/odometry
+```
