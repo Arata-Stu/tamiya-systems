@@ -679,10 +679,13 @@ class TerminalDashboard(Node):
         return self.camera_info_buffer[-1] if self.camera_info_buffer else self.state.camera_info
 
     def select_odom(self, target_stamp: object) -> Optional[TimedOdomState]:
-        selected = self.select_timed_message(
+        if target_stamp is None:
+            return self.latest_buffer_item(self.odom_buffer)
+        selected = self.nearest_buffer_item(
             self.odom_buffer,
-            None,
             target_stamp,
+            lambda odom: odom.stamp,
+            prefer_past=True,
             enforce_tolerance=False,
             allow_future_fallback=False,
         )
