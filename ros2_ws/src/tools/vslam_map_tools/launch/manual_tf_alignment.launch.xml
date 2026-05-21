@@ -6,6 +6,7 @@
   <arg name="publish_rate_hz" default="20.0" />
   <arg name="translation_step_m" default="0.02" />
   <arg name="rotation_step_deg" default="1.0" />
+  <arg name="exit_on_save" default="false" />
   <arg name="x" default="0.0" />
   <arg name="y" default="0.0" />
   <arg name="z" default="0.0" />
@@ -24,6 +25,7 @@
     <param name="publish_rate_hz" value="$(var publish_rate_hz)" />
     <param name="translation_step_m" value="$(var translation_step_m)" />
     <param name="rotation_step_deg" value="$(var rotation_step_deg)" />
+    <param name="exit_on_save" value="$(var exit_on_save)" />
     <param name="x" value="$(var x)" />
     <param name="y" value="$(var y)" />
     <param name="z" value="$(var z)" />

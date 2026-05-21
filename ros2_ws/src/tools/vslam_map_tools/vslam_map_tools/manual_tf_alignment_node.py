@@ -114,6 +114,7 @@ class ManualTfAlignmentNode(Node):
         self.rotation_step_deg = max(0.01, float(self.declare_parameter("rotation_step_deg", 1.0).value))
         self.enable_keyboard = bool(self.declare_parameter("enable_keyboard", True).value)
         self.auto_save_on_update = bool(self.declare_parameter("auto_save_on_update", False).value)
+        self.exit_on_save = bool(self.declare_parameter("exit_on_save", False).value)
 
         self.state = AlignmentState(
             x=float(self.declare_parameter("x", float(config_defaults.get("x", 0.0))).value),
@@ -186,7 +187,11 @@ class ManualTfAlignmentNode(Node):
         print("  [ / ] : translation step /2, x2")
         print("  - / = : rotation step /2, x2")
         print("  0 : reset to startup values")
-        print("  p : save current alignment to config_path")
+        if self.exit_on_save:
+            print("  p : save current alignment to config_path and continue")
+        else:
+            print("  p : save current alignment to config_path")
+        print("  c : continue without saving")
         print("  i or ? : print help")
         print("")
 
@@ -221,6 +226,13 @@ class ManualTfAlignmentNode(Node):
     def maybe_auto_save(self) -> None:
         if self.auto_save_on_update:
             self.save_current_alignment()
+
+    def request_shutdown(self, message: str | None = None) -> None:
+        if message:
+            self.get_logger().info(message)
+        self.stop_event.set()
+        if rclpy.ok():
+            rclpy.shutdown()
 
     def adjust_translation(self, axis: str, delta: float) -> None:
         if axis == "x":
@@ -269,7 +281,13 @@ class ManualTfAlignmentNode(Node):
                 continue
             if key == "p":
                 self.save_current_alignment()
+                if self.exit_on_save:
+                    self.request_shutdown("Alignment saved. Finishing interactive session.")
+                    return
                 continue
+            if key.lower() == "c":
+                self.request_shutdown("Finishing interactive session without saving.")
+                return
             if key == "[":
                 self.translation_step_m = max(1.0e-4, self.translation_step_m / 2.0)
                 self.print_state("Updated step size")

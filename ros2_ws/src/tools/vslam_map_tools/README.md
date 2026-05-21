@@ -28,6 +28,7 @@ ros2 launch vslam_map_tools manual_tf_alignment.launch.xml \
 - `[` / `]`: 並進 step を半分 / 2 倍
 - `-` / `=`: 回転 step を半分 / 2 倍
 - `p`: 現在値を YAML 保存
+- `c`: 保存せず session 終了
 - `0`: 起動時の値へ戻す
 
 大きく動かしたいときは大文字キーで 10 倍 step を使えます。
@@ -42,6 +43,10 @@ ros2 launch system_launch system.launch.xml \
   enable_slam_visualization:=true \
   enable_landmarks_view:=true
 ```
+
+`create_2d_map_from_bag.sh` から live alignment session を使う場合は、
+`--live-vslam-map-align` か `--trace-vslam-landmarks` を付けた online mode で実行すると、
+bag replay 中に RViz2 を開き、この node を前景で受け付けます。
 
 ## export_landmarks_png.py
 

@@ -180,6 +180,38 @@ Options:
                       path to map_cleanup_editor.py (auto-detect by default)
   --map-edit-output PATH
                       path to cleaned PNG output (default: <MAP_NAME>_centerline_input.png)
+  --trace-vslam-landmarks
+                      replay source bag with VSLAM landmarks, export a tracing PNG,
+                      and launch the editor in blank-canvas tracing mode
+  --no-trace-vslam-landmarks
+                      disable the VSLAM landmark tracing helper
+  --vslam-landmark-trace-mode MODE
+                      auto|always|never (default: never)
+  --vslam-map-alignment-config PATH
+                      saved map->vslam_map alignment YAML used when replaying VSLAM
+  --live-vslam-map-align
+                      during online mapping, open RViz2 and run a live map->vslam_map
+                      alignment session before saving outputs
+  --no-live-vslam-map-align
+                      disable the live alignment session
+  --live-vslam-map-align-mode MODE
+                      auto|always|never (default: auto)
+  --live-vslam-map-align-rviz PATH
+                      rviz config for the live alignment session
+  --vslam-landmark-export-script PATH
+                      path to export_landmarks_png.py (auto-detect by default)
+  --vslam-landmark-image PATH
+                      output landmark PNG path (default: <MAP_NAME>_vslam_landmarks.png)
+  --vslam-landmark-yaml PATH
+                      output landmark YAML path (default: <MAP_NAME>_vslam_landmarks.yaml)
+  --vslam-landmark-reference-yaml PATH
+                      reference YAML used for resolution/origin/image size
+                      (default: generated provisional map YAML)
+  --vslam-landmark-target-frame FRAME
+                      target frame passed to the landmark exporter (default: map)
+  --vslam-trace-output PATH
+                      traced PNG path used for centerline generation
+                      (default: <MAP_NAME>_vslam_traced.png)
   --centerline-debug  save centerline debug images (default: enabled when centerline is generated)
   --centerline-debug-dir DIR
                       set centerline debug image output directory
@@ -222,6 +254,9 @@ Outputs:
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.pgm
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>.png (optional; generated if converter is available)
   /map/<bag_name>/<MAP_NAME>/cuvslam_map/ (optional; generated in online VSLAM or offline odom modes)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_vslam_landmarks.png (optional; generated with --trace-vslam-landmarks)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_vslam_landmarks.yaml (optional; generated with --trace-vslam-landmarks)
+  /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_vslam_traced.png (optional; generated with --trace-vslam-landmarks)
   /map/<bag_name>/<MAP_NAME>/offline_vslam_odom_input_<timestamp>/ (optional; generated in with_odom_offline_vslam)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline_input.png (optional; hand-edited map cleanup result)
   /map/<bag_name>/<MAP_NAME>/<MAP_NAME>_centerline.csv (optional; generated unless --no-centerline)
@@ -237,11 +272,12 @@ Interactive flow:
   3) 番号で rosbag を選択
   4) map 名を入力
   5) 選択した mode に応じて Cartographer / VSLAM を実行して map を生成
-  6) centerline 生成の可否を確認（debug はデフォルト有効）
-  7) 必要なら GUI で map PNG/PGM を黒塗り修正して保存
-  8) raceline 生成の可否を確認
-  9) centerline / raceline preview画像を生成
-  10) 転送前メニューで section edit / scp / 終了 を選択
+  6) 必要なら landmarks replay から tracing 用 PNG を作って手描き map を保存
+  7) centerline 生成の可否を確認（debug はデフォルト有効）
+  8) 必要なら GUI で map PNG/PGM を黒塗り修正して保存
+  9) raceline 生成の可否を確認
+  10) centerline / raceline preview画像を生成
+  11) 転送前メニューで section edit / scp / 終了 を選択
 EOF
 }
 
@@ -270,6 +306,23 @@ MAP_EDIT_MODE="auto"
 MAP_EDIT_ENABLED=false
 MAP_EDIT_SCRIPT_PATH=""
 MAP_EDIT_OUTPUT_PATH=""
+VSLAM_LANDMARK_TRACE_MODE="never"
+VSLAM_LANDMARK_TRACE_ENABLED=false
+VSLAM_LANDMARK_TRACE_COMPLETED=false
+VSLAM_LANDMARK_EXPORT_SCRIPT_PATH=""
+VSLAM_MAP_ALIGNMENT_CONFIG_PATH=""
+VSLAM_MAP_ALIGNMENT_CONFIG_SET_BY_USER=false
+VSLAM_LIVE_ALIGNMENT_MODE="auto"
+VSLAM_LIVE_ALIGNMENT_ENABLED=false
+VSLAM_LIVE_ALIGNMENT_RVIZ_PATH=""
+VSLAM_LANDMARK_IMAGE_PATH=""
+VSLAM_LANDMARK_YAML_PATH=""
+VSLAM_LANDMARK_REFERENCE_YAML_PATH=""
+VSLAM_LANDMARK_TARGET_FRAME="map"
+VSLAM_TRACE_OUTPUT_PATH=""
+VSLAM_LANDMARK_TOPIC="/visual_slam/vis/landmarks_cloud"
+VSLAM_LANDMARK_PATH_TOPIC="/visual_slam/tracking/slam_path"
+VSLAM_LANDMARK_EXPORT_TIMEOUT_SEC="120"
 CENTERLINE_DEBUG=true
 CENTERLINE_DEBUG_DIR=""
 CENTERLINE_SCRIPT_PATH=""
@@ -323,6 +376,10 @@ RECORDER_PID=""
 RECORDER_USES_SETSID=false
 ROSBAG_PLAY_PID=""
 ROSBAG_PLAY_USES_SETSID=false
+LANDMARK_EXPORT_PID=""
+LANDMARK_EXPORT_USES_SETSID=false
+RVIZ_PID=""
+RVIZ_USES_SETSID=false
 BASE_CARTOGRAPHER_PIDS=()
 ROSBAG_CANDIDATES=()
 SOURCE_PLAY_TOPICS=()
@@ -449,6 +506,7 @@ launch_vslam_stack() {
     local save_map_path="${3:-}"
     local load_map_path="${4:-}"
     local vslam_param_path="${5:-}"
+    local enable_alignment_from_config="${6:-true}"
     local -a launch_args=(
         "image_width:=${IMAGE_WIDTH}"
         "image_height:=${IMAGE_HEIGHT}"
@@ -458,6 +516,14 @@ launch_vslam_stack() {
         "enable_observations_view:=${VSLAM_VIS_ENABLED}"
         "enable_landmarks_view:=${VSLAM_VIS_ENABLED}"
     )
+
+    if [ "${enable_alignment_from_config}" = true ] && [ -n "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ] && [ -f "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ]; then
+        launch_args+=(
+            "use_vslam_map_alignment_node:=true"
+            "vslam_map_alignment_config:=${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"
+            "vslam_map_alignment_enable_keyboard:=false"
+        )
+    fi
 
     if [ -n "${save_map_path}" ]; then
         launch_args+=("save_map_path:=${save_map_path}")
@@ -681,6 +747,63 @@ while (($#)); do
             MAP_EDIT_OUTPUT_PATH="$2"
             shift 2
             ;;
+        --trace-vslam-landmarks)
+            VSLAM_LANDMARK_TRACE_MODE="always"
+            shift
+            ;;
+        --no-trace-vslam-landmarks)
+            VSLAM_LANDMARK_TRACE_MODE="never"
+            shift
+            ;;
+        --vslam-landmark-trace-mode)
+            VSLAM_LANDMARK_TRACE_MODE="$2"
+            shift 2
+            ;;
+        --vslam-map-alignment-config)
+            VSLAM_MAP_ALIGNMENT_CONFIG_PATH="$2"
+            VSLAM_MAP_ALIGNMENT_CONFIG_SET_BY_USER=true
+            shift 2
+            ;;
+        --live-vslam-map-align)
+            VSLAM_LIVE_ALIGNMENT_MODE="always"
+            shift
+            ;;
+        --no-live-vslam-map-align)
+            VSLAM_LIVE_ALIGNMENT_MODE="never"
+            shift
+            ;;
+        --live-vslam-map-align-mode)
+            VSLAM_LIVE_ALIGNMENT_MODE="$2"
+            shift 2
+            ;;
+        --live-vslam-map-align-rviz)
+            VSLAM_LIVE_ALIGNMENT_RVIZ_PATH="$2"
+            shift 2
+            ;;
+        --vslam-landmark-export-script)
+            VSLAM_LANDMARK_EXPORT_SCRIPT_PATH="$2"
+            shift 2
+            ;;
+        --vslam-landmark-image)
+            VSLAM_LANDMARK_IMAGE_PATH="$2"
+            shift 2
+            ;;
+        --vslam-landmark-yaml)
+            VSLAM_LANDMARK_YAML_PATH="$2"
+            shift 2
+            ;;
+        --vslam-landmark-reference-yaml)
+            VSLAM_LANDMARK_REFERENCE_YAML_PATH="$2"
+            shift 2
+            ;;
+        --vslam-landmark-target-frame)
+            VSLAM_LANDMARK_TARGET_FRAME="$2"
+            shift 2
+            ;;
+        --vslam-trace-output)
+            VSLAM_TRACE_OUTPUT_PATH="$2"
+            shift 2
+            ;;
         --centerline-debug)
             CENTERLINE_DEBUG=true
             shift
@@ -767,6 +890,24 @@ case "${PIPELINE_MODE_OVERRIDE}" in
         ;;
 esac
 
+case "${VSLAM_LANDMARK_TRACE_MODE}" in
+    auto|always|never)
+        ;;
+    *)
+        echo "Invalid --vslam-landmark-trace-mode: ${VSLAM_LANDMARK_TRACE_MODE}" >&2
+        exit 1
+        ;;
+esac
+
+case "${VSLAM_LIVE_ALIGNMENT_MODE}" in
+    auto|always|never)
+        ;;
+    *)
+        echo "Invalid --live-vslam-map-align-mode: ${VSLAM_LIVE_ALIGNMENT_MODE}" >&2
+        exit 1
+        ;;
+esac
+
 BAG_DIR_NAME=""
 BAG_OUT_DIR=""
 OUT_DIR=""
@@ -792,6 +933,10 @@ OFFLINE_VSLAM_ODOM_LOG_PATH=""
 OFFLINE_VSLAM_ODOM_TF_LOG_PATH=""
 OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH=""
 OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH=""
+VSLAM_LANDMARK_LOG_PATH=""
+VSLAM_LANDMARK_TF_LOG_PATH=""
+VSLAM_LANDMARK_PLAYER_LOG_PATH=""
+VSLAM_LANDMARK_EXPORT_LOG_PATH=""
 
 if [ "${ODOM_TOPIC_SET_BY_USER}" = true ]; then
     CARTOGRAPHER_USE_ODOM=true
@@ -875,6 +1020,12 @@ print_mode_summary() {
     fi
     echo "vslam execution : ${PIPELINE_MODE}"
     echo "odom source     : $(describe_odom_source)"
+    if [ -n "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ] && [ -f "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ]; then
+        echo "vslam alignment : ${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"
+    else
+        echo "vslam alignment : identity / no saved config"
+    fi
+    echo "live alignment  : ${VSLAM_LIVE_ALIGNMENT_MODE}"
     echo "================================================"
     echo ""
 }
@@ -1112,6 +1263,18 @@ SECTION_GATE_OUTPUT_PATH="${OUT_DIR}/sections_pixels_gates.csv"
 CENTERLINE_OUTPUT_PATH="${MAP_STEM}_centerline.csv"
 RACELINE_OUTPUT_PATH="${MAP_STEM}_raceline.csv"
 LINE_PREVIEW_OUTPUT_PATH="${MAP_STEM}_lines.png"
+if [ -z "${VSLAM_LANDMARK_IMAGE_PATH}" ]; then
+    VSLAM_LANDMARK_IMAGE_PATH="${MAP_STEM}_vslam_landmarks.png"
+fi
+if [ -z "${VSLAM_LANDMARK_YAML_PATH}" ]; then
+    VSLAM_LANDMARK_YAML_PATH="${MAP_STEM}_vslam_landmarks.yaml"
+fi
+if [ -z "${VSLAM_TRACE_OUTPUT_PATH}" ]; then
+    VSLAM_TRACE_OUTPUT_PATH="${MAP_STEM}_vslam_traced.png"
+fi
+if [ -z "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ]; then
+    VSLAM_MAP_ALIGNMENT_CONFIG_PATH="${OUT_DIR}/vslam_map_alignment.yaml"
+fi
 MAP_LOG_PATH="/tmp/cartographer_mapping_$(date +%Y%m%d_%H%M%S).log"
 OFFLINE_ODOM_BAG_DIR="${OUT_DIR}/offline_vslam_odom_input_$(date +%Y%m%d_%H%M%S)"
 
@@ -1126,6 +1289,10 @@ if [ ! -d "$BAG_PATH" ] || [ ! -f "$BAG_PATH/metadata.yaml" ]; then
     echo "Invalid active BAG_PATH: $BAG_PATH" >&2
     echo "metadata.yaml not found." >&2
     exit 1
+fi
+
+if [ "${VSLAM_MAP_ALIGNMENT_CONFIG_SET_BY_USER}" = true ] && [ ! -f "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ]; then
+    echo "Warning: VSLAM alignment config not found. Continue without saved map->vslam_map alignment: ${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" >&2
 fi
 
 mkdir -p "${OUT_DIR}"
@@ -1364,14 +1531,111 @@ resolve_map_edit_script() {
     resolve_python_ws_file "map_section_editor/map_cleanup_editor.py"
 }
 
+resolve_vslam_landmark_export_script() {
+    if [ -n "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
+        if [ -f "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
+            echo "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}"
+            return 0
+        fi
+        return 1
+    fi
+
+    resolve_repo_file "ros2_ws/src/tools/vslam_map_tools/vslam_map_tools/export_landmarks_png.py"
+}
+
+resolve_vslam_live_alignment_rviz_config() {
+    if [ -n "${VSLAM_LIVE_ALIGNMENT_RVIZ_PATH}" ]; then
+        if [ -f "${VSLAM_LIVE_ALIGNMENT_RVIZ_PATH}" ]; then
+            echo "${VSLAM_LIVE_ALIGNMENT_RVIZ_PATH}"
+            return 0
+        fi
+        return 1
+    fi
+
+    resolve_repo_file "ros2_ws/src/launch/system_launch/rviz/vslam_map_alignment.rviz"
+}
+
 resolve_section_editor_script() {
     resolve_python_ws_file "map_section_editor/section_editor.py"
+}
+
+prompt_live_vslam_alignment() {
+    local align_choice
+    local default_choice="n"
+
+    if [ "${PIPELINE_MODE}" != "online" ]; then
+        VSLAM_LIVE_ALIGNMENT_ENABLED=false
+        return 0
+    fi
+
+    case "${VSLAM_LIVE_ALIGNMENT_MODE}" in
+        always)
+            VSLAM_LIVE_ALIGNMENT_ENABLED=true
+            ;;
+        never)
+            VSLAM_LIVE_ALIGNMENT_ENABLED=false
+            ;;
+        auto)
+            VSLAM_LIVE_ALIGNMENT_ENABLED=false
+            if [ ! -t 0 ]; then
+                return 0
+            fi
+            if [ "${VSLAM_LANDMARK_TRACE_MODE}" != "never" ]; then
+                default_choice="y"
+            fi
+            echo ""
+            if [ "${default_choice}" = "y" ]; then
+                read -r -p "mapping 中に RViz2 で live alignment session を開きますか？ (Y/n, Enterで開く): " align_choice
+                align_choice=${align_choice:-y}
+            else
+                read -r -p "mapping 中に RViz2 で live alignment session を開きますか？ (y/N, Enterでスキップ): " align_choice
+                align_choice=${align_choice:-n}
+            fi
+            if [[ "${align_choice}" =~ ^[Yy]$ ]]; then
+                VSLAM_LIVE_ALIGNMENT_ENABLED=true
+            fi
+            ;;
+    esac
+}
+
+prompt_vslam_landmark_trace() {
+    local trace_choice
+
+    if [ "${ENABLE_CENTERLINE}" != true ]; then
+        VSLAM_LANDMARK_TRACE_ENABLED=false
+        return 0
+    fi
+
+    case "${VSLAM_LANDMARK_TRACE_MODE}" in
+        always)
+            VSLAM_LANDMARK_TRACE_ENABLED=true
+            ;;
+        never)
+            VSLAM_LANDMARK_TRACE_ENABLED=false
+            ;;
+        auto)
+            VSLAM_LANDMARK_TRACE_ENABLED=false
+            if [ ! -t 0 ]; then
+                return 0
+            fi
+            echo ""
+            read -r -p "VSLAM landmarks から tracing 用 map を作りますか？ (y/N, Enterでスキップ): " trace_choice
+            if [[ "${trace_choice:-n}" =~ ^[Yy]$ ]]; then
+                VSLAM_LANDMARK_TRACE_ENABLED=true
+            fi
+            ;;
+    esac
 }
 
 prompt_map_edit() {
     local edit_choice
 
     if [ "${ENABLE_CENTERLINE}" != true ]; then
+        MAP_EDIT_ENABLED=false
+        return 0
+    fi
+
+    if [ "${VSLAM_LANDMARK_TRACE_COMPLETED}" = true ]; then
         MAP_EDIT_ENABLED=false
         return 0
     fi
@@ -1399,6 +1663,210 @@ prompt_map_edit() {
             exit 1
             ;;
     esac
+}
+
+run_live_vslam_alignment_session() {
+    local rviz_config_path
+    local alignment_status=0
+    local -a alignment_cmd
+
+    if [ "${VSLAM_LIVE_ALIGNMENT_ENABLED}" != true ]; then
+        return 0
+    fi
+
+    if [ ! -t 0 ]; then
+        echo "Warning: no interactive TTY is available. Skip live VSLAM alignment session." >&2
+        return 0
+    fi
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Warning: python3 not found. Skip live VSLAM alignment session." >&2
+        return 0
+    fi
+
+    if ! command -v ros2 >/dev/null 2>&1; then
+        echo "Warning: ros2 not found. Skip live VSLAM alignment session." >&2
+        return 0
+    fi
+
+    if ! command -v rviz2 >/dev/null 2>&1; then
+        echo "Warning: rviz2 not found. Skip live VSLAM alignment session." >&2
+        return 0
+    fi
+
+    if ! rviz_config_path="$(resolve_vslam_live_alignment_rviz_config)"; then
+        echo "Warning: RViz config not found for live alignment session." >&2
+        return 0
+    fi
+
+    echo "[align] Launch RViz2 for live map/VSLAM alignment"
+    launch_background_process "RVIZ_PID" "RVIZ_USES_SETSID" \
+        rviz2 -d "${rviz_config_path}"
+
+    sleep 3
+    wait_for_topic "/map" 5 || true
+    wait_for_topic "${VSLAM_LANDMARK_PATH_TOPIC}" 5 || true
+
+    echo "[align] Use RViz2 to compare /map, landmarks, and slam_path."
+    echo "[align] Adjust in this terminal, then press 'p' to save and continue."
+
+    alignment_cmd=(
+        ros2 run vslam_map_tools manual_tf_alignment_node.py
+        --ros-args
+        -p parent_frame:=map
+        -p child_frame:=vslam_map
+        -p config_path:="${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"
+        -p enable_keyboard:=true
+        -p exit_on_save:=true
+    )
+
+    "${alignment_cmd[@]}" || alignment_status=$?
+
+    stop_background_process "RVIZ_PID" "RVIZ_USES_SETSID"
+
+    if [ "${alignment_status}" -ne 0 ]; then
+        echo "Warning: live VSLAM alignment session exited with status ${alignment_status}." >&2
+        return 0
+    fi
+
+    if [ -f "${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}" ]; then
+        echo "[align] Saved alignment config: ${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}"
+    else
+        echo "Warning: live alignment session ended without saving ${VSLAM_MAP_ALIGNMENT_CONFIG_PATH}." >&2
+    fi
+}
+
+run_vslam_landmark_trace() {
+    local export_script_path
+    local map_edit_script_path
+    local trace_load_map_path=""
+    local export_status=0
+    local old_vslam_vis_enabled="${VSLAM_VIS_ENABLED}"
+    local -a export_cmd
+    local -a trace_edit_cmd
+
+    if [ "${VSLAM_LANDMARK_TRACE_ENABLED}" != true ]; then
+        echo "[prep] Skip VSLAM landmark tracing helper"
+        return 0
+    fi
+
+    echo "[prep] Export VSLAM landmarks for tracing"
+
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "Warning: python3 not found. Skip VSLAM landmark tracing helper." >&2
+        return 0
+    fi
+
+    if ! export_script_path="$(resolve_vslam_landmark_export_script)"; then
+        if [ -n "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
+            echo "Warning: landmark export script not found: ${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" >&2
+        else
+            echo "Warning: export_landmarks_png.py not found. Skip VSLAM landmark tracing helper." >&2
+        fi
+        return 0
+    fi
+
+    if ! map_edit_script_path="$(resolve_map_edit_script)"; then
+        echo "Warning: map cleanup editor not found. Skip VSLAM landmark tracing helper." >&2
+        return 0
+    fi
+
+    if [ -z "${VSLAM_LANDMARK_REFERENCE_YAML_PATH}" ]; then
+        VSLAM_LANDMARK_REFERENCE_YAML_PATH="${MAP_YAML_PATH}"
+    fi
+
+    if [ ! -f "${VSLAM_LANDMARK_REFERENCE_YAML_PATH}" ]; then
+        echo "Warning: reference YAML not found for landmark export: ${VSLAM_LANDMARK_REFERENCE_YAML_PATH}" >&2
+        return 0
+    fi
+
+    if [ -d "${VSLAM_MAP_DIR}" ]; then
+        trace_load_map_path="${VSLAM_MAP_DIR}"
+    fi
+
+    VSLAM_VIS_ENABLED=true
+
+    launch_vslam_stack \
+        "${VSLAM_LANDMARK_TF_LOG_PATH}" \
+        "${VSLAM_LANDMARK_LOG_PATH}" \
+        "" \
+        "${trace_load_map_path}"
+
+    if ! wait_for_service "/visual_slam/save_map" 60; then
+        echo "Warning: Visual SLAM service not ready for landmark export. Check log: ${VSLAM_LANDMARK_LOG_PATH}" >&2
+        stop_vslam
+        VSLAM_VIS_ENABLED="${old_vslam_vis_enabled}"
+        return 0
+    fi
+
+    export_cmd=(
+        python3 "${export_script_path}"
+        --landmarks-topic "${VSLAM_LANDMARK_TOPIC}"
+        --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
+        --target-frame "${VSLAM_LANDMARK_TARGET_FRAME}"
+        --reference-yaml "${VSLAM_LANDMARK_REFERENCE_YAML_PATH}"
+        --output-image "${VSLAM_LANDMARK_IMAGE_PATH}"
+        --output-yaml "${VSLAM_LANDMARK_YAML_PATH}"
+        --timeout-sec "${VSLAM_LANDMARK_EXPORT_TIMEOUT_SEC}"
+    )
+
+    launch_background_process "LANDMARK_EXPORT_PID" "LANDMARK_EXPORT_USES_SETSID" \
+        "${export_cmd[@]}" \
+        > "${VSLAM_LANDMARK_EXPORT_LOG_PATH}" 2>&1
+
+    sleep 2
+
+    build_online_source_play_topics
+    echo "  - replay source bag for VSLAM landmark export"
+    echo "  - topics: ${SOURCE_PLAY_TOPICS[*]}"
+    if ! play_rosbag \
+        "${SOURCE_BAG_PATH}" "${VSLAM_LANDMARK_PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"; then
+        echo "Warning: source bag replay failed during VSLAM landmark export." >&2
+        stop_background_process "LANDMARK_EXPORT_PID" "LANDMARK_EXPORT_USES_SETSID"
+        stop_vslam
+        VSLAM_VIS_ENABLED="${old_vslam_vis_enabled}"
+        return 0
+    fi
+
+    if [ -n "${LANDMARK_EXPORT_PID:-}" ]; then
+        wait "${LANDMARK_EXPORT_PID}" || export_status=$?
+        LANDMARK_EXPORT_PID=""
+        LANDMARK_EXPORT_USES_SETSID=false
+    fi
+
+    stop_vslam
+    VSLAM_VIS_ENABLED="${old_vslam_vis_enabled}"
+
+    if [ "${export_status}" -ne 0 ] || [ ! -f "${VSLAM_LANDMARK_IMAGE_PATH}" ]; then
+        echo "Warning: failed to export VSLAM landmarks. Check log: ${VSLAM_LANDMARK_EXPORT_LOG_PATH}" >&2
+        return 0
+    fi
+
+    echo "  - landmark PNG: ${VSLAM_LANDMARK_IMAGE_PATH}"
+    if [ -f "${VSLAM_LANDMARK_YAML_PATH}" ]; then
+        echo "  - landmark YAML: ${VSLAM_LANDMARK_YAML_PATH}"
+    fi
+
+    echo "[prep] Launch tracing editor from VSLAM landmarks"
+    trace_edit_cmd=(
+        python3 "${map_edit_script_path}"
+        --input "${VSLAM_LANDMARK_IMAGE_PATH}"
+        --output "${VSLAM_TRACE_OUTPUT_PATH}"
+        --initialize-mode blank_black
+    )
+
+    if ! "${trace_edit_cmd[@]}"; then
+        echo "Warning: landmark tracing editor failed. Keep original map for centerline." >&2
+        return 0
+    fi
+
+    if [ -f "${VSLAM_TRACE_OUTPUT_PATH}" ]; then
+        CENTERLINE_INPUT_MAP="${VSLAM_TRACE_OUTPUT_PATH}"
+        VSLAM_LANDMARK_TRACE_COMPLETED=true
+        echo "  - traced map: ${VSLAM_TRACE_OUTPUT_PATH}"
+    else
+        echo "Warning: traced map was not saved. Keep original map for centerline." >&2
+    fi
 }
 
 run_map_edit() {
@@ -1924,6 +2392,8 @@ convert_pbstream_to_map() {
 
 cleanup_all() {
     stop_rosbag_playback
+    stop_background_process "LANDMARK_EXPORT_PID" "LANDMARK_EXPORT_USES_SETSID"
+    stop_background_process "RVIZ_PID" "RVIZ_USES_SETSID"
     stop_recorder
     stop_vslam
     stop_cartographer
@@ -1949,6 +2419,10 @@ OFFLINE_VSLAM_ODOM_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_$(date +%Y%m%
 OFFLINE_VSLAM_ODOM_TF_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_tf_$(date +%Y%m%d_%H%M%S).log"
 OFFLINE_VSLAM_ODOM_PLAYER_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_player_$(date +%Y%m%d_%H%M%S).log"
 OFFLINE_VSLAM_ODOM_RECORD_LOG_PATH="/tmp/create_2d_map_offline_vslam_odom_record_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_LANDMARK_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_LANDMARK_TF_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_tf_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_LANDMARK_PLAYER_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_player_$(date +%Y%m%d_%H%M%S).log"
+VSLAM_LANDMARK_EXPORT_LOG_PATH="/tmp/create_2d_map_vslam_landmarks_export_$(date +%Y%m%d_%H%M%S).log"
 
 if [ "${PIPELINE_MODE}" = "online" ]; then
     mkdir -p "${VSLAM_MAP_DIR}"
@@ -1959,16 +2433,24 @@ if [ "${PIPELINE_MODE}" = "offline" ] && [ "${CARTOGRAPHER_USE_ODOM}" = true ]; 
 fi
 
 print_mode_summary
+prompt_live_vslam_alignment
 
 # ==========================================
 # 1. Build maps
 # ==========================================
 if [ "${PIPELINE_MODE}" = "online" ]; then
+    MAIN_VSLAM_ENABLE_ALIGNMENT_FROM_CONFIG=true
+    if [ "${VSLAM_LIVE_ALIGNMENT_ENABLED}" = true ]; then
+        MAIN_VSLAM_ENABLE_ALIGNMENT_FROM_CONFIG=false
+    fi
     echo "[1/5] Launch online VSLAM for map creation (logs: ${TF_LOG_PATH}, ${VSLAM_LOG_PATH})"
     launch_vslam_stack \
         "${TF_LOG_PATH}" \
         "${VSLAM_LOG_PATH}" \
-        "${VSLAM_MAP_DIR}"
+        "${VSLAM_MAP_DIR}" \
+        "" \
+        "" \
+        "${MAIN_VSLAM_ENABLE_ALIGNMENT_FROM_CONFIG}"
 
     if [ "${CARTOGRAPHER_USE_ODOM}" = true ]; then
         echo "[2/5] Launch cartographer with live VSLAM odom (log: ${MAP_LOG_PATH})"
@@ -1990,9 +2472,18 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
     echo "[4/5] Play source rosbag for online VSLAM + Cartographer"
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - mode: all topics"
-        if ! play_rosbag \
-            "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}"; then
-            exit 1
+        if [ "${VSLAM_LIVE_ALIGNMENT_ENABLED}" = true ]; then
+            play_rosbag_background \
+                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}"
+            run_live_vslam_alignment_session
+            if ! wait_for_rosbag_playback; then
+                exit 1
+            fi
+        else
+            if ! play_rosbag \
+                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}"; then
+                exit 1
+            fi
         fi
     else
         build_online_source_play_topics
@@ -2000,9 +2491,18 @@ if [ "${PIPELINE_MODE}" = "online" ]; then
 
         echo "  - mode: filtered topics"
         echo "  - topics: ${PLAY_TOPICS[*]}"
-        if ! play_rosbag \
-            "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
-            exit 1
+        if [ "${VSLAM_LIVE_ALIGNMENT_ENABLED}" = true ]; then
+            play_rosbag_background \
+                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"
+            run_live_vslam_alignment_session
+            if ! wait_for_rosbag_playback; then
+                exit 1
+            fi
+        else
+            if ! play_rosbag \
+                "${SOURCE_BAG_PATH}" "${VSLAM_PLAYER_LOG_PATH}" "${PLAY_TOPICS[@]}"; then
+                exit 1
+            fi
         fi
     fi
 
@@ -2093,6 +2593,8 @@ CENTERLINE_INPUT_MAP="${MAP_PGM_PATH}"
 if [ -f "${MAP_PNG_PATH}" ]; then
     CENTERLINE_INPUT_MAP="${MAP_PNG_PATH}"
 fi
+prompt_vslam_landmark_trace
+run_vslam_landmark_trace
 prompt_map_edit
 run_map_edit "${CENTERLINE_INPUT_MAP}"
 generate_centerline "${CENTERLINE_INPUT_MAP}"
