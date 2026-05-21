@@ -148,9 +148,9 @@ def main() -> None:
     finally:
         snapshot_written = node.write_snapshot()
         if snapshot_written:
-            node.get_logger().info(f"Saved VSLAM reference snapshot to {node.output_path}")
+            print(f"[vslam_reference_snapshot_recorder]: Saved VSLAM reference snapshot to {node.output_path}", flush=True)
         else:
-            node.get_logger().warn("No VSLAM path/odometry messages were received; snapshot file was not written.")
+            print("[vslam_reference_snapshot_recorder]: Warning: No VSLAM path/odometry messages were received; snapshot file was not written.", flush=True)
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

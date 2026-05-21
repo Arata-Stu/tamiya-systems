@@ -104,18 +104,13 @@ start_vslam_reference_capture() {
 
     VSLAM_REFERENCE_CAPTURE_EXPECTED=true
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "Warning: python3 not found. Skip VSLAM reference snapshot capture." >&2
-        return 0
-    fi
-
-    if ! recorder_script_path="$(resolve_vslam_reference_recorder_script)"; then
-        echo "Warning: VSLAM reference recorder script not found. Skip path snapshot capture." >&2
+    if ! command -v ros2 >/dev/null 2>&1; then
+        echo "Warning: ros2 not found. Skip VSLAM reference snapshot capture." >&2
         return 0
     fi
 
     recorder_cmd=(
-        python3 "${recorder_script_path}"
+        env PYTHONUNBUFFERED=1 ros2 run vslam_map_tools record_vslam_reference_snapshot.py
         --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
         --odom-topic "${DEFAULT_VSLAM_ODOM_TOPIC}"
         --output "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
@@ -269,6 +264,7 @@ stop_vslam_reference_recorder() {
 }
 
 resolve_vslam_landmark_export_script() {
+    # Keep this function around for backwards compatibility if needed, but it's largely superseded by ros2 run
     if [ -n "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
         if [ -f "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
             echo "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}"
@@ -490,23 +486,21 @@ run_post_vslam_map_alignment_prep() {
     fi
 
     if [ -f "${VSLAM_REFERENCE_SNAPSHOT_PATH}" ]; then
-        if ! command -v python3 >/dev/null 2>&1; then
-            echo "Warning: python3 not found. Skip saved VSLAM reference republisher." >&2
-        elif reference_publisher_script_path="$(resolve_vslam_reference_publisher_script 2>/dev/null || true)"; then
-            if [ -n "${reference_publisher_script_path}" ]; then
-                reference_publish_cmd=(
-                    python3 "${reference_publisher_script_path}"
-                    --input "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
-                    --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
-                    --odom-topic "${DEFAULT_VSLAM_ODOM_TOPIC}"
-                    --publish-rate-hz 5.0
-                )
-                launch_background_process "POST_ALIGNMENT_REFERENCE_PUBLISHER_PID" "POST_ALIGNMENT_REFERENCE_PUBLISHER_USES_SETSID" \
-                    "${reference_publish_cmd[@]}" \
-                    > "${POST_ALIGNMENT_REFERENCE_PUBLISHER_LOG_PATH}" 2>&1
-                if wait_for_topic "${VSLAM_LANDMARK_PATH_TOPIC}" 10; then
-                    echo "  - ${VSLAM_LANDMARK_PATH_TOPIC} is active (saved reference replay)"
-                fi
+        if ! command -v ros2 >/dev/null 2>&1; then
+            echo "Warning: ros2 not found. Skip saved VSLAM reference republisher." >&2
+        else
+            reference_publish_cmd=(
+                env PYTHONUNBUFFERED=1 ros2 run vslam_map_tools publish_saved_vslam_reference.py
+                --input "${VSLAM_REFERENCE_SNAPSHOT_PATH}"
+                --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
+                --odom-topic "${DEFAULT_VSLAM_ODOM_TOPIC}"
+                --publish-rate-hz 5.0
+            )
+            launch_background_process "POST_ALIGNMENT_REFERENCE_PUBLISHER_PID" "POST_ALIGNMENT_REFERENCE_PUBLISHER_USES_SETSID" \
+                "${reference_publish_cmd[@]}" \
+                > "${POST_ALIGNMENT_REFERENCE_PUBLISHER_LOG_PATH}" 2>&1
+            if wait_for_topic "${VSLAM_LANDMARK_PATH_TOPIC}" 10; then
+                echo "  - ${VSLAM_LANDMARK_PATH_TOPIC} is active (saved reference replay)"
             fi
         fi
     else
@@ -615,18 +609,19 @@ run_vslam_landmark_trace() {
 
     echo "[prep] Export VSLAM landmarks for tracing"
 
-    if ! command -v python3 >/dev/null 2>&1; then
-        echo "Warning: python3 not found. Skip VSLAM landmark tracing helper." >&2
+    if ! command -v ros2 >/dev/null 2>&1; then
+        echo "Warning: ros2 not found. Skip VSLAM landmark tracing helper." >&2
         return 0
     fi
 
-    if ! export_script_path="$(resolve_vslam_landmark_export_script)"; then
-        if [ -n "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
-            echo "Warning: landmark export script not found: ${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" >&2
-        else
-            echo "Warning: export_landmarks_png.py not found. Skip VSLAM landmark tracing helper." >&2
-        fi
-        return 0
+    if [ -n "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ] && [ -f "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}" ]; then
+        export_cmd=(
+            python3 "${VSLAM_LANDMARK_EXPORT_SCRIPT_PATH}"
+        )
+    else
+        export_cmd=(
+            env PYTHONUNBUFFERED=1 ros2 run vslam_map_tools export_landmarks_png.py
+        )
     fi
 
     if ! map_edit_script_path="$(resolve_map_edit_script)"; then
@@ -662,8 +657,7 @@ run_vslam_landmark_trace() {
         return 0
     fi
 
-    export_cmd=(
-        python3 "${export_script_path}"
+    export_cmd+=(
         --landmarks-topic "${VSLAM_LANDMARK_TOPIC}"
         --path-topic "${VSLAM_LANDMARK_PATH_TOPIC}"
         --target-frame "${VSLAM_LANDMARK_TARGET_FRAME}"
