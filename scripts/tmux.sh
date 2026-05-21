@@ -157,7 +157,7 @@ CMD_PRODUCTION="bash ${LAUNCH_SYSTEM_SH} production --set map_dir=<map_dir>"
 CMD_MONITOR="bash ${MONITOR_SH}"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 CMD_CREATE_VSLAM_MAP="bash ${CREATE_VSLAM_MAP_SH} --mode vslam --rate 1.0"
-CMD_CREATE_MAP="bash ${CREATE_MAP_SH} --mode no_odom_online_vslam --rate 1.0 --live-vslam-map-align --trace-vslam-landmarks"
+CMD_CREATE_MAP="bash ${CREATE_MAP_SH} --mode no_odom_online_vslam --rate 1.0 --prepare-vslam-map-alignment --trace-vslam-landmarks"
 CMD_IDENTIFICATION="bash ${LAUNCH_SYSTEM_SH} identification"
 CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
 CMD_LOCALIZATION_EVAL="bash ${LAUNCH_SYSTEM_SH} localization_eval --set map_dir=<map_dir>"
@@ -174,7 +174,7 @@ CMD_DEBUG_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/
 CMD_PERCEPTION_LABEL="ros2 topic echo /perception/classification/label"
 CMD_PERCEPTION_CONFIDENCE="ros2 topic echo /perception/classification/confidence"
 RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz --ros-args -p use_sim_time:=true'
-RVIZ_VSLAM_ALIGNMENT='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_map_alignment.rviz --ros-args -p use_sim_time:=true'
+RVIZ_VSLAM_ALIGNMENT='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_map_alignment.rviz'
 RVIZ_VSLAM_DEBUG='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.rviz --ros-args -p use_sim_time:=true'
 
 PANE_WINDOWS=()
@@ -363,7 +363,7 @@ Usage:
 
 Notes:
   - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
-  - map mode prepares the live VSLAM-alignment + landmark-tracing flow and also keeps a lean localization-eval window.
+  - map mode prepares online map creation, then post-map VSLAM(load_map) alignment prep + landmark tracing.
 EOF
 }
 
@@ -379,7 +379,7 @@ choose_mode_interactive() {
     echo "Select mode:" >&2
     echo "  1) $MODE_TAMIYA (production + monitor)" >&2
     echo "  2) $MODE_PYTHON (python workspace)" >&2
-    echo "  3) $MODE_MAP (live alignment map creation + localization eval)" >&2
+    echo "  3) $MODE_MAP (post-map alignment prep + localization eval)" >&2
     echo "  4) $MODE_IDENTIFICATION (live VSLAM + bag recording for MAP lookup)" >&2
     echo "  5) $MODE_LOCALIZATION_EVAL (bag replay + localization eval)" >&2
     echo "  6) $MODE_PERCEPTION_EVAL (bag replay + perception eval)" >&2
@@ -447,6 +447,7 @@ create_map_layout() {
   reset_panes
   add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$CMD_CREATE_MAP"
   add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_VSLAM_ALIGNMENT"
+  add_pane "$WINDOW_MAIN" "$WORK_DIR" "$ROS_SETUP" ""
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_EVAL"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
