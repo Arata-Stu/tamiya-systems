@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Custom terminal dashboard for ROS 2 map, localization, scan, image, crop image, and sections."""
+"""Custom terminal dashboard for ROS 2 map, localization, scan, images, and paths."""
 
 from __future__ import annotations
 
@@ -86,6 +86,7 @@ class DashboardState:
     camera_info: Optional[CameraInfo] = None
     particles: Optional[PoseArray] = None
     path: Optional[Path] = None
+    vo_path: Optional[Path] = None
     global_path: Optional[Path] = None
     local_path: Optional[Path] = None
     odom_speed_mps: Optional[float] = None
@@ -126,6 +127,7 @@ class TerminalDashboard(Node):
             "gates": True,
             "particles": False,
             "path": True,
+            "vo_path": True,
             "global_path": True,
             "local_path": True,
         }
@@ -156,6 +158,11 @@ class TerminalDashboard(Node):
             depth=1,
             reliability=ReliabilityPolicy.BEST_EFFORT if args.best_effort else ReliabilityPolicy.RELIABLE,
         )
+        crop_sensor_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+        )
         marker_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -183,15 +190,22 @@ class TerminalDashboard(Node):
                 self.create_subscription(Image, args.image_topic, self.on_image, sensor_qos)
         if args.crop_image_topic:
             if args.crop_compressed_image:
-                self.create_subscription(CompressedImage, args.crop_image_topic, self.on_crop_compressed_image, sensor_qos)
+                self.create_subscription(
+                    CompressedImage,
+                    args.crop_image_topic,
+                    self.on_crop_compressed_image,
+                    crop_sensor_qos,
+                )
             else:
-                self.create_subscription(Image, args.crop_image_topic, self.on_crop_image, sensor_qos)
+                self.create_subscription(Image, args.crop_image_topic, self.on_crop_image, crop_sensor_qos)
         if args.image_topic and args.camera_info_topic:
             self.create_subscription(CameraInfo, args.camera_info_topic, self.on_camera_info, sensor_qos)
         if args.particles_topic:
             self.create_subscription(PoseArray, args.particles_topic, self.on_particles, sensor_qos)
         if args.path_topic:
             self.create_subscription(Path, args.path_topic, self.on_path, reliable_qos)
+        if args.vo_path_topic:
+            self.create_subscription(Path, args.vo_path_topic, self.on_vo_path, reliable_qos)
         if args.global_path_topic:
             self.create_subscription(Path, args.global_path_topic, self.on_global_path, reliable_qos)
         if args.local_path_topic:
@@ -300,6 +314,9 @@ class TerminalDashboard(Node):
 
     def on_path(self, msg: Path) -> None:
         self.state.path = msg
+
+    def on_vo_path(self, msg: Path) -> None:
+        self.state.vo_path = msg
 
     def on_global_path(self, msg: Path) -> None:
         self.state.global_path = msg
@@ -413,6 +430,8 @@ class TerminalDashboard(Node):
             self.draw_sections(canvas, scale, ox, oy)
         if self.toggles["path"]:
             self.draw_path(canvas, scale, ox, oy, self.state.path, (40, 180, 80))
+        if self.toggles["vo_path"]:
+            self.draw_path(canvas, scale, ox, oy, self.state.vo_path, (245, 140, 35))
         if self.toggles["global_path"]:
             self.draw_path(canvas, scale, ox, oy, self.state.global_path, (180, 40, 180))
         if self.toggles["local_path"]:
@@ -711,6 +730,7 @@ class TerminalDashboard(Node):
             "g": "gates",
             "p": "particles",
             "t": "path",
+            "v": "vo_path",
             "y": "global_path",
             "h": "local_path",
         }
@@ -790,7 +810,7 @@ class TerminalDashboard(Node):
         line1 = f"frame={self.state.frames} loc={loc} amcl={amcl} init={init} scan={scan} section={self.state.current_section}"
         line2 = (
             f"odom={odom} img={image} crop={crop} cam={camera_info} tog={flags} "
-            f"keys=m/l/a/u/s/i/r/c/g/p/t/y/h space q {self.last_key_status}"
+            f"keys=m/l/a/u/s/i/r/c/g/p/t/v/y/h space q {self.last_key_status}"
         )
         cv2.putText(canvas, line1[:180], (8, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (235, 235, 235), 1, cv2.LINE_AA)
         cv2.putText(canvas, line2[:180], (8, 42), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (215, 220, 228), 1, cv2.LINE_AA)
@@ -808,6 +828,7 @@ class TerminalDashboard(Node):
             ("g", "gates"),
             ("p", "particles"),
             ("t", "path"),
+            ("v", "vo_path"),
             ("y", "global_path"),
             ("h", "local_path"),
         )
@@ -868,8 +889,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--compressed-image", action="store_true")
     parser.add_argument(
         "--crop-image-topic",
-        default="",
-        help="Optional image topic for perception crop preview, e.g. /perception/crop/image",
+        default="/perception/crop/image",
+        help="Image topic for perception crop preview",
     )
     parser.add_argument(
         "--crop-compressed-image",
@@ -878,6 +899,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--particles-topic", default="/particle_cloud")
     parser.add_argument("--path-topic", default="/visual_slam/tracking/slam_path")
+    parser.add_argument("--vo-path-topic", default="/visual_slam/tracking/vo_path")
     parser.add_argument("--global-path-topic", default="/planning/global_raceline")
     parser.add_argument("--local-path-topic", default="/autonomous/trajectory")
     parser.add_argument("--section-markers-topic", default="/localization/section_markers")

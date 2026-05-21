@@ -27,10 +27,11 @@ python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py
 
 `ros2_terminal_dashboard.py` is the custom rviz-like entrypoint for SSH
 debugging. It keeps topic names as command-line options, then lets you toggle
-map, localization, scan, image, crop image, sections, gates, particles, and
-path from the keyboard. `--camera-info-topic` を与えると image panel にも
-LaserScan を投影します。crop preview も見たいときは
-`--crop-image-topic /perception/crop/image` を付けます。
+map, localization, scan, image, crop image, sections, gates, particles,
+`slam_path`, `vo_path`, and planning paths from the keyboard.
+`--camera-info-topic` を与えると image panel にも LaserScan を投影します。
+crop preview は既定で `/perception/crop/image` を購読し、BEST_EFFORT QoS で
+受け取ります。
 
 ## Shared helpers
 
