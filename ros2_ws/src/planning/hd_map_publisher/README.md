@@ -48,6 +48,7 @@ saved cuVSLAM map と HD map/raceline 成果物を置いた `map_dir` に対し�
   --set use_camera=false \
   --set use_hd_map=true \
   --set use_planning=true \
+  --set localize_on_startup=true \
   --set planning_publish_local_path=false \
   --set planning_publish_local_reference=false
 ```
@@ -69,6 +70,10 @@ rviz2 -d "$(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.
 `/hd_map/primary_centerline_path`、`/planning/global_raceline` を追加しています。
 `use_camera=false` は bag の stereo image/camera info と `/tf_static` を使う
 offline replay 向けです。sensor node も同時に起動したい場合だけ外してください。
+`map_dir` から `<map_dir>/cuvslam_map` を cuVSLAM の
+`load_map_folder_path` に渡します。`localize_on_startup=true` は replay が
+saved map の原点付近から始まる実験向けです。途中位置から始める bag では
+identity pose hint が外れるため、RViz の initial pose など別の hint を使ってください。
 上の `planning_publish_local_*` は static overlay 用です。local trajectory は
 車両姿勢を切り出すため `map -> base_link` TF が必要なので、Pure Pursuit 側まで
 確認するときだけ有効に戻してください。VSLAM TF を使う場合は追跡開始後に
@@ -79,4 +84,12 @@ landmarks も一時的に見たい場合は launch に次を追加します。
 ```bash
 --set enable_slam_visualization=true \
 --set enable_landmarks_view=true
+```
+
+load path の確認には composed VSLAM node の parameter を見ます。
+
+```bash
+ros2 param get /visual_slam_node load_map_folder_path
+ros2 param get /visual_slam_node enable_localization_n_mapping
+ros2 param get /visual_slam_node localize_on_startup
 ```

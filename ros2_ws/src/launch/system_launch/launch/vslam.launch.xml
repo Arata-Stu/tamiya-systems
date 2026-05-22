@@ -27,6 +27,7 @@
     <arg name="save_map_path" default="" />
     <arg name="load_map_path" default="" />
     <arg name="enable_localization_and_mapping" default="true" />
+    <arg name="localize_on_startup" default="false" />
     <arg name="publish_map_to_odom_tf" default="false" />
     <arg name="enable_slam_visualization" default="false" />
     <arg name="enable_observations_view" default="false" />
@@ -107,7 +108,8 @@
             <param name="map_frame" value="$(var vslam_map_frame)"/>
             <param name="save_map_folder_path" value="$(var save_map_path)"/>
             <param name="load_map_folder_path" value="$(var load_map_path)"/>
-            <param name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
+            <param name="enable_localization_n_mapping" value="$(var enable_localization_and_mapping)"/>
+            <param name="localize_on_startup" value="$(var localize_on_startup)"/>
             <param name="publish_map_to_odom_tf" value="$(var publish_map_to_odom_tf)"/>
             <param name="enable_slam_visualization" value="$(var enable_slam_visualization)"/>
             <param name="enable_observations_view" value="$(var enable_observations_view)"/>

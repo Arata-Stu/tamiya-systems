@@ -194,6 +194,7 @@
     <arg name="vslam_map_dir" default="" description="explicit cuvslam map directory override" />
     <arg name="vslam_save_map_dir" default="" description="directory to save/update cuvslam map" />
     <arg name="vslam_map_frame" default="map" />
+    <arg name="localize_on_startup" default="false" description="try identity-pose localization in a loaded cuVSLAM map at startup" />
     <arg name="publish_vslam_map_identity_tf" default="true" />
     <arg name="use_vslam_map_alignment_node" default="false" />
     <arg name="vslam_map_alignment_config" default="" />
@@ -588,6 +589,7 @@
             <arg name="enable_localization_and_mapping" value="$(var enable_localization_and_mapping)"/>
             <arg name="load_map_path" value="$(var resolved_vslam_map_dir)"/>
             <arg name="save_map_path" value="$(var vslam_save_map_dir)"/>
+            <arg name="localize_on_startup" value="$(var localize_on_startup)"/>
             <arg name="publish_map_to_odom_tf" value="$(var publish_map_to_odom_tf)"/>
             <arg name="enable_slam_visualization" value="$(var enable_slam_visualization)"/>
             <arg name="enable_observations_view" value="$(var enable_observations_view)"/>

@@ -41,7 +41,7 @@ Examples:
   ${SCRIPT_NAME} production --set use_perception=true
   ${SCRIPT_NAME} production --set use_perception=true --set use_perception_classifier=true
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse --set use_control_filter=true
-  ${SCRIPT_NAME} vslam_eval --set map_dir=/map/mybag/mycourse --set use_camera=false --set use_hd_map=true --set use_planning=true
+  ${SCRIPT_NAME} vslam_eval --set map_dir=/map/mybag/mycourse --set use_camera=false --set use_hd_map=true --set use_planning=true --set localize_on_startup=true --set planning_publish_local_path=false --set planning_publish_local_reference=false
   ${SCRIPT_NAME} production --e2e lidar_trajectory
   ${SCRIPT_NAME} production --set use_drive_mode_manager=true
   ${SCRIPT_NAME} identification
