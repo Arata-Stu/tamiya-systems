@@ -114,6 +114,41 @@ section-class mapping YAML を作るには:
 から起動する alias です。必要なら `--set e2e_run_pure_pursuit=false` で
 trajectory のみ出す構成にもできます。
 
+camera E2E と VSLAM を同時に起動するときも、`system.launch` は camera と
+VSLAM の NITROS graph を同じ `camera_container` に置く既定です。executor
+分離の効果を計測したい場合だけ、VSLAM の rectify / format conversion /
+VisualSlamNode を別 component process に移す
+`--set isolate_vslam_container=true` を試してください。
+
+RealSense は stereo infrared を rectified な `image_rect_raw` として出すため、
+`system.launch` の `vslam_use_image_preprocessors=auto` は RealSense path で
+VSLAM 専用の rectify / mono conversion を省きます。raw image を出す camera
+path では preprocessors を残します。必要なら
+`--set vslam_use_image_preprocessors=true` か `false` で固定できます。
+
+camera E2E は grayscale 画像から学習した PilotNet を前提に、encoder の
+`ResizeNode` へ既定で `mono8` input を渡し、encoder 内の format conversion
+で推論用の 3ch RGB tensor にします。カラー画像から同じ grayscale 前処理へ
+落とす場合だけ `--set e2e_camera_input_is_grayscale=false` を指定します。
+encoder の input image QoS は既定で `SENSOR_DATA` です。比較用に
+`--set e2e_camera_encoder_input_qos=DEFAULT` などで差し替えられます。
+
+component container を分けても Jetson 全体の CPU 使用量を制限するわけではなく、
+高レート image topic が process 境界をまたぐ tradeoff もあります。
+E2E が odometry だけを必要とする走行では、SLAM map 更新を止める構成と
+camera FPS を落とす構成も比較してください。
+
+```bash
+./scripts/launch_system.sh production \
+  --set use_e2e=true \
+  --set e2e_variant=camera \
+  --set enable_localization_and_mapping=false \
+  --set image_fps=30.0
+```
+
+VSLAM param YAML を差し替えて `slam_throttling_time_ms` などを調整する場合は
+`--set vslam_param=/path/to/vslam.param.yaml` を使えます。
+
 ## Drive Mode Manager
 
 `drive_mode_manager` は `section` と `path_obstacle_filter` の

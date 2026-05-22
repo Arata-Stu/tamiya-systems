@@ -3,6 +3,9 @@
     <arg name="image_width" default="424" />
     <arg name="image_height" default="240" />
     <arg name="camera_container_name" default="camera_container" />
+    <arg name="vslam_container_name" default="$(var camera_container_name)" />
+    <arg name="create_vslam_container" default="false" />
+    <arg name="use_image_preprocessors" default="true" />
     <arg name="use_sim_time" default="false" />
     <arg name="vslam_map_frame" default="vslam_map" />
     <arg name="vslam_map_parent_frame" default="map" />
@@ -29,53 +32,75 @@
     <arg name="enable_observations_view" default="false" />
     <arg name="enable_landmarks_view" default="false" />
 
-    <load_composable_node target="$(var camera_container_name)">
-        <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::RectifyNode" name="rectify_node_left">
-            <param name="use_sim_time" value="$(var use_sim_time)"/>
-            <param name="output_width" value="$(var image_width)"/>
-            <param name="output_height" value="$(var image_height)"/>
-            <remap from="image_raw" to="/camera/left/image_raw"/>
-            <remap from="camera_info" to="/camera/left/camera_info"/>
-            <remap from="image_rect" to="/camera/left/image_rect"/>
-            <remap from="camera_info_rect" to="/camera/left/camera_info_rect"/>
-        </composable_node>
-    </load_composable_node>
+    <node pkg="rclcpp_components" exec="component_container_mt" name="$(var vslam_container_name)" output="screen"
+          if="$(var create_vslam_container)"/>
 
-    <load_composable_node target="$(var camera_container_name)">
-        <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::RectifyNode" name="rectify_node_right">
-            <param name="use_sim_time" value="$(var use_sim_time)"/>
-            <param name="output_width" value="$(var image_width)"/>
-            <param name="output_height" value="$(var image_height)"/>
-            <remap from="image_raw" to="/camera/right/image_raw"/>
-            <remap from="camera_info" to="/camera/right/camera_info"/>
-            <remap from="image_rect" to="/camera/right/image_rect"/>
-            <remap from="camera_info_rect" to="/camera/right/camera_info_rect"/>
-        </composable_node>
-    </load_composable_node>
+    <let name="visual_slam_left_image_topic" value="/camera/left/image_rect_mono"
+         if="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_left_camera_info_topic" value="/camera/left/camera_info_rect"
+         if="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_right_image_topic" value="/camera/right/image_rect_mono"
+         if="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_right_camera_info_topic" value="/camera/right/camera_info_rect"
+         if="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_left_image_topic" value="/camera/left/image_raw"
+         unless="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_left_camera_info_topic" value="/camera/left/camera_info"
+         unless="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_right_image_topic" value="/camera/right/image_raw"
+         unless="$(var use_image_preprocessors)"/>
+    <let name="visual_slam_right_camera_info_topic" value="/camera/right/camera_info"
+         unless="$(var use_image_preprocessors)"/>
 
-    <load_composable_node target="$(var camera_container_name)">
-        <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode" name="image_format_node_left">
-            <param name="use_sim_time" value="$(var use_sim_time)"/>
-            <param name="encoding_desired" value="mono8"/>
-            <param name="image_width" value="$(var image_width)"/>
-            <param name="image_height" value="$(var image_height)"/>
-            <remap from="image_raw" to="/camera/left/image_rect"/>
-            <remap from="image" to="/camera/left/image_rect_mono"/>
-        </composable_node>
-    </load_composable_node>
+    <group if="$(var use_image_preprocessors)">
+        <load_composable_node target="$(var vslam_container_name)">
+            <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::RectifyNode" name="rectify_node_left">
+                <param name="use_sim_time" value="$(var use_sim_time)"/>
+                <param name="output_width" value="$(var image_width)"/>
+                <param name="output_height" value="$(var image_height)"/>
+                <remap from="image_raw" to="/camera/left/image_raw"/>
+                <remap from="camera_info" to="/camera/left/camera_info"/>
+                <remap from="image_rect" to="/camera/left/image_rect"/>
+                <remap from="camera_info_rect" to="/camera/left/camera_info_rect"/>
+            </composable_node>
+        </load_composable_node>
 
-    <load_composable_node target="$(var camera_container_name)">
-        <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode" name="image_format_node_right">
-            <param name="use_sim_time" value="$(var use_sim_time)"/>
-            <param name="encoding_desired" value="mono8"/>
-            <param name="image_width" value="$(var image_width)"/>
-            <param name="image_height" value="$(var image_height)"/>
-            <remap from="image_raw" to="/camera/right/image_rect"/>
-            <remap from="image" to="/camera/right/image_rect_mono"/>
-        </composable_node>
-    </load_composable_node>
+        <load_composable_node target="$(var vslam_container_name)">
+            <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::RectifyNode" name="rectify_node_right">
+                <param name="use_sim_time" value="$(var use_sim_time)"/>
+                <param name="output_width" value="$(var image_width)"/>
+                <param name="output_height" value="$(var image_height)"/>
+                <remap from="image_raw" to="/camera/right/image_raw"/>
+                <remap from="camera_info" to="/camera/right/camera_info"/>
+                <remap from="image_rect" to="/camera/right/image_rect"/>
+                <remap from="camera_info_rect" to="/camera/right/camera_info_rect"/>
+            </composable_node>
+        </load_composable_node>
 
-    <load_composable_node target="$(var camera_container_name)">
+        <load_composable_node target="$(var vslam_container_name)">
+            <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode" name="image_format_node_left">
+                <param name="use_sim_time" value="$(var use_sim_time)"/>
+                <param name="encoding_desired" value="mono8"/>
+                <param name="image_width" value="$(var image_width)"/>
+                <param name="image_height" value="$(var image_height)"/>
+                <remap from="image_raw" to="/camera/left/image_rect"/>
+                <remap from="image" to="/camera/left/image_rect_mono"/>
+            </composable_node>
+        </load_composable_node>
+
+        <load_composable_node target="$(var vslam_container_name)">
+            <composable_node pkg="isaac_ros_image_proc" plugin="nvidia::isaac_ros::image_proc::ImageFormatConverterNode" name="image_format_node_right">
+                <param name="use_sim_time" value="$(var use_sim_time)"/>
+                <param name="encoding_desired" value="mono8"/>
+                <param name="image_width" value="$(var image_width)"/>
+                <param name="image_height" value="$(var image_height)"/>
+                <remap from="image_raw" to="/camera/right/image_rect"/>
+                <remap from="image" to="/camera/right/image_rect_mono"/>
+            </composable_node>
+        </load_composable_node>
+    </group>
+
+    <load_composable_node target="$(var vslam_container_name)">
         <composable_node pkg="isaac_ros_visual_slam" plugin="nvidia::isaac_ros::visual_slam::VisualSlamNode" name="visual_slam_node">
             <param from ="$(var vslam_param)"/>
             <param name="use_sim_time" value="$(var use_sim_time)"/>
@@ -88,10 +113,10 @@
             <param name="enable_observations_view" value="$(var enable_observations_view)"/>
             <param name="enable_landmarks_view" value="$(var enable_landmarks_view)"/>
 
-            <remap from="/visual_slam/image_0" to="/camera/left/image_rect_mono"/>
-            <remap from="/visual_slam/camera_info_0" to="/camera/left/camera_info_rect"/>
-            <remap from="/visual_slam/image_1" to="/camera/right/image_rect_mono"/>
-            <remap from="/visual_slam/camera_info_1" to="/camera/right/camera_info_rect"/>
+            <remap from="/visual_slam/image_0" to="$(var visual_slam_left_image_topic)"/>
+            <remap from="/visual_slam/camera_info_0" to="$(var visual_slam_left_camera_info_topic)"/>
+            <remap from="/visual_slam/image_1" to="$(var visual_slam_right_image_topic)"/>
+            <remap from="/visual_slam/camera_info_1" to="$(var visual_slam_right_camera_info_topic)"/>
 
             <remap from="/visual_slam/imu" to="/camera/imu" />
         </composable_node>

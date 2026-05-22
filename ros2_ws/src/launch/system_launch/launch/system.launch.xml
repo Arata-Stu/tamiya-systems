@@ -39,6 +39,12 @@
     <arg name="lidar_container_name" default="lidar_container" />
     <arg name="camera_model" default="realsense" />
     <arg name="camera_container_name" default="camera_container" />
+    <arg name="isolate_vslam_container" default="false"
+         description="opt in to a separate component container for VSLAM profiling"/>
+    <arg name="vslam_container_name" default="vslam_container"
+         description="component container created for isolated VSLAM nodes"/>
+    <arg name="vslam_use_image_preprocessors" default="auto"
+         description="auto skips VSLAM rectification for RealSense rectified infrared input"/>
     <!-- ==================================================================== -->
     <!-- カメラ解像度設定 (全システム共通)                                     -->
     <!-- 解像度を変更する場合は下記 3 行の default 値を書き換えてください。    -->
@@ -69,6 +75,8 @@
     <arg name="e2e_camera_trajectory_model_name" default="pilotnet_trajectory" />
     <arg name="e2e_camera_input_image_topic" default="/camera/left/image_raw" />
     <arg name="e2e_camera_input_camera_info_topic" default="/camera/left/camera_info" />
+    <arg name="e2e_camera_input_is_grayscale" default="true" />
+    <arg name="e2e_camera_encoder_input_qos" default="SENSOR_DATA" />
     <arg name="e2e_lidar_model_name" default="tinylidarnet" />
     <arg name="e2e_lidar_trajectory_model_name" default="magp_rl_trajectory" />
     <arg name="e2e_lidar_scan_topic" default="/scan" />
@@ -177,6 +185,7 @@
     <arg name="drive_mode_following_requested_topic" default="/planning/path_obstacle_filter/following_requested" />
     <arg name="map_yaml_path" default="$(find-pkg-share isaac_ros_occupancy_grid_localizer)/maps/map.yaml" />
     <arg name="map_dir" default="" description="directory containing map-name.yaml and optional cuvslam_map/" />
+    <arg name="vslam_param" default="$(find-pkg-share system_launch)/config/localization/vslam.param.yaml" />
     <arg name="vslam_map_dir" default="" description="explicit cuvslam map directory override" />
     <arg name="vslam_save_map_dir" default="" description="directory to save/update cuvslam map" />
     <arg name="vslam_map_frame" default="vslam_map" />
@@ -237,6 +246,21 @@
          if="$(eval '\'$(var use_control_filter)\'.lower() == \'true\' and \'$(var control_filter_raw_control_cmd)\'.strip() == \'\'')" />
     <let name="resolved_vehicle_camera_frame"
          value="$(var camera_mount_frame)" />
+    <let name="resolved_vslam_container_name"
+         value="$(var vslam_container_name)"
+         if="$(var isolate_vslam_container)" />
+    <let name="resolved_vslam_container_name"
+         value="$(var camera_container_name)"
+         unless="$(var isolate_vslam_container)" />
+    <let name="resolved_vslam_use_image_preprocessors"
+         value="$(var vslam_use_image_preprocessors)"
+         unless="$(eval '\'$(var vslam_use_image_preprocessors)\'.strip().lower() == \'auto\'')" />
+    <let name="resolved_vslam_use_image_preprocessors"
+         value="false"
+         if="$(eval '\'$(var vslam_use_image_preprocessors)\'.strip().lower() == \'auto\' and \'$(var camera_model)\'.strip().lower() == \'realsense\'')" />
+    <let name="resolved_vslam_use_image_preprocessors"
+         value="true"
+         if="$(eval '\'$(var vslam_use_image_preprocessors)\'.strip().lower() == \'auto\' and \'$(var camera_model)\'.strip().lower() != \'realsense\'')" />
     <let name="resolved_publish_camera_stereo_tf"
          value="true"
          if="$(eval '\'$(var camera_model)\' == \'elp\'')" />
@@ -304,6 +328,8 @@
             <arg name="model_name" value="$(var e2e_camera_model_name)" />
             <arg name="input_image_topic" value="$(var e2e_camera_input_image_topic)" />
             <arg name="input_camera_info_topic" value="$(var e2e_camera_input_camera_info_topic)" />
+            <arg name="input_is_grayscale" value="$(var e2e_camera_input_is_grayscale)" />
+            <arg name="encoder_input_qos" value="$(var e2e_camera_encoder_input_qos)" />
             <arg name="original_image_width" value="$(var image_width)" />
             <arg name="original_image_height" value="$(var image_height)" />
             <arg name="output_filtered_control_topic" value="$(var resolved_controller_control_cmd)" />
@@ -514,7 +540,11 @@
             <arg name="image_width" value="$(var image_width)"/>
             <arg name="image_height" value="$(var image_height)"/>
             <arg name="camera_container_name" value="$(var camera_container_name)"/>
+            <arg name="vslam_container_name" value="$(var resolved_vslam_container_name)"/>
+            <arg name="create_vslam_container" value="$(var isolate_vslam_container)"/>
+            <arg name="use_image_preprocessors" value="$(var resolved_vslam_use_image_preprocessors)"/>
             <arg name="use_sim_time" value="$(var use_sim_time)"/>
+            <arg name="vslam_param" value="$(var vslam_param)"/>
             <arg name="vslam_map_frame" value="$(var vslam_map_frame)"/>
             <arg name="vslam_map_parent_frame" value="$(var map_frame)"/>
             <arg name="publish_vslam_map_identity_tf" value="$(var publish_vslam_map_identity_tf)"/>
