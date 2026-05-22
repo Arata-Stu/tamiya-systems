@@ -12,7 +12,6 @@ import rclpy
 import yaml
 from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Path as PathMsg
-from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
@@ -174,7 +173,7 @@ class HdMapPublisherNode(Node):
 
         self.hd_map: Optional[HdMap] = None
         self.primary_path_warning_logged = False
-        self.last_load_attempt = self.get_clock().now() - Duration(seconds=self.retry_interval_sec)
+        self.last_load_attempt = self.get_clock().now()
         self.try_load_hd_map()
         self.timer = self.create_timer(1.0 / self.publish_rate_hz, self.publish_outputs)
 
@@ -207,7 +206,8 @@ class HdMapPublisherNode(Node):
 
     def publish_outputs(self) -> None:
         if self.hd_map is None:
-            elapsed = (self.get_clock().now() - self.last_load_attempt).nanoseconds / 1.0e9
+            now = self.get_clock().now()
+            elapsed = max(0.0, (now.nanoseconds - self.last_load_attempt.nanoseconds) / 1.0e9)
             if elapsed >= self.retry_interval_sec:
                 self.try_load_hd_map()
             return
