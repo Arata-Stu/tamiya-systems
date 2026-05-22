@@ -159,6 +159,59 @@ def write_map_yaml(
     output_yaml.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def auto_raster_geometry(
+    landmark_xy: np.ndarray,
+    path_xy: np.ndarray,
+    resolution: float,
+    padding_m: float,
+) -> RasterGeometry:
+    point_sets = [points for points in (landmark_xy, path_xy) if points.size > 0]
+    if not point_sets:
+        raise RuntimeError("No landmarks or path points were available to compute raster bounds.")
+
+    stacked = np.vstack(point_sets)
+    resolution = max(1.0e-4, float(resolution))
+    padding_m = max(0.0, float(padding_m))
+    min_x = float(np.min(stacked[:, 0]) - padding_m)
+    min_y = float(np.min(stacked[:, 1]) - padding_m)
+    max_x = float(np.max(stacked[:, 0]) + padding_m)
+    max_y = float(np.max(stacked[:, 1]) + padding_m)
+
+    return RasterGeometry(
+        width=max(1, int(math.ceil((max_x - min_x) / resolution)) + 1),
+        height=max(1, int(math.ceil((max_y - min_y) / resolution)) + 1),
+        resolution=resolution,
+        origin_x=min_x,
+        origin_y=min_y,
+        origin_yaw=0.0,
+    )
+
+
+def reference_raster_geometry(reference_path: Path) -> tuple[RasterGeometry, MapYamlTemplate, Optional[np.ndarray]]:
+    ref_data = parse_simple_yaml(reference_path)
+    ref_image_value = str(ref_data["image"]).strip().strip('"').strip("'")
+    ref_image_path = (reference_path.parent / ref_image_value).resolve()
+    image = cv2.imread(str(ref_image_path), cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        raise FileNotFoundError(f"Could not read reference map image: {ref_image_path}")
+
+    origin_x, origin_y, origin_yaw = parse_origin(ref_data["origin"])
+    geometry = RasterGeometry(
+        width=int(image.shape[1]),
+        height=int(image.shape[0]),
+        resolution=float(ref_data["resolution"]),
+        origin_x=origin_x,
+        origin_y=origin_y,
+        origin_yaw=origin_yaw,
+    )
+    template = MapYamlTemplate(
+        negate=float(ref_data.get("negate", 0.0)),
+        occupied_thresh=float(ref_data.get("occupied_thresh", 0.65)),
+        free_thresh=float(ref_data.get("free_thresh", 0.196)),
+    )
+    return geometry, template, image
+
+
 def read_landmark_points(landmarks_data: dict, min_z: Optional[float], max_z: Optional[float]) -> np.ndarray:
     import struct
     
@@ -225,10 +278,12 @@ def draw_path(canvas: np.ndarray, pixels: np.ndarray, thickness: int, color: tup
 def main() -> None:
     parser = argparse.ArgumentParser(description="Offline export of VSLAM landmarks/paths into a PNG aligned to the map.")
     parser.add_argument("--snapshot", required=True, help="Path to ver1_vslam_reference.json")
-    parser.add_argument("--alignment", required=True, help="Path to vslam_map_alignment.yaml")
-    parser.add_argument("--reference-yaml", required=True, help="Path to the 2D map yaml (e.g. ver1.yaml)")
+    parser.add_argument("--alignment", default="", help="Optional path to vslam_map_alignment.yaml. Empty uses identity.")
+    parser.add_argument("--reference-yaml", default="", help="Optional 2D map yaml used for raster resolution/origin/image size.")
     parser.add_argument("--output-image", required=True, help="Path to output PNG image")
     parser.add_argument("--output-yaml", default="", help="Path to output YAML image")
+    parser.add_argument("--resolution", type=float, default=0.02, help="Auto-raster resolution when --reference-yaml is omitted")
+    parser.add_argument("--padding-m", type=float, default=0.5, help="Auto-raster padding when --reference-yaml is omitted")
     parser.add_argument("--background-value", type=int, default=255)
     parser.add_argument("--landmark-value", type=int, default=0)
     parser.add_argument("--path-value", type=int, default=96)
@@ -245,30 +300,28 @@ def main() -> None:
         print(f"Error: Snapshot not found: {snapshot_path}")
         return
         
-    alignment_path = Path(args.alignment).expanduser().resolve()
-    if not alignment_path.exists():
-        print(f"Error: Alignment YAML not found: {alignment_path}")
-        return
-        
-    reference_path = Path(args.reference_yaml).expanduser().resolve()
-    if not reference_path.exists():
-        print(f"Error: Reference map YAML not found: {reference_path}")
-        return
+    if args.alignment:
+        alignment_path = Path(args.alignment).expanduser().resolve()
+        if not alignment_path.exists():
+            print(f"Error: Alignment YAML not found: {alignment_path}")
+            return
 
-    # Parse Alignment TF (map -> vslam_map)
-    alignment_data = parse_simple_yaml(alignment_path)
-    
-    # Check if there is ros__parameters wrapper
-    if "ros__parameters" in alignment_path.read_text():
-        # Quick manual parsing for nested ros__parameters
-        align_params = {}
-        for line in alignment_path.read_text().splitlines():
-            line = line.strip()
-            if ":" in line and not line.endswith(":"):
-                k, v = line.split(":", 1)
-                align_params[k.strip()] = v.strip()
+        # Parse Alignment TF (map -> vslam_map)
+        alignment_data = parse_simple_yaml(alignment_path)
+
+        # Check if there is ros__parameters wrapper
+        if "ros__parameters" in alignment_path.read_text():
+            # Quick manual parsing for nested ros__parameters
+            align_params = {}
+            for line in alignment_path.read_text().splitlines():
+                line = line.strip()
+                if ":" in line and not line.endswith(":"):
+                    k, v = line.split(":", 1)
+                    align_params[k.strip()] = v.strip()
+        else:
+            align_params = alignment_data
     else:
-        align_params = alignment_data
+        align_params = {}
 
     tx = float(align_params.get("x", 0.0))
     ty = float(align_params.get("y", 0.0))
@@ -308,32 +361,27 @@ def main() -> None:
     landmark_points_map = transform_points(landmark_points, rot, trans)
     path_points_map = transform_points(path_points, rot, trans)
 
-    # Read geometry from Reference Map
-    ref_data = parse_simple_yaml(reference_path)
-    ref_image_value = str(ref_data["image"]).strip().strip('"').strip("'")
-    ref_image_path = (reference_path.parent / ref_image_value).resolve()
-    image = cv2.imread(str(ref_image_path), cv2.IMREAD_GRAYSCALE)
-    if image is None:
-        print(f"Error: Could not read reference map image: {ref_image_path}")
-        return
-        
-    origin_x, origin_y, origin_yaw = parse_origin(ref_data["origin"])
-    geometry = RasterGeometry(
-        width=int(image.shape[1]),
-        height=int(image.shape[0]),
-        resolution=float(ref_data["resolution"]),
-        origin_x=origin_x,
-        origin_y=origin_y,
-        origin_yaw=origin_yaw,
-    )
-    template = MapYamlTemplate(
-        negate=float(ref_data.get("negate", 0.0)),
-        occupied_thresh=float(ref_data.get("occupied_thresh", 0.65)),
-        free_thresh=float(ref_data.get("free_thresh", 0.196)),
-    )
+    landmark_xy = landmark_points_map[:, :2] if landmark_points_map.size > 0 else np.empty((0, 2))
+    path_xy = path_points_map[:, :2] if path_points_map.size > 0 else np.empty((0, 2))
+
+    image = None
+    if args.reference_yaml:
+        reference_path = Path(args.reference_yaml).expanduser().resolve()
+        if not reference_path.exists():
+            print(f"Error: Reference map YAML not found: {reference_path}")
+            return
+        geometry, template, image = reference_raster_geometry(reference_path)
+    else:
+        geometry = auto_raster_geometry(
+            landmark_xy=landmark_xy,
+            path_xy=path_xy,
+            resolution=args.resolution,
+            padding_m=args.padding_m,
+        )
+        template = MapYamlTemplate()
 
     # Create Raster (BGR)
-    canvas = np.full((geometry.height, geometry.width, 3), 255, dtype=np.uint8)
+    canvas = np.full((geometry.height, geometry.width, 3), args.background_value, dtype=np.uint8)
     
     # Overlay the 2D map faintly in the background
     if image is not None:
@@ -341,9 +389,6 @@ def main() -> None:
         map_bgr = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         # Fade the 2D map by 60% (mix with white background)
         canvas = cv2.addWeighted(map_bgr, 0.4, canvas, 0.6, 0)
-    
-    landmark_xy = landmark_points_map[:, :2] if landmark_points_map.size > 0 else np.empty((0, 2))
-    path_xy = path_points_map[:, :2] if path_points_map.size > 0 else np.empty((0, 2))
     
     landmark_pixels = filter_pixels_inside(points_to_pixels(landmark_xy, geometry), geometry.width, geometry.height)
     path_pixels = filter_pixels_inside(points_to_pixels(path_xy, geometry), geometry.width, geometry.height)

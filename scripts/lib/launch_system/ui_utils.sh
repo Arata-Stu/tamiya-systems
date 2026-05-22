@@ -24,6 +24,7 @@ Options:
   --legacy-interactive    Use the old line-based interactive prompt
   -n, --dry-run           Print the command without running it
   --bag-manager NAME      Select bag manager yaml: default|mapping|e2e|PATH
+  --e2e VARIANT           Enable unified E2E: camera|lidar|camera_trajectory|lidar_trajectory
   --set KEY=VALUE         Override an argument (also accepts KEY:=VALUE)
   -h, --help              Show this help
 
@@ -40,7 +41,7 @@ Examples:
   ${SCRIPT_NAME} production --set use_perception=true
   ${SCRIPT_NAME} production --set use_perception=true --set use_perception_classifier=true
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse --set use_control_filter=true
-  ${SCRIPT_NAME} production --set use_e2e=true --set e2e_variant=lidar_trajectory
+  ${SCRIPT_NAME} production --e2e lidar_trajectory
   ${SCRIPT_NAME} production --set use_drive_mode_manager=true
   ${SCRIPT_NAME} identification
   ${SCRIPT_NAME} -i -- map_dir:=/map/mybag/mycourse
@@ -470,6 +471,8 @@ choose_camera_resolution_interactive() {
 }
 
 warn_if_mode_incomplete() {
+  local normalized_e2e_variant
+
   if [[ "$MODE" == "production" || "$MODE" == "base" || "$MODE" == "localization_eval" ]]; then
     if [[ -z "$(current_map_dir)" ]]; then
       echo "Warning: ${MODE} mode expects map_dir to be set." >&2
@@ -479,12 +482,9 @@ warn_if_mode_incomplete() {
   if [[ "$(get_arg use_e2e)" == "true" ]]; then
     local e2e_variant
     e2e_variant="$(current_e2e_variant)"
-    if [[ -z "$e2e_variant" ]]; then
-      echo "Warning: use_e2e=true but e2e_variant is not set. Choose camera|lidar|camera_trajectory|lidar_trajectory." >&2
-      return
-    fi
+    normalized_e2e_variant="$(normalize_e2e_variant "$e2e_variant")"
 
-    case "$e2e_variant" in
+    case "$normalized_e2e_variant" in
       camera|camera_control|camera_e2e|camera_trajectory|camera_traj)
         if [[ "$(get_arg use_camera)" != "true" ]]; then
           echo "Warning: e2e_variant=${e2e_variant} expects use_camera=true." >&2
@@ -494,9 +494,6 @@ warn_if_mode_incomplete() {
         if [[ "$(get_arg use_lidar)" != "true" ]]; then
           echo "Warning: e2e_variant=${e2e_variant} expects use_lidar=true." >&2
         fi
-        ;;
-      *)
-        echo "Warning: unknown e2e_variant=${e2e_variant}. Supported values: camera, lidar, camera_trajectory, lidar_trajectory." >&2
         ;;
     esac
 
@@ -513,6 +510,42 @@ warn_if_mode_incomplete() {
       echo "Warning: use_drive_mode_manager=true but use_perception is false." >&2
     fi
   fi
+}
+
+normalize_e2e_variant() {
+  printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+validate_e2e_configuration() {
+  local e2e_variant
+  local normalized_e2e_variant
+
+  e2e_variant="$(current_e2e_variant)"
+  normalized_e2e_variant="$(normalize_e2e_variant "$e2e_variant")"
+
+  if [[ "$(get_arg use_e2e)" == "true" ]]; then
+    if [[ -z "$e2e_variant" ]]; then
+      echo "Error: use_e2e=true requires e2e_variant. Use --e2e camera|lidar|camera_trajectory|lidar_trajectory." >&2
+      exit 1
+    fi
+
+    case "$normalized_e2e_variant" in
+      camera|camera_control|camera_e2e|lidar|lidar_control|lidar_e2e|camera_trajectory|camera_traj|lidar_trajectory|lidar_traj|magp_rl_trajectory)
+        ;;
+      *)
+        echo "Error: unsupported e2e_variant=${e2e_variant}. Choose camera|lidar|camera_trajectory|lidar_trajectory." >&2
+        exit 1
+        ;;
+    esac
+    return 0
+  fi
+
+  if [[ -n "$e2e_variant" ]]; then
+    echo "Error: e2e_variant=${e2e_variant} was set while use_e2e=false. Use --e2e ${e2e_variant} or set use_e2e=true." >&2
+    exit 1
+  fi
+
+  return 0
 }
 
 toggle_interactive_checkbox() {

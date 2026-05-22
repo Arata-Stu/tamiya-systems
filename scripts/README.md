@@ -13,6 +13,7 @@ directly.
 - `monitor.sh`: terminal monitoring dashboard.
 - `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `424x240x90` 録画に合わせた preset。
 - `create_2d_map_from_bag.sh`: 2D map 作成用。mode は `no_odom_offline_vslam` / `no_odom_online_vslam` / `with_odom_offline_vslam` / `with_odom_online_vslam` の 4 通りです。前半は Cartographer が odom を使うか、後半は Cartographer と同時に VSLAM を走らせるかを表します。`default` は `no_odom_offline_vslam`、`2d_slam` は `no_odom_online_vslam` の互換 alias です。`--mode` を省略すると実行時に 4択で選べます。`with_odom_online_vslam` は live の `/visual_slam/tracking/odometry` を使い、`with_odom_offline_vslam` は先に VSLAM map を作ってから、その map を読み込んだ VSLAM で odom bag を生成し、その bag を Cartographer に渡します。この mode では source bag を 2 回 replay します。`with_odom_offline_vslam` では、odom bag の録画前に `ros2 topic hz -w 10` 相当の平均レート確認を行い、既定では `--image-fps` の 90% 以上に達してから録画を始めます。必要なら `--odom-ready-window` / `--odom-ready-min-rate` / `--odom-ready-timeout` / `--no-odom-ready-wait` で調整できます。`--prepare-vslam-map-alignment` を使うと provisional 2D map 生成後に `2D map publish + saved VSLAM path/odom republish` を立ち上げ、別 pane の `manual_tf_alignment_node.py` で落ち着いて `map -> vslam_map` を合わせられます。online mode の live alignment が必要なら `--live-vslam-map-align` も残っています。centerline 前に GUI で map を手修正したい場合は `--edit-map`、VSLAM landmarks を replay して tracing 用の blank-canvas editor へ流したい場合は `--trace-vslam-landmarks` を使います。saved `map -> vslam_map` 補正を再利用したいときは `--vslam-map-alignment-config /path/to/vslam_map_alignment.yaml` を併用できます。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
+- `create_hd_map_from_vslam_bag.sh`: VSLAM landmarks/path の snapshot を下絵 PNG/YAML にして、lane の `left_bound` / `right_bound` / `centerline` を描く editable HD map YAML、primary centerline CSV、raceline CSV まで作る実験用 flow。bag 選択と offline VSLAM replay は `create_2d_map_from_bag.sh` の helper を再利用します。
 - `scp_data.sh`: data transfer helper.
 
 ## VSLAM map alignment helpers
@@ -94,25 +95,26 @@ section-class mapping YAML を作るには:
 
 ## Unified E2E
 
-`launch_system.sh` から E2E 系をまとめて扱う場合は `use_e2e=true` と
-`e2e_variant=...` を使います。現状の variant は
+`launch_system.sh` から E2E 系をまとめて扱う場合は `--e2e ...` を使います。
+現状の variant は
 `camera` / `lidar` / `camera_trajectory` / `lidar_trajectory` です。
 
 ```bash
 ./scripts/launch_system.sh production \
-  --set use_e2e=true \
-  --set e2e_variant=camera
+  --e2e camera
 ```
 
 ```bash
 ./scripts/launch_system.sh production \
-  --set use_e2e=true \
-  --set e2e_variant=lidar_trajectory
+  --e2e lidar_trajectory
 ```
 
 `lidar_trajectory` は既存の MAGP RL trajectory launch をこの unified interface
 から起動する alias です。必要なら `--set e2e_run_pure_pursuit=false` で
 trajectory のみ出す構成にもできます。
+従来どおり `--set use_e2e=true --set e2e_variant=...` でも指定できますが、
+片方だけでは E2E pipeline が選べないため `launch_system.sh` は起動前に
+エラーにします。
 
 camera E2E と VSLAM を同時に起動するときも、`system.launch` は camera と
 VSLAM の NITROS graph を同じ `camera_container` に置く既定です。executor
@@ -140,8 +142,7 @@ camera FPS を落とす構成も比較してください。
 
 ```bash
 ./scripts/launch_system.sh production \
-  --set use_e2e=true \
-  --set e2e_variant=camera \
+  --e2e camera \
   --set enable_localization_and_mapping=false \
   --set image_fps=30.0
 ```

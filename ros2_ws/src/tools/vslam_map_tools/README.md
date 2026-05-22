@@ -86,3 +86,19 @@ ros2 run vslam_map_tools publish_saved_vslam_reference.py -- \
   --path-topic /visual_slam/tracking/slam_path \
   --odom-topic /visual_slam/tracking/odometry
 ```
+
+## export_aligned_landmarks_offline.py
+
+reference snapshot に保存した landmarks と path を offline PNG/YAML にします。
+既存 2D map に重ねるときは従来どおり `--alignment` と `--reference-yaml`
+を渡せます。HD map editor の下絵だけを作る場合は両方を省略でき、
+snapshot points の bounds から `resolution` / `origin` を持つ raster を作ります。
+
+```bash
+python3 ros2_ws/src/tools/vslam_map_tools/vslam_map_tools/export_aligned_landmarks_offline.py \
+  --snapshot /map/course_a/course_a_vslam_reference.json \
+  --output-image /map/course_a/course_a_vslam_landmarks.png \
+  --output-yaml /map/course_a/course_a_vslam_landmarks.yaml \
+  --resolution 0.02 \
+  --padding-m 0.5
+```

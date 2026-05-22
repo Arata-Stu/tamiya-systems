@@ -222,6 +222,14 @@ while [[ $# -gt 0 ]]; do
       OVERRIDES+=("bag_manager_param=$2")
       shift 2
       ;;
+    --e2e)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for --e2e" >&2
+        exit 1
+      fi
+      OVERRIDES+=("use_e2e=true" "e2e_variant=$2")
+      shift 2
+      ;;
     --)
       shift
       EXTRA_ARGS+=("$@")
@@ -260,6 +268,7 @@ if [[ "$INTERACTIVE" == "true" ]]; then
 fi
 
 apply_mode_derived_args
+validate_e2e_configuration
 warn_if_mode_incomplete
 resolve_launch_paths
 
