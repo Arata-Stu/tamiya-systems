@@ -11,6 +11,7 @@
     <arg name="use_perception" default="false" description="run lidar-camera perception cropper"/>
     <arg name="use_perception_classifier" default="false" description="run Triton-based crop classifier"/>
     <arg name="use_planning" default="false" description="run geometric planning (raceline_path_publisher)"/>
+    <arg name="use_hd_map" default="false" description="publish editable HD map lane markers and primary path"/>
     <arg name="use_magp_rl_trajectory" default="false" description="run MAGP RL trajectory policy through Triton and Pure Pursuit"/>
     <arg name="magp_rl_run_pure_pursuit" default="false" />
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
@@ -63,6 +64,7 @@
 
     <!-- Control & Planning -->
     <arg name="planning_raceline_csv" default="" />
+    <arg name="hd_map_yaml_path" default="" />
     <arg name="map_controller_lookup_table_csv" default="" />
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
     <arg name="ftg_scan_topic" default="/scan" />
@@ -235,6 +237,15 @@
     <let name="resolved_planning_raceline_csv"
          value=""
          if="$(eval '\'$(var planning_raceline_csv)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() == \'\'')" />
+    <let name="resolved_hd_map_yaml_path"
+         value="$(var hd_map_yaml_path)"
+         if="$(eval '\'$(var hd_map_yaml_path)\'.strip() != \'\'')" />
+    <let name="resolved_hd_map_yaml_path"
+         value="$(eval '\'$(var resolved_map_dir)/$(var resolved_map_name)_hd_map.yaml\'')"
+         if="$(eval '\'$(var hd_map_yaml_path)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() != \'\'')" />
+    <let name="resolved_hd_map_yaml_path"
+         value=""
+         if="$(eval '\'$(var hd_map_yaml_path)\'.strip() == \'\' and \'$(var resolved_map_dir)\'.strip() == \'\'')" />
     <let name="resolved_controller_control_cmd"
          value="$(var autonomous_control_cmd)"
          unless="$(var use_control_filter)" />
@@ -435,6 +446,13 @@
         <include file="$(find-pkg-share raceline_path_publisher)/launch/raceline_path_publisher.launch.xml">
             <arg name="raceline_csv_path" value="$(var resolved_planning_raceline_csv)"/>
             <arg name="local_path_topic" value="$(var pure_pursuit_trajectory_topic)"/>
+        </include>
+    </group>
+
+    <!-- Editable HD Map lane/path publisher -->
+    <group if="$(var use_hd_map)">
+        <include file="$(find-pkg-share hd_map_publisher)/launch/hd_map_publisher.launch.xml">
+            <arg name="hd_map_yaml_path" value="$(var resolved_hd_map_yaml_path)"/>
         </include>
     </group>
 

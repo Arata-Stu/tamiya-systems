@@ -1,0 +1,12 @@
+/**:
+  ros__parameters:
+    hd_map_yaml_path: ""
+    frame_id_override: ""
+    publish_rate_hz: 1.0
+    retry_interval_sec: 2.0
+    publish_lane_markers: true
+    publish_primary_path: true
+    marker_line_width_m: 0.03
+    primary_marker_scale: 1.35
+    marker_z_offset_m: 0.02
+    path_z_offset_m: 0.0
