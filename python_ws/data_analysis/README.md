@@ -61,7 +61,7 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - 出力形式: `s_m; x_m; y_m; psi_rad; kappa_radpm; vx_mps; ax_mps2`
 
 - `visualize_race_lines.py`
-  - map画像に centerline / raceline CSV を重ねた確認用PNGを生成
+  - map画像に HD map lane / centerline CSV / raceline CSV を重ねた確認用PNGを生成
   - `map.yaml` を指定すると、resolution / origin を使って world座標を画像座標へ変換する
 
 - `check_global_opt_env.py`
@@ -389,6 +389,7 @@ python data_analysis/generate_raceline.py \
 
 python data_analysis/visualize_race_lines.py \
   --yaml /path/to/map.yaml \
+  --hd-map /path/to/map_hd_map.yaml \
   --centerline /path/to/map_centerline.csv \
   --raceline /path/to/map_raceline.csv \
   --output /path/to/map_lines.png

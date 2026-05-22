@@ -75,8 +75,9 @@ primary lane の centerline CSV は
 `x_m,y_m,w_tr_right_m,w_tr_left_m` 形式です。左右幅は描いた境界から
 centerline 点ごとに計算します。既存 raceline generator へ渡せます。
 `create_hd_map_from_vslam_bag.sh` は editor 終了後に `<map>_lines.png` も作り、
-landmarks raster の `resolution` / `origin` で centerline と raceline を
-下絵へ投影します。line preview を飛ばす場合は `--no-line-preview` です。
+landmarks raster の `resolution` / `origin` で HD map YAML の lane bounds /
+lane centerline、exported centerline CSV、raceline を下絵へ投影します。
+line preview を飛ばす場合は `--no-line-preview` です。
 
 ```bash
 cd python_ws
@@ -89,6 +90,7 @@ python3 data_analysis/generate_raceline.py \
 
 python3 data_analysis/visualize_race_lines.py \
   --yaml /map/course_a/course_a_vslam_landmarks.yaml \
+  --hd-map /map/course_a/course_a_hd_map.yaml \
   --centerline /map/course_a/course_a_centerline.csv \
   --raceline /map/course_a/course_a_raceline.csv \
   --output /map/course_a/course_a_lines.png

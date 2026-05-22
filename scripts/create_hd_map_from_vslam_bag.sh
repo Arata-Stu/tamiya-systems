@@ -325,8 +325,8 @@ run_line_preview() {
         echo "[post] Skip line preview generation"
         return 0
     fi
-    if [ ! -f "${CENTERLINE_CSV_PATH}" ] && [ "${RACELINE_CREATED}" != true ]; then
-        echo "[post] Skip line preview generation because no centerline/raceline CSV was saved."
+    if [ ! -f "${HD_MAP_YAML_PATH}" ] && [ ! -f "${CENTERLINE_CSV_PATH}" ] && [ "${RACELINE_CREATED}" != true ]; then
+        echo "[post] Skip line preview generation because no HD map/centerline/raceline was saved."
         return 0
     fi
     if ! preview_script_path="$(resolve_line_preview_script)"; then
@@ -341,6 +341,9 @@ run_line_preview() {
         --centerline-thickness 2
         --raceline-thickness 2
     )
+    if [ -f "${HD_MAP_YAML_PATH}" ]; then
+        preview_cmd+=(--hd-map "${HD_MAP_YAML_PATH}")
+    fi
     if [ -f "${CENTERLINE_CSV_PATH}" ]; then
         preview_cmd+=(--centerline "${CENTERLINE_CSV_PATH}")
     fi

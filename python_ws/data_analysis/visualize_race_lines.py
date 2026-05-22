@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render centerline/raceline CSV overlays on a map image."""
+"""Render centerline/raceline and HD lane overlays on a map image."""
 
 from __future__ import annotations
 
@@ -8,11 +8,14 @@ import math
 import os
 from ast import literal_eval
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
 from omegaconf import OmegaConf
+
+
+HD_LANE_FIELDS = ("left_bound", "right_bound", "centerline")
 
 
 def load_map_yaml(yaml_path: Path) -> dict:
@@ -58,6 +61,43 @@ def load_raceline(path: Path) -> np.ndarray:
     if data.shape[1] < 3:
         raise RuntimeError(f"raceline CSV needs at least s,x,y columns: {path}")
     return data[:, 1:3]
+
+
+def load_hd_map_lanes(path: Path) -> List[dict]:
+    cfg = load_map_yaml(path)
+    primary_lane_id = str(cfg.get("primary_lane_id", ""))
+    lanes = []
+    for lane in cfg.get("lanes", []) or []:
+        if not isinstance(lane, dict):
+            continue
+
+        def read_points(field_name: str) -> Optional[np.ndarray]:
+            rows = lane.get(field_name, []) or []
+            points = []
+            for row in rows:
+                if isinstance(row, (list, tuple)) and len(row) >= 2:
+                    points.append([float(row[0]), float(row[1])])
+            return np.asarray(points, dtype=np.float64) if points else None
+
+        lanes.append(
+            {
+                "id": str(lane.get("id", "")),
+                "closed_loop": bool(lane.get("closed_loop", True)),
+                "primary": str(lane.get("id", "")) == primary_lane_id,
+                "centerline": read_points("centerline"),
+                "left_bound": read_points("left_bound"),
+                "right_bound": read_points("right_bound"),
+            }
+        )
+    return lanes
+
+
+def convert_lane_points(lane: dict, convert_points) -> dict:
+    converted = dict(lane)
+    for field_name in HD_LANE_FIELDS:
+        points = lane[field_name]
+        converted[field_name] = convert_points(points) if points is not None else None
+    return converted
 
 
 def world_to_image_pixels(points: np.ndarray, yaml_path: Path, image_shape: Tuple[int, int]) -> np.ndarray:
@@ -109,11 +149,21 @@ def draw_start_marker(image: np.ndarray, points: np.ndarray, color: Tuple[int, i
     cv2.circle(image, p, 8, (255, 255, 255), 1, lineType=cv2.LINE_AA)
 
 
-def draw_legend(image: np.ndarray, has_centerline: bool, has_raceline: bool) -> None:
+def draw_legend(image: np.ndarray, has_centerline: bool, has_raceline: bool, has_hd_map: bool) -> None:
     y = 24
+    if has_hd_map:
+        cv2.line(image, (16, y), (52, y), (80, 220, 80), 3, lineType=cv2.LINE_AA)
+        cv2.putText(image, "HD left bound", (60, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (25, 25, 25), 2)
+        y += 26
+        cv2.line(image, (16, y), (52, y), (230, 100, 230), 3, lineType=cv2.LINE_AA)
+        cv2.putText(image, "HD right bound", (60, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (25, 25, 25), 2)
+        y += 26
+        cv2.line(image, (16, y), (52, y), (0, 200, 255), 3, lineType=cv2.LINE_AA)
+        cv2.putText(image, "HD centerline", (60, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (25, 25, 25), 2)
+        y += 26
     if has_centerline:
         cv2.line(image, (16, y), (52, y), (255, 90, 40), 3, lineType=cv2.LINE_AA)
-        cv2.putText(image, "centerline", (60, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (25, 25, 25), 2)
+        cv2.putText(image, "centerline CSV", (60, y + 5), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (25, 25, 25), 2)
         y += 26
     if has_raceline:
         cv2.line(image, (16, y), (52, y), (40, 40, 255), 3, lineType=cv2.LINE_AA)
@@ -147,10 +197,17 @@ def run(args: argparse.Namespace) -> None:
 
     centerline = load_centerline(Path(args.centerline).expanduser().resolve()) if args.centerline else None
     raceline = load_raceline(Path(args.raceline).expanduser().resolve()) if args.raceline else None
-    if centerline is None and raceline is None:
-        raise RuntimeError("At least one of --centerline or --raceline is required.")
+    hd_lanes = load_hd_map_lanes(Path(args.hd_map).expanduser().resolve()) if args.hd_map else []
+    lane_points = [
+        lane[field_name]
+        for lane in hd_lanes
+        for field_name in HD_LANE_FIELDS
+        if lane[field_name] is not None
+    ]
+    if centerline is None and raceline is None and not lane_points:
+        raise RuntimeError("At least one of --centerline, --raceline, or --hd-map lane geometry is required.")
 
-    all_points = np.vstack([p for p in (centerline, raceline) if p is not None])
+    all_points = np.vstack([p for p in (centerline, raceline, *lane_points) if p is not None])
     canvas, map_shape = build_canvas(
         map_image_path=map_image_path,
         all_points=all_points,
@@ -161,22 +218,54 @@ def run(args: argparse.Namespace) -> None:
     if yaml_path is not None and map_shape is not None:
         center_px = world_to_image_pixels(centerline, yaml_path, map_shape) if centerline is not None else None
         race_px = world_to_image_pixels(raceline, yaml_path, map_shape) if raceline is not None else None
+        lane_px = [
+            convert_lane_points(lane, lambda points: world_to_image_pixels(points, yaml_path, map_shape))
+            for lane in hd_lanes
+        ]
     elif map_shape is not None:
         h, _ = map_shape
         center_px = np.column_stack([centerline[:, 0], (h - 1) - centerline[:, 1]]) if centerline is not None else None
         race_px = np.column_stack([raceline[:, 0], (h - 1) - raceline[:, 1]]) if raceline is not None else None
+        lane_px = [
+            convert_lane_points(
+                lane,
+                lambda points: np.column_stack([points[:, 0], (h - 1) - points[:, 1]]),
+            )
+            for lane in hd_lanes
+        ]
     else:
-        fitted = fit_points_to_canvas(all_points, size=args.canvas_size, padding=args.padding_px)
-        n_center = 0 if centerline is None else len(centerline)
-        center_px = fitted[:n_center] if centerline is not None else None
-        race_px = fitted[n_center:] if raceline is not None else None
+        def fit_polyline(points: Optional[np.ndarray]) -> Optional[np.ndarray]:
+            if points is None:
+                return None
+            fitted_all = fit_points_to_canvas(all_points, size=args.canvas_size, padding=args.padding_px)
+            source_index = 0
+            for candidate in (centerline, raceline, *lane_points):
+                if candidate is points:
+                    return fitted_all[source_index : source_index + len(candidate)]
+                if candidate is not None:
+                    source_index += len(candidate)
+            return None
 
+        center_px = fit_polyline(centerline)
+        race_px = fit_polyline(raceline)
+        lane_px = [convert_lane_points(lane, fit_polyline) for lane in hd_lanes]
+
+    for lane in lane_px:
+        thickness = args.hd_primary_thickness if lane["primary"] else args.hd_lane_thickness
+        draw_polyline(canvas, lane["left_bound"], color=(80, 220, 80), thickness=thickness, closed=lane["closed_loop"])
+        draw_polyline(canvas, lane["right_bound"], color=(230, 100, 230), thickness=thickness, closed=lane["closed_loop"])
+        draw_polyline(canvas, lane["centerline"], color=(0, 200, 255), thickness=thickness, closed=lane["closed_loop"])
     draw_polyline(canvas, center_px, color=(255, 90, 40), thickness=args.centerline_thickness)
     draw_polyline(canvas, race_px, color=(40, 40, 255), thickness=args.raceline_thickness)
     draw_start_marker(canvas, center_px, color=(255, 90, 40))
     draw_start_marker(canvas, race_px, color=(40, 40, 255))
     if not args.no_legend:
-        draw_legend(canvas, has_centerline=centerline is not None, has_raceline=raceline is not None)
+        draw_legend(
+            canvas,
+            has_centerline=centerline is not None,
+            has_raceline=raceline is not None,
+            has_hd_map=bool(lane_points),
+        )
 
     out_path = Path(args.output).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -189,16 +278,19 @@ def run(args: argparse.Namespace) -> None:
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="Render centerline/raceline overlays.")
+    p = argparse.ArgumentParser(description="Render HD lane, centerline, and raceline overlays.")
     p.add_argument("--map", default=None, help="Optional map image path")
     p.add_argument("--yaml", default=None, help="Optional map yaml path; image is inferred when --map is omitted")
     p.add_argument("--centerline", default=None, help="Optional centerline CSV")
     p.add_argument("--raceline", default=None, help="Optional raceline CSV")
+    p.add_argument("--hd-map", default=None, help="Optional editable HD map YAML with lane geometry")
     p.add_argument("--output", required=True, help="Output preview image path")
     p.add_argument("--canvas-size", type=int, default=1200, help="Canvas size when no map image is provided")
     p.add_argument("--padding-px", type=int, default=32)
     p.add_argument("--centerline-thickness", type=int, default=1)
     p.add_argument("--raceline-thickness", type=int, default=1)
+    p.add_argument("--hd-lane-thickness", type=int, default=1)
+    p.add_argument("--hd-primary-thickness", type=int, default=2)
     p.add_argument("--no-legend", action="store_true")
     return p
 
