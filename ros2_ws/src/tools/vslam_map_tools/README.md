@@ -1,10 +1,14 @@
 # vslam_map_tools
 
-VSLAM map と 2D map を人手で合わせたり、landmarks 可視化から 2D の下絵 PNG を作るための補助ツールです。
+VSLAM landmarks/path を保存したり rasterize するための補助ツールです。
+通常の VSLAM/HD map flow は VSLAM と authored HD map の world frame を
+`map` に揃えます。`vslam_map` を分ける機能は、2D occupancy map と VSLAM map
+を人手で合わせる legacy flow 用に残しています。
 
 ## manual_tf_alignment_node.py
 
-`map -> vslam_map` を動的に publish しながら、端末のキー操作で平行移動と回転を微調整します。
+legacy 2D map alignment 用です。`map -> vslam_map` を動的に publish
+しながら、端末のキー操作で平行移動と回転を微調整します。
 RViz2 で `/visual_slam/tracking/slam_path` や `/visual_slam/vis/landmarks_cloud` を見ながら合わせる用途です。
 
 起動例:

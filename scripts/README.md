@@ -19,6 +19,8 @@ directly.
 ## VSLAM map alignment helpers
 
 `ros2_ws/src/tools/vslam_map_tools/` に、VSLAM map と 2D map の橋渡し用ツールを追加しています。
+通常の VSLAM/HD map flow は frame を分けず `map` を使います。以下の
+`map -> vslam_map` alignment は旧 2D map 手合わせ flow 用です。
 
 - `manual_tf_alignment_node.py`: `map -> vslam_map` を publish しながらキー操作で微調整
 - `export_landmarks_png.py`: `/visual_slam/vis/landmarks_cloud` を 2D PNG に rasterize

@@ -7,7 +7,7 @@
     <arg name="create_vslam_container" default="false" />
     <arg name="use_image_preprocessors" default="true" />
     <arg name="use_sim_time" default="false" />
-    <arg name="vslam_map_frame" default="vslam_map" />
+    <arg name="vslam_map_frame" default="map" />
     <arg name="vslam_map_parent_frame" default="map" />
     <arg name="publish_vslam_map_identity_tf" default="true" />
     <arg name="use_vslam_map_alignment_node" default="false" />

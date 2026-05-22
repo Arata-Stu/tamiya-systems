@@ -77,7 +77,7 @@ class SavedVslamReferencePublisher(Node):
         if self.path_pub is not None and self.path_data is not None:
             path_msg = PathMsg()
             path_msg.header.stamp = stamp
-            path_msg.header.frame_id = str(self.path_data.get("frame_id", "vslam_map"))
+            path_msg.header.frame_id = str(self.path_data.get("frame_id", "map"))
             poses = self.path_data.get("poses", [])
             for pose_dict in poses:
                 pose_msg = PoseStamped()
@@ -90,7 +90,7 @@ class SavedVslamReferencePublisher(Node):
         if self.odom_pub is not None and self.odom_data is not None:
             odom_msg = Odometry()
             odom_msg.header.stamp = stamp
-            odom_msg.header.frame_id = "vslam_map"
+            odom_msg.header.frame_id = str(self.odom_data.get("frame_id", "map"))
             odom_msg.child_frame_id = str(self.odom_data.get("child_frame_id", "base_link"))
             fill_pose(odom_msg.pose.pose, self.odom_data["pose"])
             fill_twist(odom_msg.twist.twist, self.odom_data["twist"])
@@ -99,7 +99,9 @@ class SavedVslamReferencePublisher(Node):
         if self.landmarks_pub is not None and self.landmarks_data is not None:
             lm_msg = PointCloud2()
             lm_msg.header.stamp = stamp
-            lm_msg.header.frame_id = "vslam_map"
+            lm_msg.header.frame_id = str(
+                self.landmarks_data.get("header", {}).get("frame_id", "map")
+            )
             lm_msg.height = self.landmarks_data["height"]
             lm_msg.width = self.landmarks_data["width"]
             lm_msg.fields = [
@@ -116,12 +118,12 @@ class SavedVslamReferencePublisher(Node):
         if self.full_path_pub is not None and self.full_path_data is not None:
             full_path_msg = PathMsg()
             full_path_msg.header.stamp = stamp
-            full_path_msg.header.frame_id = "vslam_map"
+            full_path_msg.header.frame_id = str(self.full_path_data.get("frame_id", "map"))
             poses = self.full_path_data.get("poses", [])
             for pose_dict in poses:
                 pose_msg = PoseStamped()
                 pose_msg.header.stamp = stamp
-                pose_msg.header.frame_id = "vslam_map"
+                pose_msg.header.frame_id = full_path_msg.header.frame_id
                 fill_pose(pose_msg.pose, pose_dict)
                 full_path_msg.poses.append(pose_msg)
             self.full_path_pub.publish(full_path_msg)

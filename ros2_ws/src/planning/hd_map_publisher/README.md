@@ -2,7 +2,8 @@
 
 Editable local HD map YAML から runtime 用の lane 表示と primary centerline path を publish します。
 landmarks raster は HD map 作成時の下絵であり、この node は通常走行時に VSLAM
-landmarks topic を必要としません。
+landmarks topic を必要としません。現在の VSLAM/HD map 実験フローでは VSLAM も
+HD map も `map` frame を使います。
 
 ## Topics
 
