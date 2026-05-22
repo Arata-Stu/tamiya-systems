@@ -63,9 +63,13 @@ python3 map_section_editor/hd_map_editor.py \
 - `s`: HD map YAML と primary lane centerline CSV を保存
 - ホイール / `+` / `-`: ズーム
 - 右ドラッグ or `H/J/K/L`: パン
-- `0`: 表示をフィットし直す
+- `0`: raster 全体をフィット表示
 - `i`: ヘルプ表示切替
 - `q` or `Esc`: 終了
+
+editor は既定で raster の native zoom から開きます。まず全体像を見たい場合は
+`0`、script 起動時から全体表示にしたい場合は `create_hd_map_from_vslam_bag.sh`
+へ `--editor-scale 0` を渡してください。
 
 primary lane の centerline CSV は
 `x_m,y_m,w_tr_right_m,w_tr_left_m` 形式です。左右幅は描いた境界から

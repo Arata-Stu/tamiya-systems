@@ -421,6 +421,7 @@ class HdMapEditor:
 
         if scale > 0.0:
             self.scale = max(self.min_scale, min(self.max_scale, float(scale)))
+            self._center_view()
         else:
             self._reset_view()
 
@@ -456,6 +457,12 @@ class HdMapEditor:
         )
         self.pan_x = 0
         self.pan_y = 0
+
+    def _center_view(self) -> None:
+        scaled_width, scaled_height = self._scaled_size()
+        self.pan_x = max(0, int(round((scaled_width - self.window_width) / 2.0)))
+        self.pan_y = max(0, int(round((scaled_height - self.window_height) / 2.0)))
+        self._clamp_pan()
 
     def _zoom_at(self, factor: float, x: int, y: int) -> None:
         old_scale = self.scale
@@ -720,7 +727,10 @@ class HdMapEditor:
             export_centerline_csv(self.centerline_output_path, primary_lane, self.geometry)
             print(f"[INFO] Exported primary centerline CSV: {self.centerline_output_path}")
         else:
-            print(f"[WARN] Saved YAML without primary centerline CSV: {issue}.")
+            print(
+                f"[WARN] Saved YAML without centerline CSV for primary lane "
+                f"{primary_lane.lane_id}: {issue}. Select the intended lane and press p if needed."
+            )
         self.has_unsaved_changes = False
 
     def _pan_by_key(self, dx: int, dy: int) -> None:
@@ -820,7 +830,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--window-width", type=int, default=1600)
     parser.add_argument("--window-height", type=int, default=1000)
-    parser.add_argument("--scale", type=float, default=0.0, help="Initial image scale. 0 fits the window.")
+    parser.add_argument(
+        "--scale",
+        type=float,
+        default=1.0,
+        help="Initial image scale. Default 1.0 opens at native raster zoom; 0 fits the whole raster.",
+    )
     parser.add_argument(
         "--export-only",
         action="store_true",

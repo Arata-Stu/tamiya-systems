@@ -275,6 +275,11 @@ def draw_path(canvas: np.ndarray, pixels: np.ndarray, thickness: int, color: tup
     )
 
 
+def grayscale_bgr(value: int) -> tuple[int, int, int]:
+    value = max(0, min(255, int(value)))
+    return value, value, value
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Offline export of VSLAM landmarks/paths into a PNG aligned to the map.")
     parser.add_argument("--snapshot", required=True, help="Path to ver1_vslam_reference.json")
@@ -393,10 +398,9 @@ def main() -> None:
     landmark_pixels = filter_pixels_inside(points_to_pixels(landmark_xy, geometry), geometry.width, geometry.height)
     path_pixels = filter_pixels_inside(points_to_pixels(path_xy, geometry), geometry.width, geometry.height)
 
-    # Draw Landmarks in RED (BGR: 0, 0, 255)
-    draw_landmarks(canvas, landmark_pixels, args.point_radius_px, (0, 0, 255))
-    # Draw Path in BLUE (BGR: 255, 0, 0)
-    draw_path(canvas, path_pixels, args.path_thickness_px, (255, 0, 0))
+    # Keep the tracing raster neutral so editor overlays stay easy to read.
+    draw_landmarks(canvas, landmark_pixels, args.point_radius_px, grayscale_bgr(args.landmark_value))
+    draw_path(canvas, path_pixels, args.path_thickness_px, grayscale_bgr(args.path_value))
 
     output_image = Path(args.output_image).expanduser().resolve()
     output_image.parent.mkdir(parents=True, exist_ok=True)

@@ -49,6 +49,7 @@ Options:
   --hd-map-yaml PATH      editable HD map YAML path
   --centerline-csv PATH   primary lane centerline CSV path
   --raceline-csv PATH     generated raceline CSV path
+  --editor-scale SCALE    initial HD editor zoom; 0 fits the whole raster (default: 1.0)
   --hd-map-editor PATH    explicit hd_map_editor.py path
   --raceline-script PATH  explicit generate_raceline.py path
   -h, --help              show this help
@@ -264,6 +265,7 @@ run_hd_map_editor() {
         --map-yaml "${LANDMARK_YAML_PATH}"
         --output "${HD_MAP_YAML_PATH}"
         --centerline-output "${CENTERLINE_CSV_PATH}"
+        --scale "${EDITOR_SCALE}"
     )
 
     echo "[post] Launch HD map editor"
@@ -339,6 +341,7 @@ LANDMARK_MAX_Z=""
 HD_MAP_YAML_OVERRIDE_PATH=""
 CENTERLINE_CSV_OVERRIDE_PATH=""
 RACELINE_CSV_OVERRIDE_PATH=""
+EDITOR_SCALE="1.0"
 HD_MAP_EDITOR_SCRIPT_PATH=""
 RACELINE_SCRIPT_PATH=""
 ROSBAG_CANDIDATES=()
@@ -455,6 +458,10 @@ while (($#)); do
             ;;
         --raceline-csv)
             RACELINE_CSV_OVERRIDE_PATH="$2"
+            shift 2
+            ;;
+        --editor-scale)
+            EDITOR_SCALE="$2"
             shift 2
             ;;
         --hd-map-editor)
