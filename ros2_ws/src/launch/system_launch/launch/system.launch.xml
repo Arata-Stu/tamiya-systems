@@ -453,6 +453,7 @@
     <group if="$(var use_hd_map)">
         <include file="$(find-pkg-share hd_map_publisher)/launch/hd_map_publisher.launch.xml">
             <arg name="hd_map_yaml_path" value="$(var resolved_hd_map_yaml_path)"/>
+            <arg name="use_sim_time" value="$(var use_sim_time)"/>
         </include>
     </group>
 

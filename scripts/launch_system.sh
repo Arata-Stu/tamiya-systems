@@ -70,6 +70,7 @@ BOOL_KEYS=(
   use_perception
   use_perception_classifier
   use_planning
+  use_hd_map
   use_magp_rl_trajectory
   magp_rl_run_pure_pursuit
   use_pure_pursuit
@@ -98,6 +99,7 @@ ARG_use_emergency="false"
 ARG_use_perception="false"
 ARG_use_perception_classifier="false"
 ARG_use_planning="false"
+ARG_use_hd_map="false"
 ARG_use_magp_rl_trajectory="false"
 ARG_magp_rl_run_pure_pursuit="false"
 ARG_use_pure_pursuit="false"
@@ -293,6 +295,7 @@ exec ros2 launch system_launch system.launch.xml \
   "use_perception:=${ARG_use_perception}" \
   "use_perception_classifier:=${ARG_use_perception_classifier}" \
   "use_planning:=${ARG_use_planning}" \
+  "use_hd_map:=${ARG_use_hd_map}" \
   "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}" \
   "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}" \
   "use_pure_pursuit:=${ARG_use_pure_pursuit}" \

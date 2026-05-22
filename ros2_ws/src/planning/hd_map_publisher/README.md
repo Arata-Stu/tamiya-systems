@@ -35,3 +35,41 @@ ros2 launch hd_map_publisher hd_map_publisher.launch.xml \
 raceline の global/local path と local trajectory は既存
 `raceline_path_publisher` が担当します。まず primary centerline だけを RViz で
 確認したいときはこの package 単体で十分です。
+
+## Offline bag debug
+
+saved cuVSLAM map と HD map/raceline 成果物を置いた `map_dir` に対して、
+`vslam_eval` を bag time で起動できます。
+
+```bash
+./scripts/launch_system.sh vslam_eval \
+  --set map_dir=/map/course_a \
+  --set use_camera=false \
+  --set use_hd_map=true \
+  --set use_planning=true
+```
+
+別 terminal で source bag を clock 付き再生します。
+
+```bash
+ros2 bag play /record/session/take --clock --start-paused
+```
+
+RViz は既存の VSLAM debug config を使えます。
+
+```bash
+rviz2 -d "$(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.rviz" \
+  --ros-args -p use_sim_time:=true
+```
+
+この RViz config には `/hd_map/lane_markers`、
+`/hd_map/primary_centerline_path`、`/planning/global_raceline` を追加しています。
+`use_camera=false` は bag の stereo image/camera info と `/tf_static` を使う
+offline replay 向けです。sensor node も同時に起動したい場合だけ外してください。
+
+landmarks も一時的に見たい場合は launch に次を追加します。
+
+```bash
+--set enable_slam_visualization=true \
+--set enable_landmarks_view=true
+```

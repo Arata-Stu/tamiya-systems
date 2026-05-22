@@ -1,6 +1,7 @@
 <launch>
   <arg name="param_file" default="$(find-pkg-share hd_map_publisher)/config/hd_map_publisher.param.yaml"/>
   <arg name="hd_map_yaml_path" default=""/>
+  <arg name="use_sim_time" default="false"/>
   <arg name="lane_markers_topic" default="/hd_map/lane_markers"/>
   <arg name="primary_centerline_path_topic" default="/hd_map/primary_centerline_path"/>
 
@@ -8,6 +9,7 @@
         name="hd_map_publisher" output="screen">
     <param from="$(var param_file)"/>
     <param name="hd_map_yaml_path" value="$(var hd_map_yaml_path)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="lane_markers" to="$(var lane_markers_topic)"/>
     <remap from="primary_centerline_path" to="$(var primary_centerline_path_topic)"/>
   </node>
