@@ -38,7 +38,7 @@ FIELD_LABELS = {
     "right_bound": "right bound",
 }
 FIELD_COLORS = {
-    "centerline": (40, 220, 255),
+    "centerline": (0, 255, 255),
     "left_bound": (80, 220, 80),
     "right_bound": (230, 100, 230),
 }
@@ -521,13 +521,25 @@ class HdMapEditor:
         closed: bool,
         point_radius: int,
         thickness: int,
+        highlight: bool = False,
     ) -> None:
         if not points:
             return
         pts = np.asarray(points, dtype=np.int32).reshape((-1, 1, 2))
+        if highlight:
+            cv2.polylines(
+                canvas,
+                [pts],
+                bool(closed and len(points) >= 3),
+                (0, 0, 0),
+                thickness + 4,
+                cv2.LINE_AA,
+            )
         cv2.polylines(canvas, [pts], bool(closed and len(points) >= 3), color, thickness, cv2.LINE_AA)
         if point_radius > 0:
             for point in points:
+                if highlight:
+                    cv2.circle(canvas, point, point_radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
                 cv2.circle(canvas, point, point_radius, color, -1, cv2.LINE_AA)
 
     def _draw_map(self) -> np.ndarray:
@@ -554,6 +566,7 @@ class HdMapEditor:
                     lane.closed_loop,
                     radius,
                     thickness,
+                    highlight=active_lane and field_name == "centerline",
                 )
 
         scaled_width, scaled_height = self._scaled_size()

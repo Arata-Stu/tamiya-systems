@@ -46,12 +46,15 @@ Options:
   --landmark-max-z M      keep exported landmark points at or below z
   --no-editor             only create snapshot/raster outputs; do not open HD editor
   --no-raceline           skip raceline generation after the editor exits
+  --no-line-preview       skip centerline/raceline overlay PNG generation
   --hd-map-yaml PATH      editable HD map YAML path
   --centerline-csv PATH   primary lane centerline CSV path
   --raceline-csv PATH     generated raceline CSV path
+  --line-preview-png PATH centerline/raceline debug overlay PNG path
   --editor-scale SCALE    initial HD editor zoom; 0 fits the whole raster (default: 1.0)
   --hd-map-editor PATH    explicit hd_map_editor.py path
   --raceline-script PATH  explicit generate_raceline.py path
+  --line-preview-script PATH explicit visualize_race_lines.py path
   -h, --help              show this help
 
 Default outputs:
@@ -62,13 +65,14 @@ Default outputs:
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_hd_map.yaml
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_centerline.csv
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_raceline.csv
+  /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_lines.png
 
 Typical flow:
   1) bag and map name are selected interactively unless options provide them
   2) offline VSLAM runs in the local map frame and records final landmarks/path
   3) snapshot data is rasterized into a PNG+YAML HD editor background
   4) hd_map_editor.py opens for left/right/centerline editing
-  5) a centerline CSV and then a raceline CSV are produced when saved
+  5) a centerline CSV, raceline CSV, and debug overlay PNG are produced when saved
 EOF
 }
 
@@ -296,7 +300,47 @@ run_raceline_export() {
         echo "Warning: raceline generation failed. Check ${RACELINE_LOG_PATH}" >&2
         return 0
     fi
+    RACELINE_CREATED=true
     echo "  - raceline CSV: ${RACELINE_CSV_PATH}"
+}
+
+run_line_preview() {
+    local preview_script_path
+    local -a preview_cmd
+
+    if [ "${GENERATE_LINE_PREVIEW}" != true ]; then
+        echo "[post] Skip line preview generation"
+        return 0
+    fi
+    if [ ! -f "${CENTERLINE_CSV_PATH}" ] && [ "${RACELINE_CREATED}" != true ]; then
+        echo "[post] Skip line preview generation because no centerline/raceline CSV was saved."
+        return 0
+    fi
+    if ! preview_script_path="$(resolve_line_preview_script)"; then
+        echo "Warning: visualize_race_lines.py was not found. Skip line preview." >&2
+        return 0
+    fi
+
+    preview_cmd=(
+        python3 "${preview_script_path}"
+        --yaml "${LANDMARK_YAML_PATH}"
+        --output "${LINE_PREVIEW_PNG_PATH}"
+        --centerline-thickness 2
+        --raceline-thickness 2
+    )
+    if [ -f "${CENTERLINE_CSV_PATH}" ]; then
+        preview_cmd+=(--centerline "${CENTERLINE_CSV_PATH}")
+    fi
+    if [ "${RACELINE_CREATED}" = true ] && [ -f "${RACELINE_CSV_PATH}" ]; then
+        preview_cmd+=(--raceline "${RACELINE_CSV_PATH}")
+    fi
+
+    echo "[post] Project centerline/raceline onto landmark raster"
+    if ! "${preview_cmd[@]}" > "${LINE_PREVIEW_LOG_PATH}" 2>&1; then
+        echo "Warning: line preview generation failed. Check ${LINE_PREVIEW_LOG_PATH}" >&2
+        return 0
+    fi
+    echo "  - line preview PNG: ${LINE_PREVIEW_PNG_PATH}"
 }
 
 print_summary() {
@@ -308,6 +352,7 @@ print_summary() {
     echo "  - HD map YAML     : ${HD_MAP_YAML_PATH}"
     echo "  - centerline CSV  : ${CENTERLINE_CSV_PATH}"
     echo "  - raceline CSV    : ${RACELINE_CSV_PATH}"
+    echo "  - line preview    : ${LINE_PREVIEW_PNG_PATH}"
     if [ "${SAVE_VSLAM_MAP}" = true ] && [ "${SKIP_VSLAM}" != true ]; then
         echo "  - cuVSLAM map     : ${VSLAM_MAP_DIR}"
     fi
@@ -330,6 +375,8 @@ SAVE_VSLAM_MAP=true
 SKIP_VSLAM=false
 OPEN_EDITOR=true
 GENERATE_RACELINE=true
+GENERATE_LINE_PREVIEW=true
+RACELINE_CREATED=false
 SNAPSHOT_OVERRIDE_PATH=""
 REFERENCE_YAML_PATH=""
 ALIGNMENT_PATH=""
@@ -341,9 +388,11 @@ LANDMARK_MAX_Z=""
 HD_MAP_YAML_OVERRIDE_PATH=""
 CENTERLINE_CSV_OVERRIDE_PATH=""
 RACELINE_CSV_OVERRIDE_PATH=""
+LINE_PREVIEW_PNG_OVERRIDE_PATH=""
 EDITOR_SCALE="1.0"
 HD_MAP_EDITOR_SCRIPT_PATH=""
 RACELINE_SCRIPT_PATH=""
+LINE_PREVIEW_SCRIPT_PATH=""
 ROSBAG_CANDIDATES=()
 SOURCE_PLAY_TOPICS=()
 SYSTEM_LAUNCH_CMD=()
@@ -448,6 +497,10 @@ while (($#)); do
             GENERATE_RACELINE=false
             shift
             ;;
+        --no-line-preview)
+            GENERATE_LINE_PREVIEW=false
+            shift
+            ;;
         --hd-map-yaml)
             HD_MAP_YAML_OVERRIDE_PATH="$2"
             shift 2
@@ -460,6 +513,10 @@ while (($#)); do
             RACELINE_CSV_OVERRIDE_PATH="$2"
             shift 2
             ;;
+        --line-preview-png)
+            LINE_PREVIEW_PNG_OVERRIDE_PATH="$2"
+            shift 2
+            ;;
         --editor-scale)
             EDITOR_SCALE="$2"
             shift 2
@@ -470,6 +527,10 @@ while (($#)); do
             ;;
         --raceline-script)
             RACELINE_SCRIPT_PATH="$2"
+            shift 2
+            ;;
+        --line-preview-script)
+            LINE_PREVIEW_SCRIPT_PATH="$2"
             shift 2
             ;;
         -h|--help)
@@ -539,6 +600,7 @@ LANDMARK_YAML_PATH="${MAP_STEM}_vslam_landmarks.yaml"
 HD_MAP_YAML_PATH="${HD_MAP_YAML_OVERRIDE_PATH:-${MAP_STEM}_hd_map.yaml}"
 CENTERLINE_CSV_PATH="${CENTERLINE_CSV_OVERRIDE_PATH:-${MAP_STEM}_centerline.csv}"
 RACELINE_CSV_PATH="${RACELINE_CSV_OVERRIDE_PATH:-${MAP_STEM}_raceline.csv}"
+LINE_PREVIEW_PNG_PATH="${LINE_PREVIEW_PNG_OVERRIDE_PATH:-${MAP_STEM}_lines.png}"
 
 RUN_STAMP="$(date +%Y%m%d_%H%M%S)"
 TF_LOG_PATH="/tmp/create_hd_map_vslam_tf_${RUN_STAMP}.log"
@@ -547,6 +609,7 @@ PLAYER_LOG_PATH="/tmp/create_hd_map_vslam_player_${RUN_STAMP}.log"
 SNAPSHOT_LOG_PATH="${MAP_DIR}/hd_map_vslam_snapshot_${RUN_STAMP}.log"
 EXPORT_LOG_PATH="${MAP_DIR}/hd_map_landmark_export_${RUN_STAMP}.log"
 RACELINE_LOG_PATH="${MAP_DIR}/hd_map_raceline_${RUN_STAMP}.log"
+LINE_PREVIEW_LOG_PATH="${MAP_DIR}/hd_map_line_preview_${RUN_STAMP}.log"
 
 trap cleanup_all EXIT INT TERM
 
@@ -562,4 +625,5 @@ fi
 export_landmark_raster
 run_hd_map_editor
 run_raceline_export
+run_line_preview
 print_summary
