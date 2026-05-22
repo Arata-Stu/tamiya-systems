@@ -81,6 +81,9 @@ landmarks raster の `resolution` / `origin` で centerline と raceline を
 ```bash
 cd python_ws
 python3 data_analysis/generate_raceline.py \
+  --preset race-stacks \
+  --backend global-opt \
+  --opt-type mincurv \
   --centerline /map/course_a/course_a_centerline.csv \
   --output /map/course_a/course_a_raceline.csv
 
@@ -90,6 +93,11 @@ python3 data_analysis/visualize_race_lines.py \
   --raceline /map/course_a/course_a_raceline.csv \
   --output /map/course_a/course_a_lines.png
 ```
+
+この HD map wrapper の raceline 既定値も `race-stacks` / `global-opt` /
+`mincurv` です。global optimizer 依存が未導入なら raceline 生成だけ warning にして、
+HD map YAML と centerline CSV は残します。下絵 raster は landmarks を黒寄り、
+saved VSLAM path を濃い青で描きます。
 
 YAML を手で編集したあと CSV だけ作り直す場合:
 

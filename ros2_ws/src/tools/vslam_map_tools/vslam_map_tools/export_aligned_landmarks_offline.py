@@ -280,6 +280,15 @@ def grayscale_bgr(value: int) -> tuple[int, int, int]:
     return value, value, value
 
 
+def parse_bgr(value: str, fallback_value: int) -> tuple[int, int, int]:
+    if not value:
+        return grayscale_bgr(fallback_value)
+    channels = [max(0, min(255, int(channel.strip()))) for channel in value.split(",")]
+    if len(channels) != 3:
+        raise ValueError("BGR color must be three comma-separated channel values.")
+    return channels[0], channels[1], channels[2]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Offline export of VSLAM landmarks/paths into a PNG aligned to the map.")
     parser.add_argument("--snapshot", required=True, help="Path to ver1_vslam_reference.json")
@@ -292,8 +301,13 @@ def main() -> None:
     parser.add_argument("--background-value", type=int, default=255)
     parser.add_argument("--landmark-value", type=int, default=0)
     parser.add_argument("--path-value", type=int, default=96)
+    parser.add_argument(
+        "--path-color-bgr",
+        default="255,96,0",
+        help="B,G,R color for the saved VSLAM path. Empty uses --path-value grayscale.",
+    )
     parser.add_argument("--point-radius-px", type=int, default=1)
-    parser.add_argument("--path-thickness-px", type=int, default=1)
+    parser.add_argument("--path-thickness-px", type=int, default=2)
     parser.add_argument("--min-z", type=float, default=None)
     parser.add_argument("--max-z", type=float, default=None)
     parser.add_argument("--landmark-downsample-m", type=float, default=0.1, help="Spatial downsampling cell size in meters (0 to disable)")
@@ -398,9 +412,9 @@ def main() -> None:
     landmark_pixels = filter_pixels_inside(points_to_pixels(landmark_xy, geometry), geometry.width, geometry.height)
     path_pixels = filter_pixels_inside(points_to_pixels(path_xy, geometry), geometry.width, geometry.height)
 
-    # Keep the tracing raster neutral so editor overlays stay easy to read.
+    # Landmarks stay neutral while the path is colored as a tracing guide.
     draw_landmarks(canvas, landmark_pixels, args.point_radius_px, grayscale_bgr(args.landmark_value))
-    draw_path(canvas, path_pixels, args.path_thickness_px, grayscale_bgr(args.path_value))
+    draw_path(canvas, path_pixels, args.path_thickness_px, parse_bgr(args.path_color_bgr, args.path_value))
 
     output_image = Path(args.output_image).expanduser().resolve()
     output_image.parent.mkdir(parents=True, exist_ok=True)

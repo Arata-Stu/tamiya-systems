@@ -51,6 +51,10 @@ Options:
   --centerline-csv PATH   primary lane centerline CSV path
   --raceline-csv PATH     generated raceline CSV path
   --line-preview-png PATH centerline/raceline debug overlay PNG path
+  --raceline-preset NAME  generate_raceline.py preset (default: race-stacks)
+  --raceline-backend NAME generate_raceline.py backend (default: global-opt)
+  --raceline-opt-type NAME global-opt objective (default: mincurv)
+  --optimizer-root DIR    optional global raceline optimizer checkout
   --editor-scale SCALE    initial HD editor zoom; 0 fits the whole raster (default: 1.0)
   --hd-map-editor PATH    explicit hd_map_editor.py path
   --raceline-script PATH  explicit generate_raceline.py path
@@ -293,10 +297,19 @@ run_raceline_export() {
     fi
 
     echo "[post] Generate raceline from primary lane centerline"
-    if ! python3 "${raceline_script_path}" \
-        --centerline "${CENTERLINE_CSV_PATH}" \
-        --output "${RACELINE_CSV_PATH}" \
-        > "${RACELINE_LOG_PATH}" 2>&1; then
+    local -a raceline_cmd=(
+        python3 "${raceline_script_path}"
+        --preset "${RACELINE_PRESET}"
+        --backend "${RACELINE_BACKEND}"
+        --opt-type "${RACELINE_OPT_TYPE}"
+        --centerline "${CENTERLINE_CSV_PATH}"
+        --output "${RACELINE_CSV_PATH}"
+    )
+    if [ -n "${GLOBAL_OPTIMIZER_ROOT}" ]; then
+        raceline_cmd+=(--optimizer-root "${GLOBAL_OPTIMIZER_ROOT}")
+    fi
+
+    if ! "${raceline_cmd[@]}" > "${RACELINE_LOG_PATH}" 2>&1; then
         echo "Warning: raceline generation failed. Check ${RACELINE_LOG_PATH}" >&2
         return 0
     fi
@@ -389,6 +402,10 @@ HD_MAP_YAML_OVERRIDE_PATH=""
 CENTERLINE_CSV_OVERRIDE_PATH=""
 RACELINE_CSV_OVERRIDE_PATH=""
 LINE_PREVIEW_PNG_OVERRIDE_PATH=""
+RACELINE_PRESET="race-stacks"
+RACELINE_BACKEND="global-opt"
+RACELINE_OPT_TYPE="mincurv"
+GLOBAL_OPTIMIZER_ROOT=""
 EDITOR_SCALE="1.0"
 HD_MAP_EDITOR_SCRIPT_PATH=""
 RACELINE_SCRIPT_PATH=""
@@ -515,6 +532,22 @@ while (($#)); do
             ;;
         --line-preview-png)
             LINE_PREVIEW_PNG_OVERRIDE_PATH="$2"
+            shift 2
+            ;;
+        --raceline-preset)
+            RACELINE_PRESET="$2"
+            shift 2
+            ;;
+        --raceline-backend)
+            RACELINE_BACKEND="$2"
+            shift 2
+            ;;
+        --raceline-opt-type)
+            RACELINE_OPT_TYPE="$2"
+            shift 2
+            ;;
+        --optimizer-root)
+            GLOBAL_OPTIMIZER_ROOT="$2"
             shift 2
             ;;
         --editor-scale)
