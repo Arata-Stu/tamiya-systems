@@ -64,6 +64,9 @@
 
     <!-- Control & Planning -->
     <arg name="planning_raceline_csv" default="" />
+    <arg name="planning_publish_global_path" default="true" />
+    <arg name="planning_publish_local_path" default="true" />
+    <arg name="planning_publish_local_reference" default="true" />
     <arg name="hd_map_yaml_path" default="" />
     <arg name="map_controller_lookup_table_csv" default="" />
     <arg name="ftg_param" default="$(find-pkg-share system_launch)/config/control/ftg_controller.param.yaml" />
@@ -445,6 +448,9 @@
     <group if="$(var use_planning)">
         <include file="$(find-pkg-share raceline_path_publisher)/launch/raceline_path_publisher.launch.xml">
             <arg name="raceline_csv_path" value="$(var resolved_planning_raceline_csv)"/>
+            <arg name="publish_global_path" value="$(var planning_publish_global_path)"/>
+            <arg name="publish_local_path" value="$(var planning_publish_local_path)"/>
+            <arg name="publish_local_reference" value="$(var planning_publish_local_reference)"/>
             <arg name="local_path_topic" value="$(var pure_pursuit_trajectory_topic)"/>
         </include>
     </group>

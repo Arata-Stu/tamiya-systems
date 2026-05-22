@@ -46,7 +46,9 @@ saved cuVSLAM map と HD map/raceline 成果物を置いた `map_dir` に対し�
   --set map_dir=/map/course_a \
   --set use_camera=false \
   --set use_hd_map=true \
-  --set use_planning=true
+  --set use_planning=true \
+  --set planning_publish_local_path=false \
+  --set planning_publish_local_reference=false
 ```
 
 別 terminal で source bag を clock 付き再生します。
@@ -66,6 +68,10 @@ rviz2 -d "$(ros2 pkg prefix system_launch)/share/system_launch/rviz/vslam_debug.
 `/hd_map/primary_centerline_path`、`/planning/global_raceline` を追加しています。
 `use_camera=false` は bag の stereo image/camera info と `/tf_static` を使う
 offline replay 向けです。sensor node も同時に起動したい場合だけ外してください。
+上の `planning_publish_local_*` は static overlay 用です。local trajectory は
+車両姿勢を切り出すため `map -> base_link` TF が必要なので、Pure Pursuit 側まで
+確認するときだけ有効に戻してください。VSLAM TF を使う場合は追跡開始後に
+`--set publish_map_to_odom_tf=true` も必要です。
 
 landmarks も一時的に見たい場合は launch に次を追加します。
 

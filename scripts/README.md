@@ -180,10 +180,12 @@ section ごとの policy は `drive_mode_manager` の param YAML で
 ./scripts/launch_system.sh localization_eval --set map_dir=/map/course_a
 ./scripts/launch_system.sh perception_eval
 ./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a
-./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a --set use_camera=false --set use_hd_map=true --set use_planning=true
+./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a --set use_camera=false --set use_hd_map=true --set use_planning=true --set planning_publish_local_path=false --set planning_publish_local_reference=false
 ```
 
 最後の `vslam_eval` 例は source bag を `ros2 bag play <bag_path> --clock --start-paused`
 で replay し、saved cuVSLAM map 上の VSLAM pose と HD lane/raceline を
 offline で重ねて見る用途です。landmarks が必要な回だけ
 `--set enable_slam_visualization=true --set enable_landmarks_view=true` を足します。
+local trajectory まで見る場合は `planning_publish_local_*` を true に戻し、
+VSLAM TF を使うときは `--set publish_map_to_odom_tf=true` も渡します。

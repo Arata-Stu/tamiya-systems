@@ -35,3 +35,13 @@ ros2 launch raceline_path_publisher raceline_path_publisher.launch.xml \
   raceline_csv_path:=/absolute/path/to/map_raceline.csv \
   direction:=reverse
 ```
+
+`global_path` だけを地図に重ねて確認し、`map -> base_link` TF がまだない
+offline debug では local 出力を止められます。
+
+```bash
+ros2 launch raceline_path_publisher raceline_path_publisher.launch.xml \
+  raceline_csv_path:=/absolute/path/to/map_raceline.csv \
+  publish_local_path:=false \
+  publish_local_reference:=false
+```

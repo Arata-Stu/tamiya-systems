@@ -2,6 +2,9 @@
   <arg name="param_file" default="$(find-pkg-share raceline_path_publisher)/config/raceline_path_publisher.param.yaml"/>
   <arg name="raceline_csv_path" default=""/>
   <arg name="direction" default="forward"/>
+  <arg name="publish_global_path" default="true"/>
+  <arg name="publish_local_path" default="true"/>
+  <arg name="publish_local_reference" default="true"/>
   <arg name="global_path_topic" default="/planning/global_raceline"/>
   <arg name="local_path_topic" default="/autonomous/trajectory"/>
   <arg name="local_reference_topic" default="/autonomous/trajectory_reference"/>
@@ -11,6 +14,9 @@
     <param from="$(var param_file)"/>
     <param name="raceline_csv_path" value="$(var raceline_csv_path)"/>
     <param name="direction" value="$(var direction)"/>
+    <param name="publish_global_path" value="$(var publish_global_path)"/>
+    <param name="publish_local_path" value="$(var publish_local_path)"/>
+    <param name="publish_local_reference" value="$(var publish_local_reference)"/>
     <remap from="global_path" to="$(var global_path_topic)"/>
     <remap from="trajectory" to="$(var local_path_topic)"/>
     <remap from="trajectory_reference" to="$(var local_reference_topic)"/>
