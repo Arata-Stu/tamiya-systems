@@ -20,6 +20,8 @@
     enable_infra2: true
 
     # IMU設定
+    enable_gyro: true
+    enable_accel: true
     unite_imu_method: 2
     
     # QoS設定

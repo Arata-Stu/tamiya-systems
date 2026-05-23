@@ -81,7 +81,7 @@
     # より正確に設定する場合は
     # https://github.com/ethz-asl/kalibr
     # ============================================
-    enable_imu_fusion: false
+    enable_imu_fusion: true
     gyro_noise_density: 0.000244
     gyro_random_walk: 0.000019393
     accel_noise_density: 0.001862
