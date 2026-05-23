@@ -2,21 +2,21 @@ scan_image_projection_cropper_node:
   ros__parameters:
     min_range_m: 0.05
     max_range_m: 6.0
-    cluster_separation_threshold_m: 0.18
+    cluster_separation_threshold_m: 0.5
     min_cluster_points: 2
     min_cluster_width_m: 0.03
-    max_cluster_width_m: 1.20
+    max_cluster_width_m: 0.50
     min_camera_depth_m: 0.05
     max_scan_age_sec: 0.20
     max_debug_image_age_sec: 0.20
     tf_timeout_sec: 0.05
     fixed_crop_height_px: 160
-    horizontal_padding_px: 12
+    horizontal_padding_px: 40
     bottom_padding_px: 8
-    min_crop_width_px: 32
+    min_crop_width_px: 64
     max_crop_width_px: 0
-    output_image_width_px: 64
-    output_image_height_px: 64
+    output_image_width_px: 128
+    output_image_height_px: 128
     output_padding_value: 0.0
     debug: true
     candidate_selection_mode: "closest"
