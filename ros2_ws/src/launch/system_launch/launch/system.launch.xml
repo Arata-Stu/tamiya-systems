@@ -313,20 +313,21 @@
     <let name="resolved_publish_camera_stereo_tf"
          value="false"
          unless="$(eval '\'$(var camera_model)\' == \'elp\'')" />
-    <let name="resolved_use_lidar_container"
+    <let name="resolved_create_lidar_container_in_system"
          value="true"
-         if="$(eval '\'$(var use_lidar)\'.strip().lower() == \'true\' or \'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\'])')" />
-    <let name="resolved_use_lidar_container"
+         if="$(eval '\'$(var use_lidar)\'.strip().lower() != \'true\' and (\'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\']))')" />
+    <let name="resolved_create_lidar_container_in_system"
          value="false"
-         unless="$(eval '\'$(var use_lidar)\'.strip().lower() == \'true\' or \'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\'])')" />
+         unless="$(eval '\'$(var use_lidar)\'.strip().lower() != \'true\' and (\'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\']))')" />
 
     <!-- Param files -->
     <arg name="vehicle_param" default="$(find-pkg-share system_launch)/config/vehicle/jetracer_node.param.yaml" />
     <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter_footprint_angle.param.yaml" />
     <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
 
-    <!-- Shared composable containers. system.launch owns these; child launches attach to them. -->
-    <group if="$(var resolved_use_lidar_container)">
+    <!-- If a real LiDAR is launched, sensor_kit owns lidar_container.
+         system.launch creates it only for bag/eval pipelines that still load LiDAR consumers. -->
+    <group if="$(var resolved_create_lidar_container_in_system)">
         <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"/>
     </group>
     <node pkg="rclcpp_components" exec="component_container_mt" name="$(var camera_container_name)" output="screen"/>
@@ -371,7 +372,7 @@
         <arg name="use_lidar" value="$(var use_lidar)"/>
         <arg name="lidar_model" value="$(var lidar_model)"/>
         <arg name="lidar_container_name" value="$(var lidar_container_name)"/>
-        <arg name="create_lidar_container" value="false"/>
+        <arg name="create_lidar_container" value="$(var use_lidar)"/>
         <arg name="filter_param" value="$(var filter_param)"/>
 
         <arg name="use_camera" value="$(var use_camera)"/>

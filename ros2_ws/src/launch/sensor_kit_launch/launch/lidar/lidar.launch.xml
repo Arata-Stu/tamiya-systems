@@ -5,8 +5,9 @@
     <arg name="create_container" default="true" />
     <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/lidar/scan_filter_footprint_angle.param.yaml" />
 
-    <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"
-          if="$(var create_container)"/>
+    <group if="$(var create_container)">
+        <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"/>
+    </group>
 
     <group if="$(var use_lidar)">
         <include file="$(find-pkg-share sensor_kit_launch)/launch/lidar/$(var lidar_model).launch.xml">
