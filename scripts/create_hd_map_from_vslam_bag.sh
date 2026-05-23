@@ -32,7 +32,8 @@ Options:
   --rate RATE             ros2 bag play rate (default: 1.0)
   --image-width PX        offline VSLAM image width (default: 424)
   --image-height PX       offline VSLAM image height (default: 240)
-  --with-imu              replay /camera/imu in addition to stereo topics
+  --with-imu              replay /camera/imu in addition to stereo topics (default)
+  --no-imu                do not replay /camera/imu
   --play-all-topics       replay every source-bag topic instead of filtered topics
   --use-image-preprocessors run rectify/mono preprocessing before VSLAM
   --no-image-preprocessors make VSLAM subscribe to recorded camera topics directly (default)
@@ -230,6 +231,7 @@ run_vslam_diagnostics() {
         append_topic_info "/camera/right/image_rect"
         append_topic_info "/camera/right/image_rect_mono"
         append_topic_info "/camera/right/camera_info_rect"
+        append_topic_info "/camera/imu"
         append_topic_info "/visual_slam/tracking/odometry"
         append_topic_info "/visual_slam/tracking/slam_path"
         append_topic_info "/visual_slam/vis/landmarks_cloud"
@@ -500,7 +502,7 @@ MAP_NAME=""
 SCAN_TOPIC="/scan"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
-USE_IMU=false
+USE_IMU=true
 PLAY_ALL_TOPICS=false
 USE_IMAGE_PREPROCESSORS=false
 LAUNCH_OFFLINE_TF=false
@@ -583,6 +585,10 @@ while (($#)); do
             ;;
         --with-imu)
             USE_IMU=true
+            shift
+            ;;
+        --no-imu)
+            USE_IMU=false
             shift
             ;;
         --play-all-topics)
