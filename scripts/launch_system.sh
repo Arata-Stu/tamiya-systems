@@ -287,35 +287,85 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 source_setup_if_available
-exec ros2 launch system_launch system.launch.xml \
-  "record:=${ARG_record}" \
-  "use_vehicle:=${ARG_use_vehicle}" \
-  "vslam:=${ARG_vslam}" \
-  "localization:=${ARG_localization}" \
-  "use_lidar:=${ARG_use_lidar}" \
-  "use_camera:=${ARG_use_camera}" \
-  "use_ftg:=${ARG_use_ftg}" \
-  "use_emergency:=${ARG_use_emergency}" \
-  "use_perception:=${ARG_use_perception}" \
-  "use_perception_classifier:=${ARG_use_perception_classifier}" \
-  "use_planning:=${ARG_use_planning}" \
-  "use_hd_map:=${ARG_use_hd_map}" \
-  "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}" \
-  "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}" \
-  "use_pure_pursuit:=${ARG_use_pure_pursuit}" \
-  "use_map_controller:=${ARG_use_map_controller}" \
-  "use_control_filter:=${ARG_use_control_filter}" \
-  "use_speed_controller:=${ARG_use_speed_controller}" \
-  "use_e2e:=${ARG_use_e2e}" \
-  "use_sim_time:=${ARG_use_sim_time}" \
-  "publish_map:=${ARG_publish_map}" \
-  "map_server_use_sim_time:=${ARG_map_server_use_sim_time}" \
-  "use_localization_manager:=${ARG_use_localization_manager}" \
-  "publish_localization_tf:=${ARG_publish_localization_tf}" \
-  "use_section_localizer:=${ARG_use_section_localizer}" \
-  "use_hd_map_section_localizer:=${ARG_use_hd_map_section_localizer}" \
-  "section_localizer_debug_mode:=${ARG_section_localizer_debug_mode}" \
-  "use_drive_mode_manager:=${ARG_use_drive_mode_manager}" \
-  "enable_localization_and_mapping:=${ARG_enable_localization_and_mapping}" \
-  "bag_manager_param:=${ARG_bag_manager_param}" \
+
+ROS2_LAUNCH_CMD=(
+  ros2 launch system_launch system.launch.xml
+  "record:=${ARG_record}"
+  "use_vehicle:=${ARG_use_vehicle}"
+  "vslam:=${ARG_vslam}"
+  "localization:=${ARG_localization}"
+  "use_lidar:=${ARG_use_lidar}"
+  "use_camera:=${ARG_use_camera}"
+  "use_ftg:=${ARG_use_ftg}"
+  "use_emergency:=${ARG_use_emergency}"
+  "use_perception:=${ARG_use_perception}"
+  "use_perception_classifier:=${ARG_use_perception_classifier}"
+  "use_planning:=${ARG_use_planning}"
+  "use_hd_map:=${ARG_use_hd_map}"
+  "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}"
+  "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}"
+  "use_pure_pursuit:=${ARG_use_pure_pursuit}"
+  "use_map_controller:=${ARG_use_map_controller}"
+  "use_control_filter:=${ARG_use_control_filter}"
+  "use_speed_controller:=${ARG_use_speed_controller}"
+  "use_e2e:=${ARG_use_e2e}"
+  "use_sim_time:=${ARG_use_sim_time}"
+  "publish_map:=${ARG_publish_map}"
+  "map_server_use_sim_time:=${ARG_map_server_use_sim_time}"
+  "use_localization_manager:=${ARG_use_localization_manager}"
+  "publish_localization_tf:=${ARG_publish_localization_tf}"
+  "use_section_localizer:=${ARG_use_section_localizer}"
+  "use_hd_map_section_localizer:=${ARG_use_hd_map_section_localizer}"
+  "section_localizer_debug_mode:=${ARG_section_localizer_debug_mode}"
+  "use_drive_mode_manager:=${ARG_use_drive_mode_manager}"
+  "enable_localization_and_mapping:=${ARG_enable_localization_and_mapping}"
+  "bag_manager_param:=${ARG_bag_manager_param}"
   "${EXTRA_ARGS[@]}"
+)
+
+ROS2_LAUNCH_PID=""
+ROS2_LAUNCH_USES_SETSID="false"
+
+cleanup_ros2_launch() {
+  local status=$?
+  trap - INT TERM EXIT
+
+  if [[ -n "$ROS2_LAUNCH_PID" ]] && kill -0 "$ROS2_LAUNCH_PID" 2>/dev/null; then
+    local signal_target="$ROS2_LAUNCH_PID"
+    if [[ "$ROS2_LAUNCH_USES_SETSID" == "true" ]]; then
+      signal_target="-$ROS2_LAUNCH_PID"
+    fi
+
+    kill -INT -- "$signal_target" 2>/dev/null || true
+    sleep 2
+    if kill -0 "$ROS2_LAUNCH_PID" 2>/dev/null; then
+      kill -TERM -- "$signal_target" 2>/dev/null || true
+    fi
+    sleep 1
+    if kill -0 "$ROS2_LAUNCH_PID" 2>/dev/null; then
+      kill -KILL -- "$signal_target" 2>/dev/null || true
+    fi
+    wait "$ROS2_LAUNCH_PID" 2>/dev/null || true
+  fi
+
+  exit "$status"
+}
+
+trap cleanup_ros2_launch INT TERM EXIT
+
+if command -v setsid >/dev/null 2>&1; then
+  setsid "${ROS2_LAUNCH_CMD[@]}" &
+  ROS2_LAUNCH_USES_SETSID="true"
+else
+  "${ROS2_LAUNCH_CMD[@]}" &
+fi
+ROS2_LAUNCH_PID=$!
+
+set +e
+wait "$ROS2_LAUNCH_PID"
+launch_status=$?
+set -e
+
+trap - INT TERM EXIT
+ROS2_LAUNCH_PID=""
+exit "$launch_status"
