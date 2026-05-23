@@ -67,6 +67,8 @@ apply_mode() {
       ;;
     offline_eval|bag_eval|offline_map_eval)
       apply_mode localization_eval
+      ARG_use_lidar="false"
+      ARG_use_camera="false"
       ARG_use_hd_map="true"
       ARG_use_planning="true"
       ARG_use_hd_map_section_localizer="true"
