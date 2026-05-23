@@ -2,8 +2,13 @@
   <arg name="param_file" default="$(find-pkg-share hd_map_publisher)/config/hd_map_publisher.param.yaml"/>
   <arg name="hd_map_yaml_path" default=""/>
   <arg name="use_sim_time" default="false"/>
+  <arg name="run_section_localizer" default="false"/>
+  <arg name="base_frame" default="base_link"/>
   <arg name="lane_markers_topic" default="/hd_map/lane_markers"/>
+  <arg name="section_markers_topic" default="/hd_map/section_markers"/>
   <arg name="primary_centerline_path_topic" default="/hd_map/primary_centerline_path"/>
+  <arg name="current_section_topic" default="/localization/current_section"/>
+  <arg name="current_section_marker_topic" default="/localization/current_section_marker"/>
 
   <node pkg="hd_map_publisher" exec="hd_map_publisher_node.py"
         name="hd_map_publisher" output="screen">
@@ -11,6 +16,17 @@
     <param name="hd_map_yaml_path" value="$(var hd_map_yaml_path)"/>
     <param name="use_sim_time" value="$(var use_sim_time)"/>
     <remap from="lane_markers" to="$(var lane_markers_topic)"/>
+    <remap from="section_markers" to="$(var section_markers_topic)"/>
     <remap from="primary_centerline_path" to="$(var primary_centerline_path_topic)"/>
+  </node>
+
+  <node pkg="hd_map_publisher" exec="hd_map_section_localizer_node.py"
+        name="hd_map_section_localizer" output="screen"
+        if="$(var run_section_localizer)">
+    <param name="hd_map_yaml_path" value="$(var hd_map_yaml_path)"/>
+    <param name="use_sim_time" value="$(var use_sim_time)"/>
+    <param name="base_frame" value="$(var base_frame)"/>
+    <param name="current_section_topic" value="$(var current_section_topic)"/>
+    <param name="current_section_marker_topic" value="$(var current_section_marker_topic)"/>
   </node>
 </launch>

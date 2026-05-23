@@ -24,6 +24,7 @@
     <arg name="use_localization_manager" default="false" />
     <arg name="publish_localization_tf" default="false" />
     <arg name="use_section_localizer" default="false" />
+    <arg name="use_hd_map_section_localizer" default="false" />
     <arg name="section_localizer_debug_mode" default="false" />
     <arg name="use_drive_mode_manager" default="false" />
     <arg name="enable_localization_and_mapping" default="false" />
@@ -461,6 +462,10 @@
         <include file="$(find-pkg-share hd_map_publisher)/launch/hd_map_publisher.launch.xml">
             <arg name="hd_map_yaml_path" value="$(var resolved_hd_map_yaml_path)"/>
             <arg name="use_sim_time" value="$(var use_sim_time)"/>
+            <arg name="run_section_localizer" value="$(var use_hd_map_section_localizer)"/>
+            <arg name="base_frame" value="$(var section_localizer_base_frame)"/>
+            <arg name="current_section_topic" value="$(var section_localizer_topic)"/>
+            <arg name="current_section_marker_topic" value="$(var section_localizer_current_marker_topic)"/>
         </include>
     </group>
 

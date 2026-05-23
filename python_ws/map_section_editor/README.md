@@ -6,6 +6,7 @@
 - `control_filter_config_editor.py`: `sections_pixels.csv` を読み、section ごとの class 割り当てと class 別 `control_filter` パラメータを terminal で編集して YAML を生成します。
 - `map_cleanup_editor.py`: centerline 前処理用。起動時に map を黒白へ二値化したうえで、黒塗り/白戻しして cleaned PNG を保存します。
 - `hd_map_editor.py`: landmarks raster や occupancy map を下絵にして lane の `left_bound` / `right_bound` / `centerline` を描き、編集可能な HD map YAML と primary lane の centerline CSV を保存します。
+- `hd_map_section_gate_editor.py`: HD map YAML の lane centerline 上に section gate を置き、section と速度 override 用フィールドを生成します。
 
 ## hd_map_editor.py
 
@@ -115,6 +116,63 @@ python3 map_section_editor/hd_map_editor.py \
 最初の HD map YAML には source raster の `resolution` / `origin` / image size と
 lane 点列を残します。分岐や追い越し lane を描き始める場合も lane を複数保存できますが、
 現時点で CSV export 対象は `primary_lane_id` の 1 本です。
+
+## hd_map_section_gate_editor.py
+
+HD map lane を作ったあと、lane 上の区間境界を gate として追加する editor です。
+2 点クリックで active lane を横切る gate line を置き、保存時に gate の並びから
+`sections` を自動生成します。外周を細かい polygon で囲うより、コース進行方向に
+「ここからここまでが section」という切れ目を入れる用途です。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems
+./scripts/edit_hd_map_sections.sh --map-dir /map/course_a
+```
+
+`--map-dir` は `<map_dir>/<basename>_hd_map.yaml` を開きます。直接指定する場合:
+
+```bash
+./scripts/edit_hd_map_sections.sh \
+  --hd-map-yaml /map/course_a/course_a_hd_map.yaml \
+  --scale 0
+```
+
+操作:
+
+- 左クリック 2 回: active lane に gate を追加
+- `[` / `]`: active lane を切替
+- `d`: カーソル近傍の gate を削除
+- `s`: HD map YAML へ保存
+- ホイール / `+` / `-`: ズーム
+- 右ドラッグ or `H/J/K/L`: パン
+- `0`: raster 全体をフィット表示
+- `i`: ヘルプ表示切替
+- `q` or `Esc`: 終了
+
+保存後の YAML には `section_gates` と `sections` が追加されます。
+section ごとの速度を指定したい場合は YAML を直接編集し、
+対象 section の `speed_override_mps` に値を入れます。
+
+```yaml
+sections:
+  - id: section_003
+    lane_id: lane_001
+    start_gate_id: gate_003
+    end_gate_id: gate_004
+    start_s_m: 4.21
+    end_s_m: 6.72
+    speed_override_mps: 0.45
+```
+
+速度 override を raceline CSV に反映するには:
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python3 data_analysis/apply_hd_map_section_speeds.py \
+  --raceline /map/course_a/course_a_raceline.csv \
+  --hd-map /map/course_a/course_a_hd_map.yaml \
+  --output /map/course_a/course_a_raceline_section_speeds.csv
+```
 
 ## map_cleanup_editor.py
 

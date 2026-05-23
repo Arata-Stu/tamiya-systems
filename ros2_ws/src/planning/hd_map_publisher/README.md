@@ -9,8 +9,14 @@ HD map も `map` frame を使います。
 
 - `/hd_map/lane_markers` (`visualization_msgs/msg/MarkerArray`)
   - lane ごとの `left_bound` / `right_bound` / `centerline`
+- `/hd_map/section_markers` (`visualization_msgs/msg/MarkerArray`)
+  - section gate、section span、速度 override label
 - `/hd_map/primary_centerline_path` (`nav_msgs/msg/Path`)
   - `primary_lane_id` の centerline
+- `/localization/current_section` (`std_msgs/msg/String`)
+  - `run_section_localizer:=true` のとき、`map -> base_link` TF から現在 section を publish
+- `/localization/current_section_marker` (`visualization_msgs/msg/Marker`)
+  - 現在 section の highlight
 
 marker と path は YAML の `frame_id` を使います。必要なら
 `frame_id_override` parameter で上書きできます。
@@ -22,12 +28,22 @@ ros2 launch hd_map_publisher hd_map_publisher.launch.xml \
   hd_map_yaml_path:=/map/course_a/course_a_hd_map.yaml
 ```
 
+section gate から現在 section も出す場合:
+
+```bash
+ros2 launch hd_map_publisher hd_map_publisher.launch.xml \
+  hd_map_yaml_path:=/map/course_a/course_a_hd_map.yaml \
+  run_section_localizer:=true \
+  base_frame:=base_link
+```
+
 `system_launch` から map directory 規約を使う場合:
 
 ```bash
 ./scripts/launch_system.sh production \
   --set map_dir=/map/course_a \
-  --set use_hd_map=true
+  --set use_hd_map=true \
+  --set use_hd_map_section_localizer=true
 ```
 
 `map_dir` を使うと既定で `<map_dir>/<map_dir_name>_hd_map.yaml` を読みます。
@@ -47,6 +63,7 @@ saved cuVSLAM map と HD map/raceline 成果物を置いた `map_dir` に対し�
   --set map_dir=/map/course_a \
   --set use_camera=false \
   --set use_hd_map=true \
+  --set use_hd_map_section_localizer=true \
   --set use_planning=true \
   --set localize_on_startup=true \
   --set planning_publish_local_path=false \

@@ -30,16 +30,41 @@ class Lane:
 
 
 @dataclass
+class SectionGate:
+    gate_id: str
+    lane_id: str
+    s_m: float
+    line: List[Point3]
+
+
+@dataclass
+class Section:
+    section_id: str
+    lane_id: str
+    start_s_m: float
+    end_s_m: float
+    speed_override_mps: Optional[float]
+
+
+@dataclass
 class HdMap:
     frame_id: str
     primary_lane_id: str
     lanes: List[Lane]
+    section_gates: List[SectionGate]
+    sections: List[Section]
 
     def primary_lane(self) -> Optional[Lane]:
         for lane in self.lanes:
             if lane.lane_id == self.primary_lane_id:
                 return lane
         return self.lanes[0] if self.lanes else None
+
+    def lane_by_id(self, lane_id: str) -> Optional[Lane]:
+        for lane in self.lanes:
+            if lane.lane_id == lane_id:
+                return lane
+        return None
 
 
 def read_points(rows: object) -> List[Point3]:
@@ -52,6 +77,15 @@ def read_points(rows: object) -> List[Point3]:
         z = float(row[2]) if len(row) >= 3 else 0.0
         points.append((float(row[0]), float(row[1]), z))
     return points
+
+
+def read_float_or_none(value: object) -> Optional[float]:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def load_hd_map(path: Path, frame_override: str) -> HdMap:
@@ -84,10 +118,51 @@ def load_hd_map(path: Path, frame_override: str) -> HdMap:
     if primary_lane_id not in {lane.lane_id for lane in lanes}:
         primary_lane_id = lanes[0].lane_id
 
+    section_gates: List[SectionGate] = []
+    raw_gates = data.get("section_gates", [])
+    if isinstance(raw_gates, list):
+        for gate_index, raw_gate in enumerate(raw_gates, start=1):
+            if not isinstance(raw_gate, dict):
+                continue
+            line = read_points(raw_gate.get("line", []))
+            if len(line) < 2:
+                continue
+            section_gates.append(
+                SectionGate(
+                    gate_id=str(raw_gate.get("id") or f"gate_{gate_index:03d}"),
+                    lane_id=str(raw_gate.get("lane_id") or primary_lane_id),
+                    s_m=float(raw_gate.get("s_m", 0.0)),
+                    line=line[:2],
+                )
+            )
+
+    sections: List[Section] = []
+    raw_sections = data.get("sections", [])
+    if isinstance(raw_sections, list):
+        for section_index, raw_section in enumerate(raw_sections, start=1):
+            if not isinstance(raw_section, dict):
+                continue
+            try:
+                start_s_m = float(raw_section.get("start_s_m", 0.0))
+                end_s_m = float(raw_section.get("end_s_m", 0.0))
+            except (TypeError, ValueError):
+                continue
+            sections.append(
+                Section(
+                    section_id=str(raw_section.get("id") or f"section_{section_index:03d}"),
+                    lane_id=str(raw_section.get("lane_id") or primary_lane_id),
+                    start_s_m=start_s_m,
+                    end_s_m=end_s_m,
+                    speed_override_mps=read_float_or_none(raw_section.get("speed_override_mps")),
+                )
+            )
+
     return HdMap(
         frame_id=frame_override or str(data.get("frame_id") or "map"),
         primary_lane_id=primary_lane_id,
         lanes=lanes,
+        section_gates=section_gates,
+        sections=sections,
     )
 
 
@@ -123,6 +198,69 @@ def to_geometry_point(point: Point3, z_offset: float) -> Point:
     return msg
 
 
+def distance_2d(a: Point3, b: Point3) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def cumulative_s(points: Sequence[Point3], closed_loop: bool) -> Tuple[List[float], float]:
+    if not points:
+        return [], 0.0
+    s_values = [0.0]
+    total = 0.0
+    for index in range(1, len(points)):
+        total += distance_2d(points[index - 1], points[index])
+        s_values.append(total)
+    if closed_loop and len(points) >= 3:
+        total += distance_2d(points[-1], points[0])
+    return s_values, total
+
+
+def interpolate_at_s(points: Sequence[Point3], s_values: Sequence[float], total_length: float, target_s: float, closed_loop: bool) -> Point3:
+    if not points:
+        return (0.0, 0.0, 0.0)
+    if len(points) == 1 or total_length <= 1.0e-9:
+        return points[0]
+    target = target_s % total_length if closed_loop else max(0.0, min(target_s, total_length))
+    segment_count = len(points) if closed_loop and len(points) >= 3 else len(points) - 1
+    for index in range(segment_count):
+        next_index = (index + 1) % len(points)
+        start_s = s_values[index]
+        segment_length = distance_2d(points[index], points[next_index])
+        end_s = start_s + segment_length
+        if index == segment_count - 1 and closed_loop:
+            end_s = total_length
+        if start_s - 1.0e-9 <= target <= end_s + 1.0e-9:
+            ratio = 0.0 if segment_length <= 1.0e-9 else (target - start_s) / segment_length
+            a = points[index]
+            b = points[next_index]
+            return (
+                a[0] + (b[0] - a[0]) * ratio,
+                a[1] + (b[1] - a[1]) * ratio,
+                a[2] + (b[2] - a[2]) * ratio,
+            )
+    return points[-1]
+
+
+def section_points(points: Sequence[Point3], closed_loop: bool, start_s: float, end_s: float) -> List[Point3]:
+    s_values, total_length = cumulative_s(points, closed_loop)
+    if len(points) < 2 or total_length <= 1.0e-9:
+        return []
+
+    def collect_range(start: float, end: float) -> List[Point3]:
+        collected = [interpolate_at_s(points, s_values, total_length, start, closed_loop)]
+        for point, point_s in zip(points, s_values):
+            if start < point_s < end:
+                collected.append(point)
+        collected.append(interpolate_at_s(points, s_values, total_length, end, closed_loop))
+        return collected
+
+    start = start_s % total_length if closed_loop else max(0.0, min(start_s, total_length))
+    end = end_s % total_length if closed_loop else max(0.0, min(end_s, total_length))
+    if closed_loop and start > end:
+        return collect_range(start, total_length) + collect_range(0.0, end)[1:]
+    return collect_range(start, end)
+
+
 def yaw_at(points: Sequence[Point3], index: int, closed_loop: bool) -> float:
     if len(points) < 2:
         return 0.0
@@ -147,6 +285,7 @@ class HdMapPublisherNode(Node):
         self.publish_rate_hz = max(float(self.declare_parameter("publish_rate_hz", 1.0).value), 0.1)
         self.retry_interval_sec = max(float(self.declare_parameter("retry_interval_sec", 2.0).value), 0.1)
         self.publish_lane_markers = bool(self.declare_parameter("publish_lane_markers", True).value)
+        self.publish_section_markers = bool(self.declare_parameter("publish_section_markers", True).value)
         self.publish_primary_path = bool(self.declare_parameter("publish_primary_path", True).value)
         self.marker_line_width_m = max(
             float(self.declare_parameter("marker_line_width_m", 0.03).value),
@@ -168,6 +307,11 @@ class HdMapPublisherNode(Node):
         self.path_pub = (
             self.create_publisher(PathMsg, "primary_centerline_path", qos)
             if self.publish_primary_path
+            else None
+        )
+        self.section_marker_pub = (
+            self.create_publisher(MarkerArray, "section_markers", qos)
+            if self.publish_section_markers
             else None
         )
 
@@ -200,7 +344,8 @@ class HdMapPublisherNode(Node):
         self.get_logger().info(
             f"Loaded HD map YAML: {path} "
             f"(frame={self.hd_map.frame_id}, lanes={len(self.hd_map.lanes)}, "
-            f"primary={self.hd_map.primary_lane_id}, primary_points={primary_points})"
+            f"primary={self.hd_map.primary_lane_id}, primary_points={primary_points}, "
+            f"sections={len(self.hd_map.sections)}, gates={len(self.hd_map.section_gates)})"
         )
         return True
 
@@ -215,6 +360,8 @@ class HdMapPublisherNode(Node):
         stamp = self.get_clock().now().to_msg()
         if self.marker_pub is not None:
             self.marker_pub.publish(self.build_lane_markers(stamp))
+        if self.section_marker_pub is not None:
+            self.section_marker_pub.publish(self.build_section_markers(stamp))
         if self.path_pub is not None:
             path = self.build_primary_path(stamp)
             if path is not None:
@@ -245,6 +392,105 @@ class HdMapPublisherNode(Node):
                 if lane.closed_loop and len(points) >= 3:
                     marker.points.append(to_geometry_point(points[0], self.marker_z_offset_m))
                 marker_array.markers.append(marker)
+        return marker_array
+
+    def build_section_markers(self, stamp) -> MarkerArray:
+        marker_array = MarkerArray()
+        marker_id = 0
+
+        for section in self.hd_map.sections:
+            lane = self.hd_map.lane_by_id(section.lane_id)
+            if lane is None or len(lane.centerline) < 2:
+                continue
+            points = section_points(lane.centerline, lane.closed_loop, section.start_s_m, section.end_s_m)
+            if len(points) < 2:
+                continue
+            marker = Marker()
+            marker.header.frame_id = self.hd_map.frame_id
+            marker.header.stamp = stamp
+            marker.ns = f"hd_map/section/{section.lane_id}"
+            marker.id = marker_id
+            marker_id += 1
+            marker.type = Marker.LINE_STRIP
+            marker.action = Marker.ADD
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = self.marker_line_width_m * 2.2
+            marker.color.a = 0.9
+            if section.speed_override_mps is None:
+                marker.color.r = 0.1
+                marker.color.g = 0.65
+                marker.color.b = 1.0
+            else:
+                marker.color.r = 1.0
+                marker.color.g = 0.45
+                marker.color.b = 0.05
+            marker.points = [to_geometry_point(point, self.marker_z_offset_m + 0.05) for point in points]
+            marker_array.markers.append(marker)
+
+            label = Marker()
+            label.header.frame_id = self.hd_map.frame_id
+            label.header.stamp = stamp
+            label.ns = f"hd_map/section_label/{section.lane_id}"
+            label.id = marker_id
+            marker_id += 1
+            label.type = Marker.TEXT_VIEW_FACING
+            label.action = Marker.ADD
+            label.pose.orientation.w = 1.0
+            mid = points[len(points) // 2]
+            label.pose.position.x = mid[0]
+            label.pose.position.y = mid[1]
+            label.pose.position.z = mid[2] + self.marker_z_offset_m + 0.25
+            label.scale.z = 0.22
+            label.color.r = marker.color.r
+            label.color.g = marker.color.g
+            label.color.b = marker.color.b
+            label.color.a = 1.0
+            if section.speed_override_mps is None:
+                label.text = section.section_id
+            else:
+                label.text = f"{section.section_id} {section.speed_override_mps:.2f}m/s"
+            marker_array.markers.append(label)
+
+        for gate in self.hd_map.section_gates:
+            if len(gate.line) < 2:
+                continue
+            marker = Marker()
+            marker.header.frame_id = self.hd_map.frame_id
+            marker.header.stamp = stamp
+            marker.ns = f"hd_map/section_gate/{gate.lane_id}"
+            marker.id = marker_id
+            marker_id += 1
+            marker.type = Marker.LINE_LIST
+            marker.action = Marker.ADD
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = self.marker_line_width_m * 2.6
+            marker.color.r = 1.0
+            marker.color.g = 0.72
+            marker.color.b = 0.1
+            marker.color.a = 1.0
+            marker.points = [to_geometry_point(point, self.marker_z_offset_m + 0.08) for point in gate.line[:2]]
+            marker_array.markers.append(marker)
+
+            label = Marker()
+            label.header.frame_id = self.hd_map.frame_id
+            label.header.stamp = stamp
+            label.ns = f"hd_map/section_gate_label/{gate.lane_id}"
+            label.id = marker_id
+            marker_id += 1
+            label.type = Marker.TEXT_VIEW_FACING
+            label.action = Marker.ADD
+            label.pose.orientation.w = 1.0
+            label.pose.position.x = 0.5 * (gate.line[0][0] + gate.line[1][0])
+            label.pose.position.y = 0.5 * (gate.line[0][1] + gate.line[1][1])
+            label.pose.position.z = 0.5 * (gate.line[0][2] + gate.line[1][2]) + self.marker_z_offset_m + 0.28
+            label.scale.z = 0.2
+            label.color.r = 1.0
+            label.color.g = 0.9
+            label.color.b = 0.25
+            label.color.a = 1.0
+            label.text = gate.gate_id
+            marker_array.markers.append(label)
+
         return marker_array
 
     def build_primary_path(self, stamp) -> Optional[PathMsg]:

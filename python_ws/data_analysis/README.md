@@ -42,6 +42,11 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - 任意で時系列 + ヒストグラム PNG を出力
   - rolling p90 を使って「開始何秒後から安定か」を推定
 
+- `plot_odom_speed.py`
+  - rosbag から `nav_msgs/msg/Odometry` を取得
+  - `v = hypot(vx, vy)` の時系列 CSV / PNG / summary JSON を出力
+  - offline VSLAM で作った odom bag から、RC カーの実速度感を確認する用途
+
 - `build_map_steering_lookup.py`
   - rosbag から `nav_msgs/msg/Odometry` と `ackermann_msgs/msg/AckermannDriveStamped` を取得
   - `v = hypot(vx, vy)` と `a_y ~= v * yaw_rate` から MAP 用 steering lookup table を生成
@@ -63,6 +68,10 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
 - `visualize_race_lines.py`
   - map画像に HD map lane / centerline CSV / raceline CSV を重ねた確認用PNGを生成
   - `map.yaml` を指定すると、resolution / origin を使って world座標を画像座標へ変換する
+
+- `apply_hd_map_section_speeds.py`
+  - HD map YAML の `sections[*].speed_override_mps` を raceline CSV の `vx_mps` へ反映
+  - section gate で区切った区間ごとに速度を試したいとき向け
 
 - `check_global_opt_env.py`
   - optionalなglobal optimizer依存が現在のPython環境でimportできるか確認
@@ -120,7 +129,15 @@ python data_analysis/analyze_scan_odom_timing.py \
   --stability-threshold-ms 20.0 \
   --plot /tmp/scan_odom_timing_stability.png
 
-# 例7: camera image へ LiDAR を1フレーム投影
+# 例7: VSLAM odom の速度時系列を CSV/PNG/JSON にする
+python data_analysis/plot_odom_speed.py \
+  --bag /path/to/vslam_odom_bag \
+  --odom-topic /visual_slam/tracking/odometry \
+  --csv /tmp/vslam_speed.csv \
+  --plot /tmp/vslam_speed.png \
+  --summary-json /tmp/vslam_speed_summary.json
+
+# 例8: camera image へ LiDAR を1フレーム投影
 python data_analysis/visualize_lidar_camera_projection.py \
   --bag /path/to/rosbag2_dir \
   --image-topic /camera/left/image_raw \
@@ -133,7 +150,7 @@ python data_analysis/visualize_lidar_camera_projection.py \
   --output /tmp/lidar_camera_projection.png \
   --no-show
 
-# 例8: 0〜300フレームを投影して MP4 出力
+# 例9: 0〜300フレームを投影して MP4 出力
 python data_analysis/visualize_lidar_camera_projection.py \
   --bag /path/to/rosbag2_dir \
   --image-topic /camera/left/image_raw \
@@ -211,19 +228,57 @@ python data_analysis/build_map_steering_lookup.py \
   --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml
 ```
 
+低速/中速/舵角別に bag を分けた場合は、複数入力をまとめて lookup 化できます。
+
+```bash
+python data_analysis/build_map_steering_lookup.py \
+  --bag /record/session/low_speed_left/metadata.yaml \
+        /record/session/low_speed_right/metadata.yaml \
+        /record/session/mid_speed_left/metadata.yaml \
+        /record/session/mid_speed_right/metadata.yaml \
+  --min-speed 0.1 \
+  --max-speed 0.6 \
+  --speed-bin-size 0.1
+```
+
 主な出力:
 - `/tmp/<bag_name>_map_lookup_table.csv`
   - race_stacks 互換の `speed x steer -> lateral_accel` lookup table
 - `/tmp/<bag_name>_map_lookup_table_counts.csv`
   - 各 bin の生サンプル数
 - `/tmp/<bag_name>_map_lookup_table_raw.csv`
-  - `odom` と `cmd_drive` を突き合わせた raw サンプル一覧
+  - `odom` と `cmd_drive` を突き合わせた raw サンプル一覧。複数 bag 入力では `source_bag` 列で由来を確認できます
 
 補足:
 - 既定の `--cmd-topic` は `/jetracer/cmd_drive` です。これは最終的に車体へ入った指令を使いたいためです
 - controller の素の出力で LUT を作りたい場合は `--cmd-topic /autonomous/cmd_drive` に切り替えてください
 - IMU は不要です。今の script は `odom` と `cmd_drive` だけで動きます
+- speed には対応しています。`odom.twist.twist.linear.x/y` から `speed_mps = hypot(vx, vy)` を計算し、lookup table の列方向を speed bin にしています
 - 生成される table は「正の操舵量」と「正の横加速度」のみを保存し、左右符号は runtime 側で付ける前提です
+
+## 使い方（HD map section speed）
+
+`hd_map_section_gate_editor.py` で作った section に `speed_override_mps` を入れたあと、
+raceline CSV の速度列へ反映できます。元の raceline は残し、既定では
+`*_section_speeds.csv` を作ります。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python data_analysis/apply_hd_map_section_speeds.py \
+  --raceline /map/course_a/course_a_raceline.csv \
+  --hd-map /map/course_a/course_a_hd_map.yaml \
+  --output /map/course_a/course_a_raceline_section_speeds.csv
+```
+
+runtime ではこの CSV を planning に渡します。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems
+./scripts/launch_system.sh production \
+  --set map_dir=/map/course_a \
+  --set use_planning=true \
+  --set planning_raceline_csv=/map/course_a/course_a_raceline_section_speeds.csv
+```
 
 ## 使い方（camera crop 解析）
 

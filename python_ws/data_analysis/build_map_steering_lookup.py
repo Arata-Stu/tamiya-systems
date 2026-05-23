@@ -16,6 +16,7 @@ from rosbags.highlevel import AnyReader
 
 
 RAW_CSV_FIELDS = [
+    "source_bag",
     "odom_recorded_stamp_ns",
     "odom_header_stamp_ns",
     "cmd_recorded_stamp_ns",
@@ -54,7 +55,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--bag",
         required=True,
-        help="Path to rosbag2 directory or metadata.yaml",
+        nargs="+",
+        action="append",
+        metavar="PATH",
+        help="Path(s) to rosbag2 directories or metadata.yaml files. Can be repeated.",
     )
     parser.add_argument(
         "--odom-topic",
@@ -69,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lookup-csv",
         default=None,
-        help="Output CSV for the lookup table. Defaults to /tmp/<bag>_map_lookup_table.csv",
+        help="Output CSV for the lookup table. Defaults to /tmp/<bag>_map_lookup_table.csv or /tmp/combined_Nbags_map_lookup_table.csv.",
     )
     parser.add_argument(
         "--counts-csv",
@@ -149,6 +153,18 @@ def normalize_bag_path(path_str: str) -> Path:
     if bag_path.is_file() and bag_path.name == "metadata.yaml":
         return bag_path.parent
     return bag_path
+
+
+def normalize_bag_paths(raw_bags: list[list[str]]) -> list[Path]:
+    bag_paths: list[Path] = []
+    seen: set[Path] = set()
+    for group in raw_bags:
+        for path_str in group:
+            bag_path = normalize_bag_path(path_str)
+            if bag_path not in seen:
+                bag_paths.append(bag_path)
+                seen.add(bag_path)
+    return bag_paths
 
 
 def _build_default_ros2_typestore():
@@ -246,8 +262,11 @@ def load_drive_samples(bag_path: Path, topic: str) -> list[DriveSample]:
     return samples
 
 
-def default_output_path(bag_path: Path, suffix: str) -> Path:
-    stem = bag_path.name if bag_path.is_dir() else bag_path.stem
+def default_output_path(bag_paths: list[Path], suffix: str) -> Path:
+    if len(bag_paths) == 1:
+        stem = bag_paths[0].name if bag_paths[0].is_dir() else bag_paths[0].stem
+    else:
+        stem = f"combined_{len(bag_paths)}bags"
     return Path("/tmp") / f"{stem}{suffix}"
 
 
@@ -265,7 +284,9 @@ def build_raw_rows(
     max_abs_steer: float | None,
     max_abs_yaw_rate: float,
     max_abs_lateral_accel: float,
-) -> list[dict[str, float | int]]:
+    source_bag: str,
+    require_rows: bool = True,
+) -> list[dict[str, float | int | str]]:
     if not odom_samples:
         raise RuntimeError("No odometry samples found.")
     if not drive_samples:
@@ -273,7 +294,7 @@ def build_raw_rows(
 
     drive_times_ns = [sample.recorded_stamp_ns for sample in drive_samples]
     delay_ns = int(round(command_delay_sec * 1_000_000_000.0))
-    rows: list[dict[str, float | int]] = []
+    rows: list[dict[str, float | int | str]] = []
 
     for odom in odom_samples:
         if not math.isfinite(odom.speed_mps) or odom.speed_mps < min_speed:
@@ -301,6 +322,7 @@ def build_raw_rows(
 
         rows.append(
             {
+                "source_bag": source_bag,
                 "odom_recorded_stamp_ns": odom.recorded_stamp_ns,
                 "odom_header_stamp_ns": odom.header_stamp_ns,
                 "cmd_recorded_stamp_ns": drive.recorded_stamp_ns,
@@ -313,7 +335,7 @@ def build_raw_rows(
             }
         )
 
-    if not rows:
+    if require_rows and not rows:
         raise RuntimeError(
             "No matched samples remained after filtering. Try lowering --min-speed, "
             "widening steering limits, or reducing --command-delay-sec."
@@ -322,7 +344,7 @@ def build_raw_rows(
     return rows
 
 
-def infer_max_value(rows: list[dict[str, float | int]], key: str, quantile: float) -> float:
+def infer_max_value(rows: list[dict[str, float | int | str]], key: str, quantile: float) -> float:
     values = np.asarray([abs(float(row[key])) for row in rows], dtype=float)
     if values.size == 0:
         raise RuntimeError(f"No values available to infer {key}.")
@@ -383,7 +405,7 @@ def interpolate_rows(matrix: np.ndarray, speed_bins: np.ndarray) -> np.ndarray:
 
 
 def build_lookup(
-    rows: list[dict[str, float | int]],
+    rows: list[dict[str, float | int | str]],
     speed_bins: np.ndarray,
     steer_bins: np.ndarray,
     min_samples_per_bin: int,
@@ -420,7 +442,7 @@ def build_lookup(
     return lookup, counts
 
 
-def write_raw_csv(path: Path, rows: list[dict[str, float | int]]) -> None:
+def write_raw_csv(path: Path, rows: list[dict[str, float | int | str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=RAW_CSV_FIELDS)
@@ -449,25 +471,46 @@ def write_counts_csv(path: Path, speed_bins: np.ndarray, steer_bins: np.ndarray,
 
 def main() -> int:
     args = parse_args()
-    bag_path = normalize_bag_path(args.bag)
+    bag_paths = normalize_bag_paths(args.bag)
+    if not bag_paths:
+        raise RuntimeError("At least one --bag path is required.")
 
-    lookup_csv = Path(args.lookup_csv).expanduser().resolve() if args.lookup_csv else default_output_path(bag_path, "_map_lookup_table.csv")
+    lookup_csv = Path(args.lookup_csv).expanduser().resolve() if args.lookup_csv else default_output_path(bag_paths, "_map_lookup_table.csv")
     counts_csv = Path(args.counts_csv).expanduser().resolve() if args.counts_csv else lookup_csv.with_name(lookup_csv.stem + "_counts.csv")
     raw_csv = Path(args.raw_csv).expanduser().resolve() if args.raw_csv else lookup_csv.with_name(lookup_csv.stem + "_raw.csv")
 
-    odom_samples = load_odom_samples(bag_path, args.odom_topic)
-    drive_samples = load_drive_samples(bag_path, args.cmd_topic)
-    rows = build_raw_rows(
-        odom_samples=odom_samples,
-        drive_samples=drive_samples,
-        command_delay_sec=args.command_delay_sec,
-        min_speed=args.min_speed,
-        max_speed=args.max_speed,
-        min_abs_steer=args.min_abs_steer,
-        max_abs_steer=args.max_abs_steer,
-        max_abs_yaw_rate=args.max_abs_yaw_rate,
-        max_abs_lateral_accel=args.max_abs_lateral_accel,
-    )
+    rows: list[dict[str, float | int | str]] = []
+    bag_summaries: list[tuple[Path, int, int, int]] = []
+    for bag_path in bag_paths:
+        try:
+            odom_samples = load_odom_samples(bag_path, args.odom_topic)
+            drive_samples = load_drive_samples(bag_path, args.cmd_topic)
+            bag_rows = build_raw_rows(
+                odom_samples=odom_samples,
+                drive_samples=drive_samples,
+                command_delay_sec=args.command_delay_sec,
+                min_speed=args.min_speed,
+                max_speed=args.max_speed,
+                min_abs_steer=args.min_abs_steer,
+                max_abs_steer=args.max_abs_steer,
+                max_abs_yaw_rate=args.max_abs_yaw_rate,
+                max_abs_lateral_accel=args.max_abs_lateral_accel,
+                source_bag=str(bag_path),
+                require_rows=len(bag_paths) == 1,
+            )
+        except Exception as exc:
+            if len(bag_paths) == 1:
+                raise
+            print(f"[WARN] Skip bag={bag_path}: {exc}")
+            continue
+        rows.extend(bag_rows)
+        bag_summaries.append((bag_path, len(odom_samples), len(drive_samples), len(bag_rows)))
+
+    if not rows:
+        raise RuntimeError(
+            "No matched samples remained across all bags. Try lowering --min-speed, "
+            "widening steering limits, or reducing --command-delay-sec."
+        )
 
     max_speed = args.max_speed if args.max_speed is not None else infer_max_value(rows, "speed_mps", 0.995)
     max_abs_steer = args.max_abs_steer if args.max_abs_steer is not None else infer_max_value(rows, "steering_angle_rad", 0.995)
@@ -482,7 +525,9 @@ def main() -> int:
 
     observed_cells = int(np.count_nonzero(counts >= args.min_samples_per_bin))
     total_cells = int(counts.size)
-    print(f"[INFO] bag={bag_path}")
+    print(f"[INFO] bags={len(bag_summaries)}/{len(bag_paths)}")
+    for bag_path, odom_count, drive_count, row_count in bag_summaries:
+        print(f"[INFO] bag={bag_path} odom={odom_count} cmd={drive_count} matched={row_count}")
     print(f"[INFO] odom_topic={args.odom_topic} cmd_topic={args.cmd_topic}")
     print(f"[INFO] matched_samples={len(rows)} speed_bins={len(speed_bins)} steer_bins={len(steer_bins)}")
     print(f"[INFO] observed_cells={observed_cells}/{total_cells} min_samples_per_bin={args.min_samples_per_bin}")

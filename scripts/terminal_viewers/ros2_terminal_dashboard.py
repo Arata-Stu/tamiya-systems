@@ -16,6 +16,7 @@ import termios
 import time
 import tty
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 import cv2
@@ -217,6 +218,9 @@ class TerminalDashboard(Node):
             self.tf_buffer = tf2_ros.Buffer(cache_time=Duration(seconds=20.0))
             self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
+        if args.hd_map_yaml:
+            self.load_hd_map_background(Path(args.hd_map_yaml).expanduser().resolve())
+
         map_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -289,6 +293,10 @@ class TerminalDashboard(Node):
             self.create_subscription(Path, args.local_path_topic, self.on_local_path, reliable_qos)
         if args.section_markers_topic:
             self.create_subscription(MarkerArray, args.section_markers_topic, self.on_section_markers, marker_qos)
+        if args.hd_lane_markers_topic:
+            self.create_subscription(MarkerArray, args.hd_lane_markers_topic, self.on_section_markers, marker_qos)
+        if args.hd_section_markers_topic:
+            self.create_subscription(MarkerArray, args.hd_section_markers_topic, self.on_section_markers, marker_qos)
         if args.current_section_marker_topic:
             self.create_subscription(Marker, args.current_section_marker_topic, self.on_current_section_marker, marker_qos)
         if args.current_section_topic:
@@ -371,6 +379,44 @@ class TerminalDashboard(Node):
             height=int(msg.info.height),
             image_bgr=np.flipud(image),
         )
+
+    def load_hd_map_background(self, hd_map_yaml: Path) -> None:
+        try:
+            import yaml  # type: ignore
+
+            data = yaml.safe_load(hd_map_yaml.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("HD map YAML root must be a mapping")
+            source = data.get("source_raster")
+            if not isinstance(source, dict):
+                raise ValueError("HD map YAML has no source_raster block")
+            image_path = Path(str(source.get("image", ""))).expanduser()
+            if not image_path.is_absolute():
+                image_path = (hd_map_yaml.parent / image_path).resolve()
+            image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+            if image_bgr is None:
+                raise ValueError(f"could not read source raster image: {image_path}")
+            origin = source.get("origin_xy_yaw", [0.0, 0.0, 0.0])
+            if not isinstance(origin, (list, tuple)) or len(origin) < 2:
+                raise ValueError("source_raster.origin_xy_yaw must be [x, y, yaw]")
+            height, width = image_bgr.shape[:2]
+            image_size = source.get("image_size_px")
+            if isinstance(image_size, (list, tuple)) and len(image_size) >= 2:
+                width = int(image_size[0])
+                height = int(image_size[1])
+            self.state.map_state = MapState(
+                frame_id=str(data.get("frame_id") or self.args.map_frame),
+                resolution=float(source.get("resolution_m_per_px", 0.02)),
+                origin_x=float(origin[0]),
+                origin_y=float(origin[1]),
+                origin_yaw=float(origin[2]) if len(origin) >= 3 else 0.0,
+                width=width,
+                height=height,
+                image_bgr=image_bgr,
+            )
+            self.get_logger().info(f"Loaded HD map background: {hd_map_yaml}")
+        except Exception as exc:  # noqa: BLE001
+            self.get_logger().error(f"Failed to load HD map background {hd_map_yaml}: {exc}")
 
     def on_localization(self, msg: PoseWithCovarianceStamped) -> None:
         self.state.localization = self.pose_from_cov_msg(msg)
@@ -858,7 +904,7 @@ class TerminalDashboard(Node):
         x0, y0, w, h = rect
         map_state = self.state.map_state
         if map_state is None or not self.toggles["map"]:
-            self.draw_empty_panel(canvas, rect, "waiting for /map")
+            self.draw_empty_panel(canvas, rect, "waiting for /map or --hd-map-yaml")
             return
 
         scale = min(w / map_state.width, h / map_state.height)
@@ -1020,7 +1066,7 @@ class TerminalDashboard(Node):
 
     def draw_sections(self, canvas: np.ndarray, scale: float, ox: int, oy: int) -> None:
         for marker in sorted(self.section_markers.values(), key=lambda m: (m.ns, m.id)):
-            if not self.toggles["gates"] and marker.ns.startswith("section_gate"):
+            if not self.toggles["gates"] and "section_gate" in marker.ns:
                 continue
             self.draw_marker(canvas, marker, scale, ox, oy)
         if self.current_section_marker is not None:
@@ -1465,6 +1511,11 @@ class RawTerminal:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--map-topic", default="/map")
+    parser.add_argument(
+        "--hd-map-yaml",
+        default="",
+        help="Editable HD map YAML used as map panel background when /map is unavailable.",
+    )
     parser.add_argument("--localization-topic", default="/localization_result")
     parser.add_argument("--amcl-pose-topic", default="/amcl_pose")
     parser.add_argument("--initial-pose-topic", default="/initialpose")
@@ -1493,6 +1544,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--global-path-topic", default="/planning/global_raceline")
     parser.add_argument("--local-path-topic", default="/autonomous/trajectory")
     parser.add_argument("--section-markers-topic", default="/localization/section_markers")
+    parser.add_argument("--hd-lane-markers-topic", default="/hd_map/lane_markers")
+    parser.add_argument("--hd-section-markers-topic", default="/hd_map/section_markers")
     parser.add_argument("--current-section-marker-topic", default="/localization/current_section_marker")
     parser.add_argument("--current-section-topic", default="/localization/current_section")
     parser.add_argument("--map-frame", default="map")

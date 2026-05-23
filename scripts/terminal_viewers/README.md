@@ -7,6 +7,7 @@ Kitty-compatible terminal visualization tools for SSH-first ROS debugging.
 - `ros2_terminal_scan_viewer.py`: simple `sensor_msgs/LaserScan` viewer.
 - `ros2_terminal_map_viewer.py`: 2D map, localization result, scan, path, particles, and section markers.
 - `ros2_terminal_dashboard.py`: custom rviz-like dashboard with keyboard or mouse toggles for map, localization, scan, image, crop image, sections, gates, particles, `slam_path`, `vo_path`, and planning paths. `camera_info` があれば image panel にも scan 投影を重ね、`odom` があればヘッダに速度を表示します。
+- `ros2_terminal_vslam_dashboard.py`: VSLAM/HD map 向け wrapper。`/map` がなくても `--hd-map-yaml` の source raster を背景に、HD lane / section / odom / crop image / LiDAR projection を見る既定値で起動します。
 
 ## Dashboard
 
@@ -30,6 +31,18 @@ crop preview panel and uses BEST_EFFORT QoS for that topic.
 Section-localizer debugging is also wired in by default through
 `/localization/current_section`, `/localization/section_markers`, and
 `/localization/current_section_marker`.
+
+For the VSLAM HD-map flow, use the wrapper and pass the editable HD map YAML:
+
+```bash
+python3 /scripts/terminal_viewers/ros2_terminal_vslam_dashboard.py \
+  --hd-map-yaml /map/course_a/course_a_hd_map.yaml
+```
+
+This subscribes to `/hd_map/lane_markers`, `/hd_map/section_markers`,
+`/localization/current_section_marker`, VSLAM odometry/path topics,
+`/camera/left/image_raw`, `/camera/left/camera_info`, `/scan`, and
+`/perception/crop/image`.
 
 By default the dashboard shows the latest data from each topic so it stays
 responsive during normal SSH debugging.

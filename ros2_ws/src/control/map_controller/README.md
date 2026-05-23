@@ -14,6 +14,10 @@ Output:
 
 - `/autonomous/cmd_drive`
 
+Each `trajectory_reference` point can carry `speed_mps`. The controller uses it
+as the reference speed, then clamps it with `min_speed` / `max_speed`. If the
+message has no positive speed, `fallback_speed` is used.
+
 Lateral control computes a desired lateral acceleration with an L1 target and
 converts that acceleration into a steering angle through a lookup table. When
 `lookup_table_csv_path` is empty or invalid, the controller falls back to a

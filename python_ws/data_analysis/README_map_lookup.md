@@ -92,7 +92,8 @@ LUT 品質を上げるコツは「速度」と「操舵」を一度に大きく�
 
 ポイント:
 
-- 1 本の bag で全部を取ってもよい
+- 1 本の bag で全部を取ってもよいが、低速/中速/大舵角/小舵角などを分けて取ると、あとで悪い take を外しやすい
+- 複数 bag をまとめて lookup 生成に使える
 - 左右どちらかに偏るより、両方向を揃えた方が lookup の確認がしやすい
 - LUT の最初の版は「十分に密な網羅」より「破綻しない定常サンプル」を優先すると進めやすい
 
@@ -102,6 +103,27 @@ LUT 品質を上げるコツは「速度」と「操舵」を一度に大きく�
 cd /Users/at/project/competition/tamiya-systems/python_ws
 python data_analysis/build_map_steering_lookup.py \
   --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml
+```
+
+複数 bag をまとめる場合:
+
+```bash
+python data_analysis/build_map_steering_lookup.py \
+  --bag /record/session/low_speed_left/metadata.yaml \
+        /record/session/low_speed_right/metadata.yaml \
+        /record/session/mid_speed_left/metadata.yaml \
+        /record/session/mid_speed_right/metadata.yaml \
+  --min-speed 0.1 \
+  --max-speed 0.6 \
+  --speed-bin-size 0.1
+```
+
+`--bag` は繰り返し指定もできます。
+
+```bash
+python data_analysis/build_map_steering_lookup.py \
+  --bag /record/session/low_speed_left/metadata.yaml \
+  --bag /record/session/low_speed_right/metadata.yaml
 ```
 
 主なオプション:
@@ -124,7 +146,10 @@ python data_analysis/build_map_steering_lookup.py \
 - `/tmp/<bag_name>_map_lookup_table_counts.csv`
   - 各セルに何サンプル入ったか
 - `/tmp/<bag_name>_map_lookup_table_raw.csv`
-  - odom と cmd を付き合わせた生データ
+  - odom と cmd を付き合わせた生データ。複数 bag 入力時は `source_bag` 列で由来を確認できます
+
+複数 bag 入力で出力名を指定しない場合、既定名は
+`/tmp/combined_<N>bags_map_lookup_table.csv` になります。
 
 ## 調整の目安
 

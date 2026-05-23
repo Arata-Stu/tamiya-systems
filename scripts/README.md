@@ -14,6 +14,8 @@ directly.
 - `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `424x240x90` 録画に合わせた preset。
 - `create_2d_map_from_bag.sh`: 2D map 作成用。mode は `no_odom_offline_vslam` / `no_odom_online_vslam` / `with_odom_offline_vslam` / `with_odom_online_vslam` の 4 通りです。前半は Cartographer が odom を使うか、後半は Cartographer と同時に VSLAM を走らせるかを表します。`default` は `no_odom_offline_vslam`、`2d_slam` は `no_odom_online_vslam` の互換 alias です。`--mode` を省略すると実行時に 4択で選べます。`with_odom_online_vslam` は live の `/visual_slam/tracking/odometry` を使い、`with_odom_offline_vslam` は先に VSLAM map を作ってから、その map を読み込んだ VSLAM で odom bag を生成し、その bag を Cartographer に渡します。この mode では source bag を 2 回 replay します。`with_odom_offline_vslam` では、odom bag の録画前に `ros2 topic hz -w 10` 相当の平均レート確認を行い、既定では `--image-fps` の 90% 以上に達してから録画を始めます。必要なら `--odom-ready-window` / `--odom-ready-min-rate` / `--odom-ready-timeout` / `--no-odom-ready-wait` で調整できます。`--prepare-vslam-map-alignment` を使うと provisional 2D map 生成後に `2D map publish + saved VSLAM path/odom republish` を立ち上げ、別 pane の `manual_tf_alignment_node.py` で落ち着いて `map -> vslam_map` を合わせられます。online mode の live alignment が必要なら `--live-vslam-map-align` も残っています。centerline 前に GUI で map を手修正したい場合は `--edit-map`、VSLAM landmarks を replay して tracing 用の blank-canvas editor へ流したい場合は `--trace-vslam-landmarks` を使います。saved `map -> vslam_map` 補正を再利用したいときは `--vslam-map-alignment-config /path/to/vslam_map_alignment.yaml` を併用できます。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
 - `create_hd_map_from_vslam_bag.sh`: VSLAM landmarks/path の snapshot を下絵 PNG/YAML にして、lane の `left_bound` / `right_bound` / `centerline` を描く editable HD map YAML、primary centerline CSV、raceline CSV まで作る実験用 flow。bag 選択と offline VSLAM replay は `create_2d_map_from_bag.sh` の helper を再利用します。
+- `edit_hd_map_sections.sh`: editable HD map YAML を開き、lane centerline 上に section gate を追加して `sections` と速度 override 用フィールドを生成します。
+- `analyze_vslam_speed_from_bag.sh`: camera rosbag を offline VSLAM で replay し、VSLAM odometry bag、速度時系列 CSV、PNG plot、summary JSON を生成する debug flow。
 - `scp_data.sh`: data transfer helper.
 
 ## VSLAM map alignment helpers
@@ -53,6 +55,7 @@ python3 /scripts/terminal_viewers/ros2_terminal_map_viewer.py
 python3 /scripts/terminal_viewers/ros2_terminal_image_viewer.py
 python3 /scripts/terminal_viewers/ros2_terminal_scan_viewer.py
 python3 /scripts/terminal_viewers/ros2_terminal_dashboard.py
+python3 /scripts/terminal_viewers/ros2_terminal_vslam_dashboard.py --hd-map-yaml /map/course_a/course_a_hd_map.yaml
 ```
 
 `ros2_terminal_dashboard.py` is the custom rviz-like entrypoint for SSH
@@ -66,6 +69,35 @@ exact-time TF が引けないときは overlay を隠す既定動作です。旧
 latest TF へ緩く fallback したい場合だけ `--allow-latest-tf-fallback` を
 明示してください。localization overlay が有効なときは、その pose 時刻を
 基準に scan / image を巻き戻して合わせる既定動作です。
+VSLAM/HD map だけを見るときは `ros2_terminal_vslam_dashboard.py` が便利です。
+`/map` topic なしでも `--hd-map-yaml` の source raster を背景にして、
+`/hd_map/lane_markers`、`/hd_map/section_markers`、current section、
+VSLAM odometry/path、camera/crop image、LiDAR projection をまとめて表示します。
+
+## VSLAM Speed Debug
+
+camera bag から VSLAM odom を作り、速度時系列を確認するには:
+
+```bash
+./scripts/analyze_vslam_speed_from_bag.sh --bag-path /record/session/take
+```
+
+bag を対話選択する場合:
+
+```bash
+./scripts/analyze_vslam_speed_from_bag.sh --record-root /record
+```
+
+出力は既定で `/tmp/vslam_speed_debug/<bag>_<timestamp>/` へ保存されます。
+主な成果物は `odom_bag/`、`vslam_speed.csv`、`vslam_speed.png`、
+`vslam_speed_summary.json` です。既に odom bag がある場合は:
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python3 data_analysis/plot_odom_speed.py \
+  --bag /tmp/vslam_speed_debug/<bag>_<timestamp>/odom_bag \
+  --plot /tmp/vslam_speed.png
+```
 
 ## Shared helpers
 
@@ -182,7 +214,7 @@ section ごとの policy は `drive_mode_manager` の param YAML で
 ./scripts/launch_system.sh localization_eval --set map_dir=/map/course_a
 ./scripts/launch_system.sh perception_eval
 ./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a
-./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a --set use_camera=false --set use_hd_map=true --set use_planning=true --set localize_on_startup=true --set planning_publish_local_path=false --set planning_publish_local_reference=false
+./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a --set use_camera=false --set use_hd_map=true --set use_hd_map_section_localizer=true --set use_planning=true --set localize_on_startup=true --set planning_publish_local_path=false --set planning_publish_local_reference=false
 ```
 
 最後の `vslam_eval` 例は source bag を `ros2 bag play <bag_path> --clock --start-paused`

@@ -12,6 +12,9 @@ Raceline CSV から ROS 2 trajectory message を publish する package です�
 `track_s_m / path_s_m / speed_mps / curvature_radpm / acceleration_mps2`
 を載せて publish します。将来の MPC など、速度付き参照軌道が必要な controller 向けです。
 CSV に速度系の列がない場合、それらの値は 0 のまま publish されます。
+HD map section の `speed_override_mps` を使う場合は、先に
+`python_ws/data_analysis/apply_hd_map_section_speeds.py` で `vx_mps` を上書きした
+raceline CSV を作り、その CSV を `raceline_csv_path` に渡します。
 
 ## 対応 CSV
 
