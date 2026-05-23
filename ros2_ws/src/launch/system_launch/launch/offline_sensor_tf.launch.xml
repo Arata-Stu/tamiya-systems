@@ -25,11 +25,11 @@
         pkg="tf2_ros"
         exec="static_transform_publisher"
         name="offline_base_to_laser_tf"
-        args="$(var lidar_x) $(var lidar_y) $(var lidar_z) $(var lidar_roll) $(var lidar_pitch) $(var lidar_yaw) $(var base_frame) $(var lidar_frame)" />
+        args="--x $(var lidar_x) --y $(var lidar_y) --z $(var lidar_z) --roll $(var lidar_roll) --pitch $(var lidar_pitch) --yaw $(var lidar_yaw) --frame-id $(var base_frame) --child-frame-id $(var lidar_frame)" />
 
     <node
         pkg="tf2_ros"
         exec="static_transform_publisher"
         name="offline_base_to_camera_tf"
-        args="$(eval '\'{} {} {} {} {} {} {} {}\'.format(float(\'$(var camera_x)\') + float(\'$(var camera_mount_to_lens_x)\'), float(\'$(var camera_y)\') + float(\'$(var camera_mount_to_lens_y)\'), float(\'$(var camera_z)\') + float(\'$(var camera_mount_to_lens_z)\'), \'$(var camera_roll)\', \'$(var camera_pitch)\', \'$(var camera_yaw)\', \'$(var base_frame)\', \'$(var camera_base_frame)\')')" />
+        args="$(eval '\'--x {} --y {} --z {} --roll {} --pitch {} --yaw {} --frame-id {} --child-frame-id {}\'.format(float(\'$(var camera_x)\') + float(\'$(var camera_mount_to_lens_x)\'), float(\'$(var camera_y)\') + float(\'$(var camera_mount_to_lens_y)\'), float(\'$(var camera_z)\') + float(\'$(var camera_mount_to_lens_z)\'), \'$(var camera_roll)\', \'$(var camera_pitch)\', \'$(var camera_yaw)\', \'$(var base_frame)\', \'$(var camera_base_frame)\')')" />
 </launch>
