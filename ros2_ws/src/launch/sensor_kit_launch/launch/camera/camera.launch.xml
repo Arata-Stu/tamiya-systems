@@ -12,7 +12,10 @@
     <arg name="publish_realsense_mount_tf" default="true" />
 
     <group if="$(var create_container)">
-        <node pkg="rclcpp_components" exec="component_container_mt" name="$(var camera_container_name)" output="screen"/>
+        <node pkg="rclcpp_components"
+              exec="component_container_mt"
+              output="screen"
+              args="--ros-args -r ComponentManager:__node:=$(var camera_container_name)"/>
     </group>
 
     <group if="$(eval '\'$(var use_camera)\' == \'true\' and \'$(var camera_model)\' == \'realsense\'')">

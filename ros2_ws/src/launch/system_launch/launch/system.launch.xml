@@ -321,9 +321,15 @@
     <!-- system.launch owns the shared LiDAR component container.
          sensor_kit and localization/eval consumers only load components into it. -->
     <group if="$(eval '\'$(var use_lidar)\'.strip().lower() == \'true\' or \'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\'])')">
-        <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"/>
+        <node pkg="rclcpp_components"
+              exec="component_container"
+              output="screen"
+              args="--ros-args -r ComponentManager:__node:=$(var lidar_container_name)"/>
     </group>
-    <node pkg="rclcpp_components" exec="component_container_mt" name="$(var camera_container_name)" output="screen"/>
+    <node pkg="rclcpp_components"
+          exec="component_container_mt"
+          output="screen"
+          args="--ros-args -r ComponentManager:__node:=$(var camera_container_name)"/>
 
     <!-- Jetracer Driver Node -->
     <group if="$(var use_vehicle)">

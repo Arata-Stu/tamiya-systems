@@ -33,8 +33,12 @@
     <arg name="enable_observations_view" default="false" />
     <arg name="enable_landmarks_view" default="false" />
 
-    <node pkg="rclcpp_components" exec="component_container_mt" name="$(var vslam_container_name)" output="screen"
-          if="$(var create_vslam_container)"/>
+    <group if="$(var create_vslam_container)">
+        <node pkg="rclcpp_components"
+              exec="component_container_mt"
+              output="screen"
+              args="--ros-args -r ComponentManager:__node:=$(var vslam_container_name)"/>
+    </group>
 
     <let name="visual_slam_left_image_topic" value="/camera/left/image_rect_mono"
          if="$(var use_image_preprocessors)"/>

@@ -162,8 +162,8 @@
   <group if="$(var create_container)">
     <node pkg="rclcpp_components"
           exec="component_container_mt"
-          name="$(var container_name)"
-          output="screen"/>
+          output="screen"
+          args="--ros-args -r ComponentManager:__node:=$(var container_name)"/>
   </group>
 
   <group if="$(var use_rectify)">

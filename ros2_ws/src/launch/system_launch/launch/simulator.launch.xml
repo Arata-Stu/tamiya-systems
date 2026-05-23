@@ -118,8 +118,12 @@
 
     <!-- Simulator localization pipeline -->
     <group if="$(var localization)">
-        <node pkg="rclcpp_components" exec="component_container" name="$(var lidar_container_name)" output="screen"
-              unless="$(var use_ftg)"/>
+        <group unless="$(var use_ftg)">
+            <node pkg="rclcpp_components"
+                  exec="component_container"
+                  output="screen"
+                  args="--ros-args -r ComponentManager:__node:=$(var lidar_container_name)"/>
+        </group>
 
         <!-- OccupancyGridLocalizer internally looks up transforms against base_link.
              In simulator, main frame is ego_racecar/base_link, so publish an alias. -->
