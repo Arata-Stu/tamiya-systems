@@ -34,6 +34,7 @@ Options:
   --image-height PX       offline VSLAM image height (default: 240)
   --with-imu              replay /camera/imu in addition to stereo topics
   --play-all-topics       replay every source-bag topic instead of filtered topics
+  --launch-offline-tf     publish fallback base_link TFs instead of using only bag TFs
   --snapshot PATH         VSLAM reference snapshot path
   --skip-vslam            reuse --snapshot instead of replaying the bag
   --no-save-vslam-map     do not save cuVSLAM native map after replay
@@ -135,12 +136,14 @@ launch_hdmap_vslam_stack() {
         launch_args+=("save_map_path:=${VSLAM_MAP_DIR}")
     fi
 
-    build_system_launch_cmd "offline_sensor_tf.launch.xml"
-    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        > "${TF_LOG_PATH}" 2>&1
+    if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
+        build_system_launch_cmd "offline_sensor_tf.launch.xml"
+        launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+            "${SYSTEM_LAUNCH_CMD[@]}" \
+            > "${TF_LOG_PATH}" 2>&1
 
-    sleep 2
+        sleep 2
+    fi
 
     launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
         ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
@@ -170,8 +173,13 @@ start_vslam_snapshot_recorder() {
 
 run_vslam_snapshot_capture() {
     echo "[1/4] Launch offline VSLAM for HD map reference"
-    echo "  - TF log    : ${TF_LOG_PATH}"
     echo "  - VSLAM log : ${VSLAM_LOG_PATH}"
+    echo "  - sim time  : true (rosbag replay uses --clock)"
+    if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
+        echo "  - TF source : offline_sensor_tf.launch.xml (${TF_LOG_PATH})"
+    else
+        echo "  - TF source : rosbag /tf_static during replay"
+    fi
     launch_hdmap_vslam_stack
 
     echo "[2/4] Wait for visual_slam/save_map"
@@ -387,6 +395,7 @@ IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 USE_IMU=false
 PLAY_ALL_TOPICS=false
+LAUNCH_OFFLINE_TF=false
 SAVE_VSLAM_MAP=true
 SKIP_VSLAM=false
 OPEN_EDITOR=true
@@ -467,6 +476,10 @@ while (($#)); do
             ;;
         --play-all-topics)
             PLAY_ALL_TOPICS=true
+            shift
+            ;;
+        --launch-offline-tf)
+            LAUNCH_OFFLINE_TF=true
             shift
             ;;
         --snapshot)
