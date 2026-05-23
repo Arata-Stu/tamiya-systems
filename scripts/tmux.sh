@@ -319,4 +319,8 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   esac
 fi
 
-tmux attach-session -t "$SESSION_NAME"
+if [[ -n "${TMUX:-}" ]]; then
+  tmux switch-client -t "$SESSION_NAME"
+else
+  tmux attach-session -t "$SESSION_NAME"
+fi

@@ -2,7 +2,7 @@
     <arg name="use_lidar" default="true" description="use lidar"/>
     <arg name="lidar_model" default="hokuyo" />
     <arg name="lidar_container_name" default="lidar_container" />
-    <arg name="create_lidar_container" default="true" />
+    <arg name="create_lidar_container" default="false" />
     <arg name="filter_param" default="$(find-pkg-share sensor_kit_launch)/config/lidar/scan_filter_footprint_angle.param.yaml" />
          
     <arg name="use_camera" default="true" description="use camera"/>
