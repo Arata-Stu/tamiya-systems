@@ -10,6 +10,7 @@ Modes:
   record_mapping_debug    record_mapping plus perception crop/debug topics
   race                    Main race run: VSLAM + 2D GL + HD map + MAP controller + speed controller
   race_pp                 Pure Pursuit variant of race
+  offline_eval            Bag replay eval: VSLAM + 2D GL + HD map + sections, no vehicle
   e2e_backup              Camera E2E fallback run without VSLAM/localization/planning
   hd_map_eval             Saved VSLAM/HD map debug: lanes, sections, raceline/path visualization
   production              Legacy base run with VSLAM + localization + 2D section localizer
@@ -28,6 +29,8 @@ Modes:
   race_map                Alias of race
   race_map_controller     Alias of race
   race_pure_pursuit       Alias of race_pp
+  bag_eval                Alias of offline_eval
+  offline_map_eval        Alias of offline_eval
   camera_e2e_backup       Alias of e2e_backup
   hd_map_debug            Alias of hd_map_eval
   sensor_recording        Alias of sensor_data_recording
@@ -50,6 +53,7 @@ Examples:
   ${SCRIPT_NAME} record_mapping_debug
   ${SCRIPT_NAME} race --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} race_pp --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} offline_eval --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} hd_map_eval --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} e2e_backup
   ${SCRIPT_NAME} production -- map_dir:=/map/mybag/mycourse
@@ -247,6 +251,7 @@ choose_mode_interactive() {
     "record_mapping_debug                    record_mapping + perception crop/debug"
     "race                                    Jetson本番候補: VSLAM + 2D GL + HD map + MAP controller + speed controller"
     "race_pp                                 race の Pure Pursuit 版"
+    "offline_eval                            rosbag評価: VSLAM + 2D GL + HD map + section, vehicleなし"
     "identification  (= map_lookup_recording, map_lookup)  steering/speed identification 用rosbag収集"
     "mapping          (= sensor_data_recording, vslam_map)  legacy: record_mapping_debug相当"
     "hd_map_eval                             保存済みVSLAM/HD mapのlane/section/path debug"
@@ -262,6 +267,7 @@ choose_mode_interactive() {
     "record_mapping_debug"
     "race"
     "race_pp"
+    "offline_eval"
     "identification"
     "sensor_data_recording"
     "hd_map_eval"
@@ -510,7 +516,7 @@ warn_if_mode_incomplete() {
   local normalized_e2e_variant
 
   case "$MODE" in
-    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|hd_map_eval|hd_map_debug|localization_eval)
+    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|offline_eval|bag_eval|offline_map_eval|hd_map_eval|hd_map_debug|localization_eval)
       if [[ -z "$(current_map_dir)" ]]; then
         echo "Warning: ${MODE} mode expects map_dir to be set." >&2
       fi

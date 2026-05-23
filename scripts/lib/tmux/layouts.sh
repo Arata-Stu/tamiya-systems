@@ -35,6 +35,18 @@ create_race_layout() {
   create_layout_from_panes "$WINDOW_RACE" 0
 }
 
+create_offline_eval_layout() {
+  reset_panes
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_OFFLINE_EVAL"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_OFFLINE_EVAL"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  create_layout_from_panes "$WINDOW_EVAL" 1
+}
+
 create_python_layout() {
   reset_panes
   add_pane "$WINDOW_MAIN" "$PYTHON_DIR" "$ROS_SETUP" ""

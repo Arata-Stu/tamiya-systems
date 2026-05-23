@@ -6,15 +6,29 @@
   <arg name="odometry_topic" default="/visual_slam/tracking/odometry"/>
   <arg name="lookup_table_csv_path" default=""/>
 
-  <node pkg="map_controller"
-        exec="map_controller_node"
-        name="map_controller_node"
-        output="screen">
-    <param from="$(var map_controller_param)"/>
-    <param name="lookup_table_csv_path" value="$(var lookup_table_csv_path)" if="$(eval '\'$(var lookup_table_csv_path)\' != \'\'')"/>
-    <param name="use_lookup_table" value="true" if="$(eval '\'$(var lookup_table_csv_path)\' != \'\'')"/>
-    <remap from="trajectory_reference" to="$(var trajectory_reference_topic)"/>
-    <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
-    <remap from="odometry" to="$(var odometry_topic)"/>
-  </node>
+  <group if="$(eval '\'$(var lookup_table_csv_path)\'.strip() != \'\'')">
+    <node pkg="map_controller"
+          exec="map_controller_node"
+          name="map_controller_node"
+          output="screen">
+      <param from="$(var map_controller_param)"/>
+      <param name="lookup_table_csv_path" value="$(var lookup_table_csv_path)"/>
+      <param name="use_lookup_table" value="true"/>
+      <remap from="trajectory_reference" to="$(var trajectory_reference_topic)"/>
+      <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
+      <remap from="odometry" to="$(var odometry_topic)"/>
+    </node>
+  </group>
+
+  <group unless="$(eval '\'$(var lookup_table_csv_path)\'.strip() != \'\'')">
+    <node pkg="map_controller"
+          exec="map_controller_node"
+          name="map_controller_node"
+          output="screen">
+      <param from="$(var map_controller_param)"/>
+      <remap from="trajectory_reference" to="$(var trajectory_reference_topic)"/>
+      <remap from="autonomous/cmd_drive" to="$(var drive_topic)"/>
+      <remap from="odometry" to="$(var odometry_topic)"/>
+    </node>
+  </group>
 </launch>

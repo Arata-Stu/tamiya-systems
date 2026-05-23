@@ -23,31 +23,59 @@
   </node>
 
   <!-- joy manager node-->
-  <node pkg="teleop_manager"
-        exec="teleop_manager_node"
-        name="teleop_manager_node"
-        output="screen">
-        
-    <param from="$(var teleop_param)"/>
-    <param name="output_mode" value="$(var output_mode)"/>
-    <param name="speed_scale" value="$(var speed_scale)" if="$(eval '\'$(var speed_scale)\'.strip() != \'\'')"/>
-    <param name="enable_steering_offset_buttons" value="$(var enable_steering_offset_buttons)"/>
-    <param name="enable_throttle_offset_buttons" value="$(var enable_throttle_offset_buttons)"/>
-    <param name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
-    <!-- joy -->
-    <remap from="/joy" to="/joy"/>
-    <!-- AI制御コマンド -->
-    <remap from="autonomous/cmd_drive" to="$(var autonomous_control_topic)"/>
-    <!-- 緊急オーバライド制御コマンド -->
-    <remap from="emergency/cmd_drive" to="$(var emergency_control_topic)"/>
-    <!-- 緊急オーバライド信号 -->
-    <remap from="emergency/signal" to="$(var emergency_signal_topic)"/>
-    <!-- RCカーへの入力 -->
-    <remap from="cmd_drive" to="$(var vehicle_control_topic)"/> 
-    <!-- rosbag制御トリガ -->
-    <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
-    <!-- rosbagメモ -->
-    <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/>
-  </node>
+  <group if="$(eval '\'$(var speed_scale)\'.strip() != \'\'')">
+    <node pkg="teleop_manager"
+          exec="teleop_manager_node"
+          name="teleop_manager_node"
+          output="screen">
+      <param from="$(var teleop_param)"/>
+      <param name="output_mode" value="$(var output_mode)"/>
+      <param name="speed_scale" value="$(var speed_scale)"/>
+      <param name="enable_steering_offset_buttons" value="$(var enable_steering_offset_buttons)"/>
+      <param name="enable_throttle_offset_buttons" value="$(var enable_throttle_offset_buttons)"/>
+      <param name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
+      <!-- joy -->
+      <remap from="/joy" to="/joy"/>
+      <!-- AI制御コマンド -->
+      <remap from="autonomous/cmd_drive" to="$(var autonomous_control_topic)"/>
+      <!-- 緊急オーバライド制御コマンド -->
+      <remap from="emergency/cmd_drive" to="$(var emergency_control_topic)"/>
+      <!-- 緊急オーバライド信号 -->
+      <remap from="emergency/signal" to="$(var emergency_signal_topic)"/>
+      <!-- RCカーへの入力 -->
+      <remap from="cmd_drive" to="$(var vehicle_control_topic)"/>
+      <!-- rosbag制御トリガ -->
+      <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
+      <!-- rosbagメモ -->
+      <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/>
+    </node>
+  </group>
+
+  <group unless="$(eval '\'$(var speed_scale)\'.strip() != \'\'')">
+    <node pkg="teleop_manager"
+          exec="teleop_manager_node"
+          name="teleop_manager_node"
+          output="screen">
+      <param from="$(var teleop_param)"/>
+      <param name="output_mode" value="$(var output_mode)"/>
+      <param name="enable_steering_offset_buttons" value="$(var enable_steering_offset_buttons)"/>
+      <param name="enable_throttle_offset_buttons" value="$(var enable_throttle_offset_buttons)"/>
+      <param name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
+      <!-- joy -->
+      <remap from="/joy" to="/joy"/>
+      <!-- AI制御コマンド -->
+      <remap from="autonomous/cmd_drive" to="$(var autonomous_control_topic)"/>
+      <!-- 緊急オーバライド制御コマンド -->
+      <remap from="emergency/cmd_drive" to="$(var emergency_control_topic)"/>
+      <!-- 緊急オーバライド信号 -->
+      <remap from="emergency/signal" to="$(var emergency_signal_topic)"/>
+      <!-- RCカーへの入力 -->
+      <remap from="cmd_drive" to="$(var vehicle_control_topic)"/>
+      <!-- rosbag制御トリガ -->
+      <remap from="/rosbag2_recorder/trigger" to="$(var trigger_topic)"/>
+      <!-- rosbagメモ -->
+      <remap from="/rosbag2_recorder/memo" to="$(var memo_topic)"/>
+    </node>
+  </group>
 
 </launch>

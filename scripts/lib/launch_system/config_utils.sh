@@ -65,6 +65,17 @@ apply_mode() {
       set_extra_arg_value "planning_publish_local_path" "false"
       set_extra_arg_value "planning_publish_local_reference" "false"
       ;;
+    offline_eval|bag_eval|offline_map_eval)
+      apply_mode localization_eval
+      ARG_use_hd_map="true"
+      ARG_use_planning="true"
+      ARG_use_hd_map_section_localizer="true"
+      ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
+      set_extra_arg_value "localize_on_startup" "true"
+      ;;
     rule_base)
       ARG_record="false"
       ARG_use_vehicle="true"
@@ -430,7 +441,7 @@ apply_mode_derived_args() {
   local speed_controller_yaml
   local map_name
 
-  if [[ "$MODE" != "production" && "$MODE" != "base" && "$MODE" != "race" && "$MODE" != "race_map" && "$MODE" != "race_map_controller" && "$MODE" != "race_pp" && "$MODE" != "race_pure_pursuit" && "$MODE" != "hd_map_eval" && "$MODE" != "hd_map_debug" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_hd_map_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" && "$(get_arg use_speed_controller)" != "true" ]]; then
+  if [[ "$MODE" != "production" && "$MODE" != "base" && "$MODE" != "race" && "$MODE" != "race_map" && "$MODE" != "race_map_controller" && "$MODE" != "race_pp" && "$MODE" != "race_pure_pursuit" && "$MODE" != "hd_map_eval" && "$MODE" != "hd_map_debug" && "$MODE" != "offline_eval" && "$MODE" != "bag_eval" && "$MODE" != "offline_map_eval" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_hd_map_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" && "$(get_arg use_speed_controller)" != "true" ]]; then
     return
   fi
 

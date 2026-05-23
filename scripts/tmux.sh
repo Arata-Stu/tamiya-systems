@@ -21,6 +21,7 @@ SCRIPT_PATH="$(resolve_real_path "${BASH_SOURCE[0]}")"
 MODE_TAMIYA="tamiya"
 MODE_RECORD_MAPPING="record_mapping"
 MODE_RACE="race"
+MODE_OFFLINE_EVAL="offline_eval"
 MODE_PYTHON="python"
 MODE_MAP="map"
 MODE_MAPPING="mapping"
@@ -36,6 +37,7 @@ MODE_SIMULATOR="simulator"
 DEFAULT_SESSION_TAMIYA="tamiya"
 DEFAULT_SESSION_RECORD_MAPPING="record_mapping"
 DEFAULT_SESSION_RACE="race"
+DEFAULT_SESSION_OFFLINE_EVAL="offline_eval"
 DEFAULT_SESSION_PYTHON="python"
 DEFAULT_SESSION_MAP="map"
 DEFAULT_SESSION_MAPPING="mapping"
@@ -89,6 +91,7 @@ CMD_RECORD_MAPPING="bash ${LAUNCH_SYSTEM_SH} record_mapping"
 CMD_RECORD_MAPPING_DEBUG="bash ${LAUNCH_SYSTEM_SH} record_mapping_debug"
 CMD_RACE_MAP="bash ${LAUNCH_SYSTEM_SH} race --set map_dir=<map_dir>"
 CMD_RACE_PP="bash ${LAUNCH_SYSTEM_SH} race_pp --set map_dir=<map_dir>"
+CMD_OFFLINE_EVAL="bash ${LAUNCH_SYSTEM_SH} offline_eval --set map_dir=<map_dir>"
 CMD_MONITOR="bash ${MONITOR_SH}"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 CMD_CREATE_VSLAM_MAP="bash ${CREATE_VSLAM_MAP_SH} --mode vslam --rate 1.0"
@@ -111,6 +114,7 @@ CMD_APPLY_SECTION_SPEEDS='python data_analysis/apply_hd_map_section_speeds.py --
 CMD_DASHBOARD_IDENTIFICATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --scan-topic '' --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
 CMD_DASHBOARD_RECORD_MAPPING="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --amcl-pose-topic '' --initial-pose-topic '' --scan-topic /scan --odom-topic '' --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --crop-image-topic '' --particles-topic '' --path-topic '' --vo-path-topic '' --global-path-topic '' --local-path-topic '' --section-markers-topic '' --hd-lane-markers-topic '' --hd-section-markers-topic '' --current-section-marker-topic '' --current-section-topic '' --best-effort"
 CMD_DASHBOARD_LOCALIZATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic /map --localization-topic /localization_result --scan-topic /scan --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
+CMD_DASHBOARD_OFFLINE_EVAL="python3 ${TERMINAL_DASHBOARD_PY} --map-topic /map --localization-topic /localization_result --scan-topic /scan --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --global-path-topic /planning/global_raceline --local-path-topic /autonomous/trajectory --section-markers-topic /localization/section_markers --hd-lane-markers-topic /hd_map/lane_markers --hd-section-markers-topic /hd_map/section_markers --current-section-marker-topic /localization/current_section_marker --current-section-topic /localization/current_section --best-effort"
 CMD_DASHBOARD_VSLAM_HD="python3 ${TERMINAL_VSLAM_DASHBOARD_PY} --hd-map-yaml <hd_map_yaml>"
 CMD_LEFT_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /camera/left/image_raw --best-effort --max-fps 10"
 CMD_DEBUG_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/debug/image --best-effort --max-fps 10"
@@ -171,7 +175,7 @@ while [[ $# -gt 0 ]]; do
       SESSION_NAME="$2"
       shift 2
       ;;
-    "$MODE_TAMIYA"|"$MODE_RECORD_MAPPING"|"$MODE_RACE"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_HD_MAP"|"$MODE_IDENTIFICATION"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_E2E_BACKUP"|"$MODE_SIMULATOR")
+    "$MODE_TAMIYA"|"$MODE_RECORD_MAPPING"|"$MODE_RACE"|"$MODE_OFFLINE_EVAL"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_HD_MAP"|"$MODE_IDENTIFICATION"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_E2E_BACKUP"|"$MODE_SIMULATOR")
       if [[ -z "$MODE" ]]; then
         MODE="$1"
       elif [[ -z "$SESSION_NAME" ]]; then
@@ -201,11 +205,11 @@ if [[ -z "$MODE" ]]; then
 fi
 
 case "$MODE" in
-  "$MODE_TAMIYA"|"$MODE_RECORD_MAPPING"|"$MODE_RACE"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_HD_MAP"|"$MODE_IDENTIFICATION"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_E2E_BACKUP"|"$MODE_SIMULATOR")
+  "$MODE_TAMIYA"|"$MODE_RECORD_MAPPING"|"$MODE_RACE"|"$MODE_OFFLINE_EVAL"|"$MODE_PYTHON"|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_HD_MAP"|"$MODE_IDENTIFICATION"|"$MODE_LOCALIZATION_EVAL"|"$MODE_PERCEPTION_EVAL"|"$MODE_VSLAM_EVAL"|"$MODE_E2E_BACKUP"|"$MODE_SIMULATOR")
     ;;
   *)
     echo "Invalid mode: $MODE" >&2
-    echo "Use --mode record_mapping, map_build, race, identification, hd_map, e2e_backup, python, localization_eval, perception_eval, vslam_eval, or simulator" >&2
+    echo "Use --mode record_mapping, map_build, offline_eval, race, identification, hd_map, e2e_backup, python, localization_eval, perception_eval, vslam_eval, or simulator" >&2
     exit 1
     ;;
 esac
@@ -220,6 +224,9 @@ if [[ -z "$SESSION_NAME" ]]; then
       ;;
     "$MODE_RACE")
       SESSION_NAME="$DEFAULT_SESSION_RACE"
+      ;;
+    "$MODE_OFFLINE_EVAL")
+      SESSION_NAME="$DEFAULT_SESSION_OFFLINE_EVAL"
       ;;
     "$MODE_PYTHON")
       SESSION_NAME="$DEFAULT_SESSION_PYTHON"
@@ -272,6 +279,9 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
       ;;
     "$MODE_RACE")
       create_race_layout
+      ;;
+    "$MODE_OFFLINE_EVAL")
+      create_offline_eval_layout
       ;;
     "$MODE_PYTHON")
       create_python_layout
