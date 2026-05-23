@@ -2,6 +2,11 @@
 
 `build_map_steering_lookup.py` は、現在の system が出している `vSLAM odom` と `cmd_drive` から、MAP controller 向けの初期 steering lookup table を作るためのスクリプトです。
 
+速度閉ループの feedforward を作る場合は、同じ identification bag を
+`build_speed_controller_feedforward.py` に渡します。steering LUT は旋回中の
+`speed x steer -> lateral_accel`、speed feedforward は直進中心の
+`speed -> throttle` を見る、という分担です。
+
 この LUT は物理ベースの tire model ではなく、まずは
 
 - `speed_mps = hypot(vx, vy)`
@@ -17,6 +22,14 @@
 - `/visual_slam/tracking/odometry`
 - `/jetracer/cmd_drive`
 
+閉ループ有効時の検証用には次も記録されます。
+
+- `/jetracer/cmd_drive_target`
+- `/speed_controller/target_speed_mps`
+- `/speed_controller/measured_speed_mps`
+- `/speed_controller/speed_error_mps`
+- `/speed_controller/throttle_cmd`
+
 今回の実装では `scripts/launch_system.sh identification` を追加してあり、この preset を使うと次の方針で起動します。
 
 - `vslam=true`
@@ -29,6 +42,8 @@
 IMU は必須ではありません。今回の lookup 生成は `odom` と `cmd_drive` だけで動きます。
 
 `sensor_data_recording` / `mapping` preset は初期マッピング向けで、vSLAM odom や cmd_drive を記録しない設定です。MAP lookup 用の bag では使わず、`identification` を使ってください。
+`identification` では `use_speed_controller=false` のため、teleop の
+`drive.speed` は従来どおり throttle 指令として `/jetracer/cmd_drive` に入ります。
 
 また、default bag manager には将来の controller 側検証用として次も含めています。
 
@@ -150,6 +165,33 @@ python data_analysis/build_map_steering_lookup.py \
 
 複数 bag 入力で出力名を指定しない場合、既定名は
 `/tmp/combined_<N>bags_map_lookup_table.csv` になります。
+
+## Speed Feedforward の解析
+
+閉ループ速度 controller の初期値は、直進中心の open-loop bag から作ります。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python data_analysis/build_speed_controller_feedforward.py \
+  --bag /record/session/straight_low/metadata.yaml \
+        /record/session/straight_mid/metadata.yaml \
+        /record/session/straight_high/metadata.yaml \
+  --min-speed 0.2 \
+  --max-abs-steer 0.10 \
+  --param-yaml /map/course_a/speed_controller_feedforward.param.yaml
+```
+
+出力された YAML は runtime で渡せます。
+
+```bash
+./scripts/launch_system.sh production \
+  --set use_speed_controller=true \
+  --set teleop_speed_scale=1.5 \
+  --set speed_controller_param=/map/course_a/speed_controller_feedforward.param.yaml
+```
+
+最初の fit は直進だけで十分です。高速/低速を分けた複数 bag を input にすると、
+悪い take を外しやすくなります。
 
 ## 調整の目安
 

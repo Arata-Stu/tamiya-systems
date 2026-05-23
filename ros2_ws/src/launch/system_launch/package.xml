@@ -14,6 +14,7 @@
   <exec_depend>isaac_ros_triton</exec_depend>
   <exec_depend>isaac_ros_scan_image_classifier</exec_depend>
   <exec_depend>scan_image_projection_cropper</exec_depend>
+  <exec_depend>speed_controller</exec_depend>
   <exec_depend>drive_mode_manager</exec_depend>
   <exec_depend>hd_map_publisher</exec_depend>
   <exec_depend>vslam_map_tools</exec_depend>

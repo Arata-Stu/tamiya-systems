@@ -17,6 +17,7 @@
     <arg name="use_pure_pursuit" default="false" description="run Pure Pursuit controller for neural trajectory"/>
     <arg name="use_map_controller" default="false" description="run MAP controller for trajectory_reference"/>
     <arg name="use_control_filter" default="false" description="run section-aware control filter between controller output and teleop/emergency consumers"/>
+    <arg name="use_speed_controller" default="false" description="convert final target speed [m/s] into closed-loop JetRacer throttle"/>
     <arg name="use_e2e" default="false" description="run one of the unified end-to-end controller pipelines selected by e2e_variant"/>
     <arg name="use_sim_time" default="false" />
     <arg name="publish_map" default="false" />
@@ -100,6 +101,8 @@
     <arg name="pure_pursuit_trajectory_topic" default="/autonomous/trajectory" />
     <arg name="pure_pursuit_velocity_topic" default="/current_velocity" />
     <arg name="pure_pursuit_odometry_topic" default="/visual_slam/tracking/odometry" />
+    <arg name="speed_controller_param" default="$(find-pkg-share system_launch)/config/control/speed_controller.param.yaml" />
+    <arg name="speed_controller_odometry_topic" default="/visual_slam/tracking/odometry" />
 
     <!-- Perception -->
     <arg name="perception_param" default="$(find-pkg-share system_launch)/config/perception/scan_image_projection_cropper.param.yaml" />
@@ -154,6 +157,9 @@
     <arg name="rosbag_trigger_topic" default="/rosbag2_recorder/trigger" />
     <arg name="rosbag_memo_topic" default="/rosbag2_recorder/memo" />
     <arg name="teleop_param" default="$(find-pkg-share system_launch)/config/tools/teleop.param.yaml" />
+    <arg name="teleop_output_mode" default="auto" description="auto|throttle|speed. auto uses speed with speed_controller and throttle otherwise." />
+    <arg name="teleop_speed_scale" default="" description="optional override for joystick speed scale in the selected teleop output unit" />
+    <arg name="teleop_enable_throttle_offset_buttons" default="auto" description="auto|true|false. auto disables throttle offset buttons when speed_controller is enabled." />
     <arg name="bag_manager_param" default="$(find-pkg-share system_launch)/config/tools/bag_manager.param.yaml" />
 
     <!-- Localization and mapping -->
@@ -260,6 +266,30 @@
     <let name="resolved_controller_control_cmd"
          value="$(eval '\'$(var autonomous_control_cmd)_raw\'')"
          if="$(eval '\'$(var use_control_filter)\'.lower() == \'true\' and \'$(var control_filter_raw_control_cmd)\'.strip() == \'\'')" />
+    <let name="resolved_teleop_vehicle_control_topic"
+         value="$(var vehicle_control_topic)"
+         unless="$(var use_speed_controller)" />
+    <let name="resolved_teleop_vehicle_control_topic"
+         value="$(eval '\'$(var vehicle_control_topic)_target\'')"
+         if="$(var use_speed_controller)" />
+    <let name="resolved_teleop_output_mode"
+         value="$(var teleop_output_mode)"
+         unless="$(eval '\'$(var teleop_output_mode)\'.strip().lower() == \'auto\'')" />
+    <let name="resolved_teleop_output_mode"
+         value="speed"
+         if="$(eval '\'$(var teleop_output_mode)\'.strip().lower() == \'auto\' and \'$(var use_speed_controller)\'.strip().lower() == \'true\'')" />
+    <let name="resolved_teleop_output_mode"
+         value="throttle"
+         if="$(eval '\'$(var teleop_output_mode)\'.strip().lower() == \'auto\' and \'$(var use_speed_controller)\'.strip().lower() != \'true\'')" />
+    <let name="resolved_teleop_enable_throttle_offset_buttons"
+         value="$(var teleop_enable_throttle_offset_buttons)"
+         unless="$(eval '\'$(var teleop_enable_throttle_offset_buttons)\'.strip().lower() == \'auto\'')" />
+    <let name="resolved_teleop_enable_throttle_offset_buttons"
+         value="false"
+         if="$(eval '\'$(var teleop_enable_throttle_offset_buttons)\'.strip().lower() == \'auto\' and \'$(var use_speed_controller)\'.strip().lower() == \'true\'')" />
+    <let name="resolved_teleop_enable_throttle_offset_buttons"
+         value="true"
+         if="$(eval '\'$(var teleop_enable_throttle_offset_buttons)\'.strip().lower() == \'auto\' and \'$(var use_speed_controller)\'.strip().lower() != \'true\'')" />
     <let name="resolved_vehicle_camera_frame"
          value="$(var camera_mount_frame)" />
     <let name="resolved_vslam_container_name"
@@ -297,7 +327,7 @@
     <group if="$(var use_vehicle)">
         <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
             <arg name="jetracer_param" value="$(var vehicle_param)"/>
-            <arg name="input_control_cmd" value="$(var vehicle_control_topic)"/>
+            <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
             <arg name="camera_frame" value="$(var resolved_vehicle_camera_frame)"/>
             <arg name="publish_camera_stereo_tf" value="$(var resolved_publish_camera_stereo_tf)"/>
         </include>
@@ -309,11 +339,24 @@
         <arg name="autonomous_control_topic" value="$(var autonomous_control_cmd)"/>
         <arg name="emergency_control_topic" value="$(var emergency_control_cmd)"/>
         <arg name="emergency_signal_topic" value="$(var emergency_signal_topic)"/>
-        <arg name="vehicle_control_topic" value="$(var vehicle_control_topic)"/>
+        <arg name="vehicle_control_topic" value="$(var resolved_teleop_vehicle_control_topic)"/>
         <arg name="trigger_topic" value="$(var rosbag_trigger_topic)"/>  
         <arg name="memo_topic" value="$(var rosbag_memo_topic)"/>
         <arg name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
+        <arg name="output_mode" value="$(var resolved_teleop_output_mode)"/>
+        <arg name="speed_scale" value="$(var teleop_speed_scale)"/>
+        <arg name="enable_throttle_offset_buttons" value="$(var resolved_teleop_enable_throttle_offset_buttons)"/>
     </include>
+
+    <!-- Closed-loop Speed Controller -->
+    <group if="$(var use_speed_controller)">
+        <include file="$(find-pkg-share speed_controller)/launch/speed_controller.launch.xml">
+            <arg name="speed_controller_param" value="$(var speed_controller_param)"/>
+            <arg name="input_drive_topic" value="$(var resolved_teleop_vehicle_control_topic)"/>
+            <arg name="output_drive_topic" value="$(var vehicle_control_topic)"/>
+            <arg name="odometry_topic" value="$(var speed_controller_odometry_topic)"/>
+        </include>
+    </group>
 
     <!-- Sensor Kit Nodes -->
     <include file="$(find-pkg-share sensor_kit_launch)/launch/sensor_kit.launch.xml">

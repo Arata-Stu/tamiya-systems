@@ -37,6 +37,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="true"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="true"
@@ -68,6 +69,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="true"
@@ -99,6 +101,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
@@ -137,6 +140,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="false"
       ARG_publish_map="false"
@@ -171,6 +175,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="true"
       ARG_publish_map="true"
@@ -205,6 +210,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="true"
       ARG_publish_map="false"
@@ -239,6 +245,7 @@ apply_mode() {
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
       ARG_use_e2e="false"
       ARG_use_sim_time="true"
       ARG_publish_map="false"
@@ -322,6 +329,21 @@ current_control_filter_param() {
   echo ""
 }
 
+current_speed_controller_param() {
+  local arg
+
+  for arg in "${EXTRA_ARGS[@]}"; do
+    case "$arg" in
+      speed_controller_param:=*|speed_controller_param=*)
+        echo "${arg#*=}"
+        return
+        ;;
+    esac
+  done
+
+  echo ""
+}
+
 current_e2e_variant() {
   local arg
 
@@ -355,8 +377,10 @@ apply_mode_derived_args() {
   local section_csv
   local gate_csv
   local control_filter_yaml
+  local speed_controller_yaml
+  local map_name
 
-  if [[ "$MODE" != "production" && "$MODE" != "base" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" ]]; then
+  if [[ "$MODE" != "production" && "$MODE" != "base" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" && "$(get_arg use_speed_controller)" != "true" ]]; then
     return
   fi
 
@@ -379,5 +403,18 @@ apply_mode_derived_args() {
   control_filter_yaml="${map_dir%/}/control_filter.param.yaml"
   if [[ -f "$control_filter_yaml" && -z "$(current_control_filter_param)" ]]; then
     set_extra_arg_value "control_filter_param" "$control_filter_yaml"
+  fi
+
+  if [[ "$(get_arg use_speed_controller)" == "true" && -z "$(current_speed_controller_param)" ]]; then
+    map_name="$(basename "${map_dir%/}")"
+    for speed_controller_yaml in \
+      "${map_dir%/}/speed_controller_feedforward.param.yaml" \
+      "${map_dir%/}/speed_controller.param.yaml" \
+      "${map_dir%/}/${map_name}_speed_controller_feedforward.param.yaml"; do
+      if [[ -f "$speed_controller_yaml" ]]; then
+        set_extra_arg_value "speed_controller_param" "$speed_controller_yaml"
+        break
+      fi
+    done
   fi
 }

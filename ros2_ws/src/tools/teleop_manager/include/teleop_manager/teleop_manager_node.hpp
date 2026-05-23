@@ -23,6 +23,7 @@ private:
   void publish_events();
   bool IsEmergencySignalActive() const;
   bool HasFreshEmergencyCommand() const;
+  bool IsValidOutputMode(const std::string &mode) const;
 
   std::unique_ptr<TeleopManagerCore> core_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
@@ -55,8 +56,11 @@ private:
   bool emergency_signal_active_ = false;
   bool has_emergency_msg_ = false;
   bool enable_emergency_override_ = true;
+  bool enable_steering_offset_buttons_ = true;
+  bool enable_throttle_offset_buttons_ = true;
   double emergency_signal_timeout_sec_ = 0.3;
   double emergency_cmd_timeout_sec_ = 0.3;
+  std::string output_mode_ = "throttle";
   std::string localization_trigger_topic_ = "/localization/trigger";
 };
 

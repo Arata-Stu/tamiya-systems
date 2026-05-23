@@ -8,6 +8,10 @@
   <arg name="trigger_topic" default="/rosbag2_recorder/trigger"/>
   <arg name="memo_topic" default="/rosbag2_recorder/memo"/>
   <arg name="localization_trigger_topic" default="/localization/trigger"/>
+  <arg name="output_mode" default="throttle"/>
+  <arg name="speed_scale" default=""/>
+  <arg name="enable_steering_offset_buttons" default="true"/>
+  <arg name="enable_throttle_offset_buttons" default="true"/>
 
   
   <!-- joynode -->
@@ -25,6 +29,10 @@
         output="screen">
         
     <param from="$(var teleop_param)"/>
+    <param name="output_mode" value="$(var output_mode)"/>
+    <param name="speed_scale" value="$(var speed_scale)" if="$(eval '\'$(var speed_scale)\'.strip() != \'\'')"/>
+    <param name="enable_steering_offset_buttons" value="$(var enable_steering_offset_buttons)"/>
+    <param name="enable_throttle_offset_buttons" value="$(var enable_throttle_offset_buttons)"/>
     <param name="localization_trigger_topic" value="$(var localization_trigger_topic)"/>
     <!-- joy -->
     <remap from="/joy" to="/joy"/>

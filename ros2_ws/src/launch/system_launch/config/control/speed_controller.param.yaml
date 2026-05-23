@@ -1,0 +1,26 @@
+/**:
+  ros__parameters:
+    control_rate_hz: 50.0
+    command_timeout_sec: 0.30
+    odom_timeout_sec: 0.50
+    stale_odom_behavior: hold_feedforward
+
+    target_speed_limit_mps: 6.0
+    stop_speed_epsilon_mps: 0.03
+    odom_speed_mode: planar
+
+    feedforward_gain: 0.14
+    feedforward_offset: 0.00
+    reverse_feedforward_gain: 0.14
+    reverse_feedforward_offset: 0.00
+
+    kp: 0.08
+    ki: 0.02
+    kd: 0.00
+    integral_limit: 1.0
+    derivative_filter_alpha: 0.35
+
+    max_throttle: 0.70
+    max_throttle_slew_rate: 1.00
+    reset_integral_on_stop: true
+    publish_debug: true

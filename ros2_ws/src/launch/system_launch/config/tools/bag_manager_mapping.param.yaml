@@ -13,7 +13,12 @@
       # - /realsense2_camera/color/camera_info
       # - /realsense2_camera/color/image_raw
       - /jetracer/cmd_drive
+      - /jetracer/cmd_drive_target
       - /autonomous/cmd_drive
+      - /speed_controller/target_speed_mps
+      - /speed_controller/measured_speed_mps
+      - /speed_controller/speed_error_mps
+      - /speed_controller/throttle_cmd
       # - /autonomous/trajectory
       # - /emergency/cmd_drive
       # - /emergency/signal

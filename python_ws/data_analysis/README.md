@@ -53,6 +53,11 @@ LiDAR / Camera など、複数センサの rosbag データ解析・調査用ス
   - race_stacks 互換の lookup CSV、確認用 counts CSV、matched raw CSV を出力
   - 収録手順は `README_map_lookup.md` を参照
 
+- `build_speed_controller_feedforward.py`
+  - rosbag から `odom + /jetracer/cmd_drive` を突き合わせ、速度閉ループ用の feedforward を推定
+  - `throttle ~= feedforward_gain * speed_mps + feedforward_offset` の ROS parameter YAML、raw CSV、plot、summary JSON を出力
+  - 最初は `use_speed_controller=false` の open-loop identification bag で使う
+
 - `plot_localization_quality_map.py`
   - 既存の評価CSVと `map.yaml` から、良否ポイント図と成功率ヒートマップを生成
 
@@ -255,6 +260,62 @@ python data_analysis/build_map_steering_lookup.py \
 - IMU は不要です。今の script は `odom` と `cmd_drive` だけで動きます
 - speed には対応しています。`odom.twist.twist.linear.x/y` から `speed_mps = hypot(vx, vy)` を計算し、lookup table の列方向を speed bin にしています
 - 生成される table は「正の操舵量」と「正の横加速度」のみを保存し、左右符号は runtime 側で付ける前提です
+
+## 使い方（speed controller feedforward）
+
+閉ループ速度制御の初期値は、まず open-loop の identification bag から作ります。
+この段階では `use_speed_controller=false` のまま、手動 throttle と VSLAM odom を
+記録します。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems
+./scripts/launch_system.sh identification
+```
+
+録画後に fit します。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python data_analysis/build_speed_controller_feedforward.py \
+  --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml \
+  --param-yaml /map/course_a/speed_controller_feedforward.param.yaml
+```
+
+複数 bag をまとめる場合:
+
+```bash
+python data_analysis/build_speed_controller_feedforward.py \
+  --bag /record/session/straight_low/metadata.yaml \
+        /record/session/straight_mid/metadata.yaml \
+        /record/session/straight_high/metadata.yaml \
+  --min-speed 0.2 \
+  --max-abs-steer 0.10 \
+  --param-yaml /map/course_a/speed_controller_feedforward.param.yaml
+```
+
+主な出力:
+- `*_speed_controller_feedforward.param.yaml`
+  - `speed_controller_param` に渡せる feedforward YAML
+- `*_speed_controller_feedforward_raw.csv`
+  - `odom` と throttle command を突き合わせた raw サンプル
+- `*_speed_controller_feedforward.png`
+  - `speed -> throttle` の散布図と fit line
+- `*_speed_controller_feedforward_summary.json`
+  - fit 係数、R2、フィルタ条件、入力 bag 一覧
+
+runtime では次のように有効化します。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems
+./scripts/launch_system.sh production \
+  --set use_speed_controller=true \
+  --set speed_controller_param=/map/course_a/speed_controller_feedforward.param.yaml
+```
+
+このとき上流 controller / teleop の `drive.speed` は throttle ではなく
+目標速度 `[m/s]` として扱われます。teleop は自動で `output_mode=speed` になり、
+`teleop_speed_scale` が joystick 最大速度 `[m/s]` です。最終 throttle は
+`/jetracer/cmd_drive`、目標速度は `/jetracer/cmd_drive_target` に出ます。
 
 ## 使い方（HD map section speed）
 

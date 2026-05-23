@@ -20,7 +20,7 @@ fi
 # デフォルト設定
 # ==========================================
 DEFAULT_REMOTE_USER="tamiya"
-IP_CANDIDATES=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+IP_CANDIDATES=("10.42.0.1" "192.168.55.1" "192.168.11.98")
 REMOTE_LIST_MAX_DEPTH=${REMOTE_LIST_MAX_DEPTH:-4}
 
 # 種別ごとのパス設定

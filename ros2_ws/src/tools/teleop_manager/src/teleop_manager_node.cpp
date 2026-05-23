@@ -27,9 +27,20 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
   config.axis_steer_idx = this->declare_parameter("axis_steer_idx", 3);
   joy_timeout_sec_ = this->declare_parameter("joy_timeout_sec", 0.5);
   double update_rate_hz = this->declare_parameter("timer_hz", 50.0);
+  output_mode_ = this->declare_parameter<std::string>("output_mode", "throttle");
+  if (!IsValidOutputMode(output_mode_)) {
+    RCLCPP_WARN(this->get_logger(),
+                "Invalid output_mode '%s'. Falling back to throttle.",
+                output_mode_.c_str());
+    output_mode_ = "throttle";
+  }
 
   enable_emergency_override_ =
       this->declare_parameter("enable_emergency_override", true);
+  enable_steering_offset_buttons_ =
+      this->declare_parameter("enable_steering_offset_buttons", true);
+  enable_throttle_offset_buttons_ =
+      this->declare_parameter("enable_throttle_offset_buttons", true);
   emergency_signal_timeout_sec_ =
       std::max(0.0, this->declare_parameter("emergency_signal_timeout_sec", 0.3));
   emergency_cmd_timeout_sec_ =
@@ -89,6 +100,11 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
               "(signal timeout=%.2f s, cmd timeout=%.2f s)",
               enable_emergency_override_ ? "enabled" : "disabled",
               emergency_signal_timeout_sec_, emergency_cmd_timeout_sec_);
+  RCLCPP_INFO(this->get_logger(),
+              "Teleop output mode: %s (drive.speed unit: %s, speed_scale=%.3f)",
+              output_mode_.c_str(),
+              output_mode_ == "speed" ? "m/s target" : "throttle command",
+              config.speed_scale);
   RCLCPP_INFO(this->get_logger(), "Localization trigger topic: %s",
               localization_trigger_topic_.c_str());
 
@@ -118,6 +134,20 @@ TeleopManagerNode::TeleopManagerNode() : Node("teleop_manager_node") {
             }
           } else if (param.get_name() == "enable_emergency_override") {
             this->enable_emergency_override_ = param.as_bool();
+          } else if (param.get_name() == "enable_steering_offset_buttons") {
+            this->enable_steering_offset_buttons_ = param.as_bool();
+          } else if (param.get_name() == "enable_throttle_offset_buttons") {
+            this->enable_throttle_offset_buttons_ = param.as_bool();
+          } else if (param.get_name() == "output_mode") {
+            const std::string mode = param.as_string();
+            if (!this->IsValidOutputMode(mode)) {
+              result.successful = false;
+              result.reason = "output_mode must be 'throttle' or 'speed'";
+            } else {
+              this->output_mode_ = mode;
+              RCLCPP_INFO(this->get_logger(), "Teleop output_mode changed to %s",
+                          this->output_mode_.c_str());
+            }
           } else if (param.get_name() == "emergency_signal_timeout_sec") {
             this->emergency_signal_timeout_sec_ = std::max(0.0, param.as_double());
           } else if (param.get_name() == "emergency_cmd_timeout_sec") {
@@ -181,6 +211,10 @@ bool TeleopManagerNode::HasFreshEmergencyCommand() const {
 
   return (this->now() - last_emergency_msg_time_).seconds() <=
          emergency_cmd_timeout_sec_;
+}
+
+bool TeleopManagerNode::IsValidOutputMode(const std::string &mode) const {
+  return mode == "throttle" || mode == "speed";
 }
 
 void TeleopManagerNode::timer_callback() {
@@ -248,22 +282,27 @@ void TeleopManagerNode::publish_events() {
     memo_pub_->publish(msg);
   }
 
-  if (core_->pop_steer_inc_requested()) {
+  const bool steer_inc_requested = core_->pop_steer_inc_requested();
+  const bool steer_dec_requested = core_->pop_steer_dec_requested();
+  const bool speed_inc_requested = core_->pop_speed_inc_requested();
+  const bool speed_dec_requested = core_->pop_speed_dec_requested();
+
+  if (enable_steering_offset_buttons_ && steer_inc_requested) {
     std_msgs::msg::Bool msg;
     msg.data = true;
     steer_offset_inc_pub_->publish(msg);
   }
-  if (core_->pop_steer_dec_requested()) {
+  if (enable_steering_offset_buttons_ && steer_dec_requested) {
     std_msgs::msg::Bool msg;
     msg.data = true;
     steer_offset_dec_pub_->publish(msg);
   }
-  if (core_->pop_speed_inc_requested()) {
+  if (enable_throttle_offset_buttons_ && speed_inc_requested) {
     std_msgs::msg::Bool msg;
     msg.data = true;
     speed_offset_inc_pub_->publish(msg);
   }
-  if (core_->pop_speed_dec_requested()) {
+  if (enable_throttle_offset_buttons_ && speed_dec_requested) {
     std_msgs::msg::Bool msg;
     msg.data = true;
     speed_offset_dec_pub_->publish(msg);

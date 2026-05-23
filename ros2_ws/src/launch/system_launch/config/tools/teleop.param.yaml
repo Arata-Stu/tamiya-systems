@@ -3,6 +3,9 @@
     # --- 基本設定 ---
     speed_scale:          1.0  
     steer_scale:          1.0
+    output_mode:          throttle  # throttle|speed. speed means drive.speed is target m/s.
+    enable_steering_offset_buttons: true
+    enable_throttle_offset_buttons: true
     timer_hz:             100.0
     joy_timeout_sec:      0.05
     enable_emergency_override: true
@@ -54,5 +57,5 @@
 ## D-pad操作の割り当て
 # →: axes[6] == -1.0  → steer_offset +
 # ←: axes[6] ==  1.0  → steer_offset –
-# ↑: axes[7] ==  1.0  → speed_offset +
-# ↓: axes[7] == -1.0  → speed_offset –
+# ↑: axes[7] ==  1.0  → throttle_offset +
+# ↓: axes[7] == -1.0  → throttle_offset –

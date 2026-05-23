@@ -119,7 +119,7 @@ OFFLINE_TF_USES_SETSID=false
 ENABLE_SCP=true
 
 DEFAULT_REMOTE_USER="tamiya"
-DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.98")
 DEFAULT_REMOTE_DIR="/home/tamiya/workspaces/tamiya-systems/map/"
 # ==========================================
 

@@ -1,0 +1,17 @@
+<launch>
+  <arg name="speed_controller_param"
+       default="$(find-pkg-share speed_controller)/config/speed_controller.param.yaml"/>
+  <arg name="input_drive_topic" default="/jetracer/cmd_drive_target"/>
+  <arg name="output_drive_topic" default="/jetracer/cmd_drive"/>
+  <arg name="odometry_topic" default="/visual_slam/tracking/odometry"/>
+
+  <node pkg="speed_controller"
+        exec="speed_controller_node.py"
+        name="speed_controller"
+        output="screen">
+    <param from="$(var speed_controller_param)"/>
+    <remap from="input_drive" to="$(var input_drive_topic)"/>
+    <remap from="output_drive" to="$(var output_drive_topic)"/>
+    <remap from="odometry" to="$(var odometry_topic)"/>
+  </node>
+</launch>

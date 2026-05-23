@@ -21,7 +21,7 @@ set_arg() {
   fi
 
   case "$key" in
-    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_perception|use_perception_classifier|use_planning|use_hd_map|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_map_controller|use_control_filter|use_e2e|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|use_hd_map_section_localizer|section_localizer_debug_mode|use_drive_mode_manager|enable_localization_and_mapping)
+    record|use_vehicle|vslam|localization|use_lidar|use_camera|use_ftg|use_emergency|use_perception|use_perception_classifier|use_planning|use_hd_map|use_magp_rl_trajectory|magp_rl_run_pure_pursuit|use_pure_pursuit|use_map_controller|use_control_filter|use_speed_controller|use_e2e|use_sim_time|publish_map|map_server_use_sim_time|use_localization_manager|publish_localization_tf|use_section_localizer|use_hd_map_section_localizer|section_localizer_debug_mode|use_drive_mode_manager|enable_localization_and_mapping)
       value="$(normalize_bool "$value")"
       var_name="ARG_${key}"
       printf -v "$var_name" '%s' "$value"

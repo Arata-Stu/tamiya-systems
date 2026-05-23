@@ -7,7 +7,7 @@ directly.
 ## Main entrypoints
 
 - `run_docker.sh`: start the Isaac ROS development container.
-- `launch_system.sh`: launch system presets. `sensor_data_recording` / `mapping` / `vslam_map` は canonical な sensor-bag recording preset で、mono/stereo を `424x240x90` で起動します。interactive 起動時は `jetracer` の速度プロファイルを `slow (throttle_gain=0.1)` と `normal (throttle_gain=1.0)` から選べます。非 interactive では従来どおり mapping 系 preset の既定値として `slow` を使います。MAP 用の LUT 収集には `identification` を使います。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。Perception は `--set use_perception=true` や interactive toggle で有効化できます。crop 後の分類器も使う場合は `--set use_perception_classifier=true` を追加します。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
+- `launch_system.sh`: launch system presets. `sensor_data_recording` / `mapping` / `vslam_map` は canonical な sensor-bag recording preset で、mono/stereo を `424x240x90` で起動します。interactive 起動時は `jetracer` の速度プロファイルを `slow (throttle_gain=0.1)` と `normal (throttle_gain=1.0)` から選べます。非 interactive では従来どおり mapping 系 preset の既定値として `slow` を使います。MAP 用の LUT / speed feedforward 収集には `identification` を使います。`use_speed_controller=true` で最終車体入力の直前に速度閉ループを入れます。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。Perception は `--set use_perception=true` や interactive toggle で有効化できます。crop 後の分類器も使う場合は `--set use_perception_classifier=true` を追加します。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
 - `edit_control_filter_config.sh`: `sections_pixels.csv` を読み、section ごとの class 割り当てと class 別 filter/scale パラメータを対話編集して `control_filter.param.yaml` を生成します。
 - `tmux.sh`: create tmux layouts for robot, map creation, identification / MAP lookup recording, localization evaluation, perception evaluation, VSLAM evaluation, Python work, and simulator work. `map` mode は `create_2d_map_from_bag.sh --prepare-vslam-map-alignment --trace-vslam-landmarks` を prefill し、alignment 用 RViz pane と manual TF node 用の空 pane も並べます。
 - `monitor.sh`: terminal monitoring dashboard.
@@ -16,6 +16,7 @@ directly.
 - `create_hd_map_from_vslam_bag.sh`: VSLAM landmarks/path の snapshot を下絵 PNG/YAML にして、lane の `left_bound` / `right_bound` / `centerline` を描く editable HD map YAML、primary centerline CSV、raceline CSV まで作る実験用 flow。bag 選択と offline VSLAM replay は `create_2d_map_from_bag.sh` の helper を再利用します。
 - `edit_hd_map_sections.sh`: editable HD map YAML を開き、lane centerline 上に section gate を追加して `sections` と速度 override 用フィールドを生成します。
 - `analyze_vslam_speed_from_bag.sh`: camera rosbag を offline VSLAM で replay し、VSLAM odometry bag、速度時系列 CSV、PNG plot、summary JSON を生成する debug flow。
+- `build_speed_feedforward_from_bag.sh`: identification bag から speed controller 用 feedforward YAML / plot / raw CSV を生成する wrapper。
 - `scp_data.sh`: data transfer helper.
 
 ## VSLAM map alignment helpers
@@ -98,6 +99,48 @@ python3 data_analysis/plot_odom_speed.py \
   --bag /tmp/vslam_speed_debug/<bag>_<timestamp>/odom_bag \
   --plot /tmp/vslam_speed.png
 ```
+
+## Closed-Loop Speed Control
+
+`use_speed_controller=true` を指定すると、teleop/emergency/controller の最終出力は
+`/jetracer/cmd_drive_target` に入り、`speed_controller` が VSLAM odometry を見て
+`/jetracer/cmd_drive` へ throttle 相当値を出します。
+このとき teleop は自動で `output_mode=speed` になり、joystick の上下は目標速度
+`[m/s]` になります。`use_speed_controller=false` では従来どおり
+`output_mode=throttle` です。
+
+```bash
+./scripts/launch_system.sh production \
+  --set use_speed_controller=true \
+  --set teleop_speed_scale=1.5 \
+  --set speed_controller_param=/map/course_a/speed_controller_feedforward.param.yaml
+```
+
+feedforward YAML は identification bag から作れます。
+
+```bash
+cd /Users/at/project/competition/tamiya-systems/python_ws
+python data_analysis/build_speed_controller_feedforward.py \
+  --bag /record/session/straight_low/metadata.yaml \
+        /record/session/straight_mid/metadata.yaml \
+  --param-yaml /map/course_a/speed_controller_feedforward.param.yaml
+```
+
+wrapper を使う場合:
+
+```bash
+./scripts/build_speed_feedforward_from_bag.sh \
+  --bag /record/session/straight_low/metadata.yaml \
+  --map-dir /map/course_a \
+  -- --max-abs-steer 0.10
+```
+
+有効時は上流の `drive.speed` が目標速度 `[m/s]` になります。実スロットルは
+`/speed_controller/throttle_cmd` と `/jetracer/cmd_drive` で確認できます。
+`--set map_dir=/map/course_a` を渡した場合、`/map/course_a/speed_controller_feedforward.param.yaml`
+が存在すれば自動で `speed_controller_param` として使います。
+閉ループ時は D-pad 上下による jetracer throttle offset 操作を既定で無効にします。
+必要な場合だけ `--set teleop_enable_throttle_offset_buttons=true` を渡します。
 
 ## Shared helpers
 
@@ -201,7 +244,7 @@ section ごとの policy は `drive_mode_manager` の param YAML で
 
 `launch_system.sh` の lean preset は以下を想定しています。
 
-- `identification`: `stereo camera + VSLAM + vehicle + rosbag manager`。MAP lookup 用の `odom + cmd_drive` 収録向けです。global localization や LiDAR は起動しません。
+- `identification`: `stereo camera + VSLAM + vehicle + rosbag manager`。MAP lookup と speed feedforward 用の `odom + cmd_drive` 収録向けです。global localization や LiDAR は起動しません。
 - `localization_eval`: `LiDAR + stereo camera + VSLAM + global localization + localization_manager`。車両 driver や perception は起動しません。
 - `perception_eval`: `LiDAR + stereo left/right + perception cropper + classifier`。localization や vehicle 制御は起動しません。
 - `vslam_eval`: `stereo camera + VSLAM` のみ。global localization や perception は起動しません。
