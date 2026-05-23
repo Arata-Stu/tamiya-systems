@@ -7,9 +7,9 @@ directly.
 ## Main entrypoints
 
 - `run_docker.sh`: start the Isaac ROS development container.
-- `launch_system.sh`: launch system presets. `sensor_data_recording` / `mapping` / `vslam_map` は canonical な sensor-bag recording preset で、mono/stereo を `424x240x90` で起動します。interactive 起動時は `jetracer` の速度プロファイルを `slow (throttle_gain=0.1)` と `normal (throttle_gain=1.0)` から選べます。非 interactive では従来どおり mapping 系 preset の既定値として `slow` を使います。MAP 用の LUT / speed feedforward 収集には `identification` を使います。`use_speed_controller=true` で最終車体入力の直前に速度閉ループを入れます。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。Perception は `--set use_perception=true` や interactive toggle で有効化できます。crop 後の分類器も使う場合は `--set use_perception_classifier=true` を追加します。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
+- `launch_system.sh`: launch system presets. 本番 flow の主入口は `record_mapping`、`race`、`race_pp`、`hd_map_eval`、`e2e_backup` です。`record_mapping` は Jetson 上で camera + LiDAR + TF + command topics を録る map 作成用 preset です。`record_mapping_debug` は perception crop/debug も同時に動かします。`race` は VSLAM + 2D GL + HD map + MAP controller + speed controller、`race_pp` はその Pure Pursuit 版です。`hd_map_eval` は保存済み VSLAM/HD map の lane/section/path debug 用です。MAP 用の LUT / speed feedforward 収集には `identification` を使います。`use_speed_controller=true` で最終車体入力の直前に速度閉ループを入れます。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
 - `edit_control_filter_config.sh`: `sections_pixels.csv` を読み、section ごとの class 割り当てと class 別 filter/scale パラメータを対話編集して `control_filter.param.yaml` を生成します。
-- `tmux.sh`: create tmux layouts for robot, map creation, identification / MAP lookup recording, localization evaluation, perception evaluation, VSLAM evaluation, Python work, and simulator work. `map` mode は `create_2d_map_from_bag.sh --prepare-vslam-map-alignment --trace-vslam-landmarks` を prefill し、alignment 用 RViz pane と manual TF node 用の空 pane も並べます。
+- `tmux.sh`: create tmux layouts for the active workflows: `record_mapping`, `map_build`, `race`, `identification`, `hd_map`, and `e2e_backup`. Legacy aliases like `tamiya`, `map`, and `mapping` are still accepted. `record_mapping` is the Jetson data-collection layout. `map_build` is the note-PC layout for VSLAM/2D map creation, HD map creation, section/raceline tools, and localization eval.
 - `monitor.sh`: terminal monitoring dashboard.
 - `create_vslam_map_from_bag.sh`: VSLAM 専用。offline visual-map generation plus lightweight `scan + odom + tf` bag creation. `--mode vslam` は `launch_system.sh vslam_map` の `424x240x90` 録画に合わせた preset。
 - `create_2d_map_from_bag.sh`: 2D map 作成用。mode は `no_odom_offline_vslam` / `no_odom_online_vslam` / `with_odom_offline_vslam` / `with_odom_online_vslam` の 4 通りです。前半は Cartographer が odom を使うか、後半は Cartographer と同時に VSLAM を走らせるかを表します。`default` は `no_odom_offline_vslam`、`2d_slam` は `no_odom_online_vslam` の互換 alias です。`--mode` を省略すると実行時に 4択で選べます。`with_odom_online_vslam` は live の `/visual_slam/tracking/odometry` を使い、`with_odom_offline_vslam` は先に VSLAM map を作ってから、その map を読み込んだ VSLAM で odom bag を生成し、その bag を Cartographer に渡します。この mode では source bag を 2 回 replay します。`with_odom_offline_vslam` では、odom bag の録画前に `ros2 topic hz -w 10` 相当の平均レート確認を行い、既定では `--image-fps` の 90% 以上に達してから録画を始めます。必要なら `--odom-ready-window` / `--odom-ready-min-rate` / `--odom-ready-timeout` / `--no-odom-ready-wait` で調整できます。`--prepare-vslam-map-alignment` を使うと provisional 2D map 生成後に `2D map publish + saved VSLAM path/odom republish` を立ち上げ、別 pane の `manual_tf_alignment_node.py` で落ち着いて `map -> vslam_map` を合わせられます。online mode の live alignment が必要なら `--live-vslam-map-align` も残っています。centerline 前に GUI で map を手修正したい場合は `--edit-map`、VSLAM landmarks を replay して tracing 用の blank-canvas editor へ流したい場合は `--trace-vslam-landmarks` を使います。saved `map -> vslam_map` 補正を再利用したいときは `--vslam-map-alignment-config /path/to/vslam_map_alignment.yaml` を併用できます。完了後の転送前メニューから `section_editor.py` を開いて `sections_pixels.csv` も作れます。
@@ -74,6 +74,48 @@ VSLAM/HD map だけを見るときは `ros2_terminal_vslam_dashboard.py` が便�
 `/map` topic なしでも `--hd-map-yaml` の source raster を背景にして、
 `/hd_map/lane_markers`、`/hd_map/section_markers`、current section、
 VSLAM odometry/path、camera/crop image、LiDAR projection をまとめて表示します。
+
+## Production Workflow
+
+本番を想定した基本手順はこの順番です。
+
+```bash
+./scripts/tmux.sh record_mapping
+./scripts/tmux.sh map_build
+./scripts/tmux.sh race
+```
+
+1. Jetson: `record_mapping`
+   camera + LiDAR + TF + `/jetracer/cmd_drive` などの command topic を rosbag に保存します。通常はこちらを使います。crop/debug も同時に欲しいときだけ pane に置いてある `record_mapping_debug` を使います。
+2. Note PC: `map_build`
+   保存した rosbag から VSLAM map / 2D map / HD map / section gate / raceline を作成し、localization eval で確認します。`map` と `mapping` は互換 alias です。
+3. Jetson: `race`
+   作成済み map_dir を指定して、VSLAM loadmap + 2D global localization + HD map planning + controller で走行します。
+
+補助でよく使う入口:
+
+```bash
+./scripts/tmux.sh identification
+./scripts/tmux.sh hd_map
+./scripts/tmux.sh e2e_backup
+```
+
+- `record_mapping`
+  - Jetson で map 作成用 rosbag を録る。camera / LiDAR / TF / command topic が対象
+- `map_build`
+  - Note PC で VSLAM map / 2D map 作成、HD map 作成、section/raceline speed 反映、localization eval をまとめた作業場
+- `race`
+  - VSLAM + 2D global localization + raceline planning + MAP controller + speed controller の本番走行候補
+  - 同じ session 内に Pure Pursuit 版の launch command も置いてあります
+- `identification`
+  - VSLAM odom + `/jetracer/cmd_drive` を記録し、steering LUT と speed feedforward を作る
+- `hd_map`
+  - 既に map/bag がある状態で HD map editor、section gate editor、VSLAM dashboard を開く軽量作業場
+- `e2e_backup`
+  - camera E2E fallback を消さずにすぐ起動できる保険レーン
+
+`race` の既定 controller は MAP controller です。PP を試すときは同じ tmux session
+の別 pane にある `launch_system.sh race_pp --set map_dir=<map_dir>` を使います。
 
 ## VSLAM Speed Debug
 

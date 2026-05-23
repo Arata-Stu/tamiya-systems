@@ -6,7 +6,13 @@ Usage:
   ${SCRIPT_NAME} [mode] [options] [-- extra_ros2_launch_args...]
 
 Modes:
-  production              Full production run with VSLAM + localization + section localizer
+  record_mapping          Jetson map-data recording: camera + LiDAR + TF + command topics
+  record_mapping_debug    record_mapping plus perception crop/debug topics
+  race                    Main race run: VSLAM + 2D GL + HD map + MAP controller + speed controller
+  race_pp                 Pure Pursuit variant of race
+  e2e_backup              Camera E2E fallback run without VSLAM/localization/planning
+  hd_map_eval             Saved VSLAM/HD map debug: lanes, sections, raceline/path visualization
+  production              Legacy base run with VSLAM + localization + 2D section localizer
   sensor_data_recording   Sensor-recording preset for initial mapping runs
   identification          VSLAM odom + final cmd_drive recording preset for MAP lookup generation
   localization_eval       Lean localization evaluation preset (VSLAM ref + global localization)
@@ -14,6 +20,17 @@ Modes:
   vslam_eval              Lean VSLAM-only evaluation preset
   rule_base               Rule-base autonomous driving (Localization + Planning + Map Controller)
   base                    Alias of production
+  map_recording           Alias of record_mapping
+  map_record              Alias of record_mapping
+  mapping_record          Alias of record_mapping
+  record_sensors          Alias of record_mapping
+  record_dataset          Alias of record_mapping_debug
+  race_map                Alias of race
+  race_map_controller     Alias of race
+  race_pure_pursuit       Alias of race_pp
+  camera_e2e_backup       Alias of e2e_backup
+  hd_map_debug            Alias of hd_map_eval
+  sensor_recording        Alias of sensor_data_recording
   mapping                 Alias of sensor_data_recording
   vslam_map               Alias of sensor_data_recording
   map_lookup_recording    Alias of identification
@@ -29,6 +46,12 @@ Options:
   -h, --help              Show this help
 
 Examples:
+  ${SCRIPT_NAME} record_mapping
+  ${SCRIPT_NAME} record_mapping_debug
+  ${SCRIPT_NAME} race --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} race_pp --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} hd_map_eval --set map_dir=/map/mybag/mycourse
+  ${SCRIPT_NAME} e2e_backup
   ${SCRIPT_NAME} production -- map_dir:=/map/mybag/mycourse
   ${SCRIPT_NAME} sensor_data_recording
   ${SCRIPT_NAME} localization_eval --set map_dir=/map/mybag/mycourse
@@ -219,23 +242,34 @@ choose_bag_manager_interactive() {
 }
 
 choose_mode_interactive() {
-  # モード定義: 表示ラベルと内部名
   local -a MODE_LABELS=(
-    "production       (= base)              本番走行: VSLAM + 自己位置推定 + セクションローカライザ"
-    "mapping          (= sensor_data_recording, vslam_map)  センサ録画: マッピング用rosbag収集"
-    "identification  (= map_lookup_recording, map_lookup)  MAP lookup生成用: VSLAM odom + 実車cmd_drive録画"
-    "localization_eval                       自己位置推定の精度検証 (VSLAM + 全体位置推定)"
-    "perception_eval                         LiDAR/カメラ知覚の評価"
-    "vslam_eval                              VSLAM単体の評価"
-    "rule_base                               ルールベース自動運転 (Localization + Planning + Map Controller)"
+    "record_mapping                          Jetsonでmap用rosbag収集: camera + LiDAR + TF + cmd"
+    "record_mapping_debug                    record_mapping + perception crop/debug"
+    "race                                    Jetson本番候補: VSLAM + 2D GL + HD map + MAP controller + speed controller"
+    "race_pp                                 race の Pure Pursuit 版"
+    "identification  (= map_lookup_recording, map_lookup)  steering/speed identification 用rosbag収集"
+    "mapping          (= sensor_data_recording, vslam_map)  legacy: record_mapping_debug相当"
+    "hd_map_eval                             保存済みVSLAM/HD mapのlane/section/path debug"
+    "localization_eval                       rosbagで自己位置推定の精度検証"
+    "vslam_eval                              rosbagでVSLAM単体評価"
+    "perception_eval                         rosbagでLiDAR/カメラ知覚評価"
+    "e2e_backup                              camera E2E fallback"
+    "production       (= base)               legacy base: VSLAM + localization + 2D section localizer"
+    "rule_base                               legacy rule-base autonomous driving"
   )
   local -a MODE_VALUES=(
-    "production"
-    "sensor_data_recording"
+    "record_mapping"
+    "record_mapping_debug"
+    "race"
+    "race_pp"
     "identification"
+    "sensor_data_recording"
+    "hd_map_eval"
     "localization_eval"
-    "perception_eval"
     "vslam_eval"
+    "perception_eval"
+    "e2e_backup"
+    "production"
     "rule_base"
   )
   local n_modes="${#MODE_LABELS[@]}"
@@ -475,11 +509,13 @@ choose_camera_resolution_interactive() {
 warn_if_mode_incomplete() {
   local normalized_e2e_variant
 
-  if [[ "$MODE" == "production" || "$MODE" == "base" || "$MODE" == "localization_eval" ]]; then
-    if [[ -z "$(current_map_dir)" ]]; then
-      echo "Warning: ${MODE} mode expects map_dir to be set." >&2
-    fi
-  fi
+  case "$MODE" in
+    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|hd_map_eval|hd_map_debug|localization_eval)
+      if [[ -z "$(current_map_dir)" ]]; then
+        echo "Warning: ${MODE} mode expects map_dir to be set." >&2
+      fi
+      ;;
+  esac
 
   if [[ "$(get_arg use_e2e)" == "true" ]]; then
     local e2e_variant
@@ -505,8 +541,8 @@ warn_if_mode_incomplete() {
   fi
 
   if [[ "$(get_arg use_drive_mode_manager)" == "true" ]]; then
-    if [[ "$(get_arg use_section_localizer)" != "true" ]]; then
-      echo "Warning: use_drive_mode_manager=true but use_section_localizer is false." >&2
+    if [[ "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_hd_map_section_localizer)" != "true" ]]; then
+      echo "Warning: use_drive_mode_manager=true but no section localizer is enabled." >&2
     fi
     if [[ "$(get_arg use_perception)" != "true" ]]; then
       echo "Warning: use_drive_mode_manager=true but use_perception is false." >&2

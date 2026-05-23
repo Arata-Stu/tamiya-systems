@@ -19,6 +19,52 @@ apply_mode() {
   clear_extra_arg_value "vehicle_param"
 
   case "$1" in
+    race|race_map|race_map_controller)
+      apply_mode production
+      ARG_use_planning="true"
+      ARG_use_hd_map="true"
+      ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="true"
+      ARG_use_speed_controller="true"
+      ARG_use_section_localizer="false"
+      ARG_use_hd_map_section_localizer="true"
+      ;;
+    race_pp|race_pure_pursuit)
+      apply_mode race
+      ARG_use_pure_pursuit="true"
+      ARG_use_map_controller="false"
+      ;;
+    e2e_backup|camera_e2e_backup)
+      apply_mode production
+      ARG_vslam="false"
+      ARG_localization="false"
+      ARG_use_lidar="false"
+      ARG_use_camera="true"
+      ARG_use_planning="false"
+      ARG_use_hd_map="false"
+      ARG_use_pure_pursuit="false"
+      ARG_use_map_controller="false"
+      ARG_use_control_filter="false"
+      ARG_use_speed_controller="false"
+      ARG_use_e2e="true"
+      ARG_publish_map="false"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
+      ARG_use_section_localizer="false"
+      ARG_use_hd_map_section_localizer="false"
+      ARG_enable_localization_and_mapping="false"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[2]}"
+      set_extra_arg_value "e2e_variant" "camera"
+      ;;
+    hd_map_eval|hd_map_debug)
+      apply_mode vslam_eval
+      ARG_use_hd_map="true"
+      ARG_use_planning="true"
+      ARG_use_hd_map_section_localizer="true"
+      set_extra_arg_value "localize_on_startup" "true"
+      set_extra_arg_value "planning_publish_local_path" "false"
+      set_extra_arg_value "planning_publish_local_reference" "false"
+      ;;
     rule_base)
       ARG_record="false"
       ARG_use_vehicle="true"
@@ -83,7 +129,7 @@ apply_mode() {
       ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
       ;;
-    sensor_data_recording|mapping|vslam_map)
+    record_mapping|map_recording|map_record|mapping_record|record_sensors)
       ARG_record="true"
       ARG_use_vehicle="true"
       ARG_vslam="false"
@@ -92,7 +138,7 @@ apply_mode() {
       ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
-      ARG_use_perception="true"
+      ARG_use_perception="false"
       ARG_use_perception_classifier="false"
       ARG_use_planning="false"
       ARG_use_hd_map="false"
@@ -114,13 +160,17 @@ apply_mode() {
       ARG_use_drive_mode_manager="false"
       ARG_enable_localization_and_mapping="false"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[1]}"
-      # Initial mapping runs keep the stereo-gray left/right sensors at
+      # Map recording keeps the stereo-gray left/right sensors at
       # ${SENSOR_IMAGE_WIDTH}x${SENSOR_IMAGE_HEIGHT}x${SENSOR_IMAGE_FPS%%.*}
-      # and enable crop perception so recorded bags already contain /perception/crop/*.
+      # and records camera, LiDAR, TF, and command topics through the mapping bag preset.
       set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
       set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
       set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
       set_extra_arg_value "vehicle_param" "$VEHICLE_MAPPING_PARAM_PATH"
+      ;;
+    sensor_data_recording|sensor_recording|record_mapping_debug|record_dataset|mapping|vslam_map)
+      apply_mode record_mapping
+      ARG_use_perception="true"
       ;;
     identification|map_lookup_recording|map_lookup)
       ARG_record="true"
@@ -363,7 +413,7 @@ mapping_vehicle_profile_applicable() {
   [[ "$(get_arg use_vehicle)" == "true" ]] || return 1
 
   case "$MODE" in
-    sensor_data_recording|mapping|vslam_map)
+    record_mapping|map_recording|map_record|mapping_record|record_sensors|sensor_data_recording|sensor_recording|record_mapping_debug|record_dataset|mapping|vslam_map)
       return 0
       ;;
     *)
@@ -380,7 +430,7 @@ apply_mode_derived_args() {
   local speed_controller_yaml
   local map_name
 
-  if [[ "$MODE" != "production" && "$MODE" != "base" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" && "$(get_arg use_speed_controller)" != "true" ]]; then
+  if [[ "$MODE" != "production" && "$MODE" != "base" && "$MODE" != "race" && "$MODE" != "race_map" && "$MODE" != "race_map_controller" && "$MODE" != "race_pp" && "$MODE" != "race_pure_pursuit" && "$MODE" != "hd_map_eval" && "$MODE" != "hd_map_debug" && "$(get_arg use_section_localizer)" != "true" && "$(get_arg use_hd_map_section_localizer)" != "true" && "$(get_arg use_control_filter)" != "true" && "$(get_arg use_speed_controller)" != "true" ]]; then
     return
   fi
 

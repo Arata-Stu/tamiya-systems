@@ -30,7 +30,7 @@ set_arg() {
       set_bag_manager_preset "$value"
       ;;
     *)
-      EXTRA_ARGS+=("${key}:=${value}")
+      set_extra_arg_value "$key" "$value"
       ;;
   esac
 }
