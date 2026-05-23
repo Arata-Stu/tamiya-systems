@@ -34,7 +34,10 @@ Options:
   --image-height PX       offline VSLAM image height (default: 240)
   --with-imu              replay /camera/imu in addition to stereo topics
   --play-all-topics       replay every source-bag topic instead of filtered topics
+  --use-image-preprocessors run rectify/mono preprocessing before VSLAM
+  --no-image-preprocessors make VSLAM subscribe to recorded camera topics directly (default)
   --launch-offline-tf     publish fallback base_link TFs instead of using only bag TFs
+  --no-vslam-diagnostics  skip ROS graph diagnostics log capture
   --snapshot PATH         VSLAM reference snapshot path
   --skip-vslam            reuse --snapshot instead of replaying the bag
   --no-save-vslam-map     do not save cuVSLAM native map after replay
@@ -114,6 +117,7 @@ stop_snapshot_recorder() {
 }
 
 cleanup_all() {
+    stop_background_process "VSLAM_DIAGNOSTICS_PID" "VSLAM_DIAGNOSTICS_USES_SETSID"
     stop_snapshot_recorder
     stop_vslam_stack
 }
@@ -127,6 +131,7 @@ launch_hdmap_vslam_stack() {
         "vslam_map_frame:=map"
         "vslam_map_parent_frame:=map"
         "publish_vslam_map_identity_tf:=false"
+        "use_image_preprocessors:=${USE_IMAGE_PREPROCESSORS}"
         "enable_localization_and_mapping:=true"
         "enable_slam_visualization:=true"
         "enable_landmarks_view:=true"
@@ -164,6 +169,7 @@ start_vslam_snapshot_recorder() {
         --odom-topic "/visual_slam/tracking/odometry"
         --landmarks-topic "/visual_slam/vis/landmarks_cloud"
         --output "${SNAPSHOT_PATH}"
+        --status-interval-sec 5.0
     )
 
     launch_background_process "VSLAM_REFERENCE_PID" "VSLAM_REFERENCE_USES_SETSID" \
@@ -171,10 +177,104 @@ start_vslam_snapshot_recorder() {
         > "${SNAPSHOT_LOG_PATH}" 2>&1
 }
 
+append_topic_info() {
+    local topic="$1"
+
+    echo ""
+    echo "----- ros2 topic info -v ${topic} -----"
+    ros2 topic info -v "${topic}" || true
+}
+
+run_vslam_diagnostics() {
+    local label="$1"
+
+    [ "${ENABLE_VSLAM_DIAGNOSTICS}" = true ] || return 0
+
+    {
+        echo ""
+        echo "================================================================"
+        echo "VSLAM diagnostics: ${label}"
+        echo "time: $(date '+%Y-%m-%dT%H:%M:%S%z')"
+        echo "bag: ${BAG_PATH}"
+        echo "snapshot: ${SNAPSHOT_PATH}"
+        echo "sim_time: vslam=true, rosbag_play=--clock"
+        echo "use_image_preprocessors: ${USE_IMAGE_PREPROCESSORS}"
+        echo "================================================================"
+
+        echo ""
+        echo "----- ros2 bag info -----"
+        ros2 bag info "${BAG_PATH}" || true
+
+        echo ""
+        echo "----- ros2 node list -----"
+        ros2 node list || true
+
+        echo ""
+        echo "----- ros2 service list | visual_slam -----"
+        ros2 service list | grep -E 'visual_slam|save_map' || true
+
+        echo ""
+        echo "----- ros2 topic list -t | relevant topics -----"
+        ros2 topic list -t | grep -E '(^/clock|^/tf|^/tf_static|^/camera/|^/visual_slam/)' || true
+
+        append_topic_info "/clock"
+        append_topic_info "/tf"
+        append_topic_info "/tf_static"
+        append_topic_info "/camera/left/image_raw"
+        append_topic_info "/camera/left/camera_info"
+        append_topic_info "/camera/left/image_rect"
+        append_topic_info "/camera/left/image_rect_mono"
+        append_topic_info "/camera/left/camera_info_rect"
+        append_topic_info "/camera/right/image_raw"
+        append_topic_info "/camera/right/camera_info"
+        append_topic_info "/camera/right/image_rect"
+        append_topic_info "/camera/right/image_rect_mono"
+        append_topic_info "/camera/right/camera_info_rect"
+        append_topic_info "/visual_slam/tracking/odometry"
+        append_topic_info "/visual_slam/tracking/slam_path"
+        append_topic_info "/visual_slam/vis/landmarks_cloud"
+
+        echo ""
+        echo "----- ros2 param get use_sim_time -----"
+        ros2 param get /visual_slam_node use_sim_time || true
+        ros2 param get /rectify_node_left use_sim_time || true
+        ros2 param get /rectify_node_right use_sim_time || true
+        ros2 param get /image_format_node_left use_sim_time || true
+        ros2 param get /image_format_node_right use_sim_time || true
+        ros2 param get /vslam_reference_snapshot_recorder use_sim_time || true
+    } >> "${VSLAM_DIAGNOSTICS_LOG_PATH}" 2>&1
+
+    return 0
+}
+
+schedule_vslam_diagnostics() {
+    local delay_sec="$1"
+    local label="$2"
+
+    [ "${ENABLE_VSLAM_DIAGNOSTICS}" = true ] || return 0
+
+    (
+        sleep "${delay_sec}"
+        run_vslam_diagnostics "${label}"
+    ) &
+    VSLAM_DIAGNOSTICS_PID="$!"
+    VSLAM_DIAGNOSTICS_USES_SETSID=false
+}
+
+wait_for_vslam_diagnostics() {
+    if [ -n "${VSLAM_DIAGNOSTICS_PID}" ]; then
+        wait "${VSLAM_DIAGNOSTICS_PID}" 2>/dev/null || true
+        VSLAM_DIAGNOSTICS_PID=""
+        VSLAM_DIAGNOSTICS_USES_SETSID=false
+    fi
+}
+
 run_vslam_snapshot_capture() {
     echo "[1/4] Launch offline VSLAM for HD map reference"
     echo "  - VSLAM log : ${VSLAM_LOG_PATH}"
+    echo "  - diag log  : ${VSLAM_DIAGNOSTICS_LOG_PATH}"
     echo "  - sim time  : true (rosbag replay uses --clock)"
+    echo "  - image prep: ${USE_IMAGE_PREPROCESSORS}"
     if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
         echo "  - TF source : offline_sensor_tf.launch.xml (${TF_LOG_PATH})"
     else
@@ -186,25 +286,32 @@ run_vslam_snapshot_capture() {
     if ! wait_for_service "/visual_slam/save_map" 60; then
         die "Visual SLAM service did not become ready. Check ${VSLAM_LOG_PATH}"
     fi
+    run_vslam_diagnostics "after visual_slam service became ready"
 
     echo "[3/4] Record VSLAM landmarks/path snapshot while replaying bag"
     start_vslam_snapshot_recorder
     sleep 2
+    run_vslam_diagnostics "after snapshot recorder start, before rosbag replay"
 
     if [ "${PLAY_ALL_TOPICS}" = true ]; then
         echo "  - replay all topics"
+        schedule_vslam_diagnostics 5 "during rosbag replay"
         play_rosbag "${BAG_PATH}" "${PLAYER_LOG_PATH}"
     else
         build_online_source_play_topics
         echo "  - replay topics: ${SOURCE_PLAY_TOPICS[*]}"
+        schedule_vslam_diagnostics 5 "during rosbag replay"
         play_rosbag "${BAG_PATH}" "${PLAYER_LOG_PATH}" "${SOURCE_PLAY_TOPICS[@]}"
     fi
+    wait_for_vslam_diagnostics
 
     sleep 2
+    run_vslam_diagnostics "after rosbag replay, before snapshot recorder stop"
     stop_snapshot_recorder
 
     if [ ! -f "${SNAPSHOT_PATH}" ]; then
-        die "VSLAM snapshot was not written. Check ${SNAPSHOT_LOG_PATH}"
+        run_vslam_diagnostics "snapshot missing after recorder stop"
+        die "VSLAM snapshot was not written. Check ${SNAPSHOT_LOG_PATH} and ${VSLAM_DIAGNOSTICS_LOG_PATH}"
     fi
 
     echo "[4/4] Save native cuVSLAM map and stop stack"
@@ -395,7 +502,9 @@ IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 USE_IMU=false
 PLAY_ALL_TOPICS=false
+USE_IMAGE_PREPROCESSORS=false
 LAUNCH_OFFLINE_TF=false
+ENABLE_VSLAM_DIAGNOSTICS=true
 SAVE_VSLAM_MAP=true
 SKIP_VSLAM=false
 OPEN_EDITOR=true
@@ -434,6 +543,8 @@ VSLAM_LAUNCH_PID=""
 VSLAM_LAUNCH_USES_SETSID=false
 VSLAM_REFERENCE_PID=""
 VSLAM_REFERENCE_USES_SETSID=false
+VSLAM_DIAGNOSTICS_PID=""
+VSLAM_DIAGNOSTICS_USES_SETSID=false
 CAMERA_CONTAINER_NAME="offline_hdmap_camera_container_$$"
 
 while (($#)); do
@@ -478,8 +589,20 @@ while (($#)); do
             PLAY_ALL_TOPICS=true
             shift
             ;;
+        --use-image-preprocessors)
+            USE_IMAGE_PREPROCESSORS=true
+            shift
+            ;;
+        --no-image-preprocessors)
+            USE_IMAGE_PREPROCESSORS=false
+            shift
+            ;;
         --launch-offline-tf)
             LAUNCH_OFFLINE_TF=true
+            shift
+            ;;
+        --no-vslam-diagnostics)
+            ENABLE_VSLAM_DIAGNOSTICS=false
             shift
             ;;
         --snapshot)
@@ -656,6 +779,7 @@ TF_LOG_PATH="/tmp/create_hd_map_vslam_tf_${RUN_STAMP}.log"
 VSLAM_LOG_PATH="/tmp/create_hd_map_vslam_${RUN_STAMP}.log"
 PLAYER_LOG_PATH="/tmp/create_hd_map_vslam_player_${RUN_STAMP}.log"
 SNAPSHOT_LOG_PATH="${MAP_DIR}/hd_map_vslam_snapshot_${RUN_STAMP}.log"
+VSLAM_DIAGNOSTICS_LOG_PATH="${MAP_DIR}/hd_map_vslam_diagnostics_${RUN_STAMP}.log"
 EXPORT_LOG_PATH="${MAP_DIR}/hd_map_landmark_export_${RUN_STAMP}.log"
 RACELINE_LOG_PATH="${MAP_DIR}/hd_map_raceline_${RUN_STAMP}.log"
 LINE_PREVIEW_LOG_PATH="${MAP_DIR}/hd_map_line_preview_${RUN_STAMP}.log"

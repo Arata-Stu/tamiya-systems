@@ -63,6 +63,11 @@ class VslamReferenceSnapshotRecorder(Node):
         self.landmarks_seen = False
         self.trajectory_seen = False
         self.dirty = False
+        self.path_count = 0
+        self.odom_count = 0
+        self.landmarks_count = 0
+        self.trajectory_count = 0
+        self.snapshot_write_count = 0
 
         # VSLAM topics may be published as BEST_EFFORT, so request a permissive QoS.
         best_effort_qos = QoSProfile(
@@ -79,21 +84,32 @@ class VslamReferenceSnapshotRecorder(Node):
         if getattr(args, 'trajectory_topic', None):
             self.create_subscription(MarkerArray, args.trajectory_topic, self.on_trajectory, best_effort_qos)
         self.create_timer(1.0, self.flush_if_dirty)
+        if args.status_interval_sec > 0.0:
+            self.create_timer(args.status_interval_sec, self.log_status)
         self.get_logger().info(
             f"Recording VSLAM reference snapshot: path={args.path_topic}, odom={args.odom_topic}, landmarks={getattr(args, 'landmarks_topic', None)}, trajectory={getattr(args, 'trajectory_topic', None)}, output={self.output_path}"
         )
 
+    @staticmethod
+    def stamp_text(msg) -> str:
+        stamp = getattr(getattr(msg, "header", None), "stamp", None)
+        if stamp is None:
+            return "stamp=<none>"
+        return f"stamp={stamp.sec}.{stamp.nanosec:09d}"
+
     def on_path(self, msg: PathMsg) -> None:
         self.latest_path = msg
+        self.path_count += 1
         if not self.path_seen:
             self.path_seen = True
             self.get_logger().info(
-                f"Received first path on {self.args.path_topic} with {len(msg.poses)} poses."
+                f"Received first path on {self.args.path_topic}: frame={msg.header.frame_id}, {self.stamp_text(msg)}, poses={len(msg.poses)}."
             )
         self.dirty = True
 
     def on_odom(self, msg: Odometry) -> None:
         self.latest_odom = msg
+        self.odom_count += 1
         pose_stamped = PoseStamped()
         pose_stamped.header = msg.header
         pose_stamped.pose = msg.pose.pose
@@ -101,22 +117,48 @@ class VslamReferenceSnapshotRecorder(Node):
         
         if not self.odom_seen:
             self.odom_seen = True
-            self.get_logger().info(f"Received first odometry on {self.args.odom_topic}.")
+            self.get_logger().info(
+                f"Received first odometry on {self.args.odom_topic}: frame={msg.header.frame_id}, child={msg.child_frame_id}, {self.stamp_text(msg)}."
+            )
         self.dirty = True
 
     def on_landmarks(self, msg: PointCloud2) -> None:
         self.latest_landmarks = msg
+        self.landmarks_count += 1
         if not self.landmarks_seen:
             self.landmarks_seen = True
-            self.get_logger().info(f"Received first landmarks on {self.args.landmarks_topic}.")
+            self.get_logger().info(
+                f"Received first landmarks on {self.args.landmarks_topic}: frame={msg.header.frame_id}, {self.stamp_text(msg)}, width={msg.width}, height={msg.height}, point_step={msg.point_step}."
+            )
         self.dirty = True
 
     def on_trajectory(self, msg: MarkerArray) -> None:
         self.latest_trajectory = msg
+        self.trajectory_count += 1
         if not self.trajectory_seen:
             self.trajectory_seen = True
-            self.get_logger().info(f"Received first trajectory on {self.args.trajectory_topic}.")
+            self.get_logger().info(
+                f"Received first trajectory on {self.args.trajectory_topic}: markers={len(msg.markers)}."
+            )
         self.dirty = True
+
+    def log_status(self) -> None:
+        path_publishers = self.count_publishers(self.args.path_topic)
+        odom_publishers = self.count_publishers(self.args.odom_topic) if self.args.odom_topic else 0
+        landmarks_publishers = (
+            self.count_publishers(self.args.landmarks_topic)
+            if self.args.landmarks_topic else 0
+        )
+        trajectory_publishers = (
+            self.count_publishers(self.args.trajectory_topic)
+            if self.args.trajectory_topic else 0
+        )
+        self.get_logger().info(
+            "status: "
+            f"messages path={self.path_count}, odom={self.odom_count}, landmarks={self.landmarks_count}, trajectory={self.trajectory_count}; "
+            f"publishers path={path_publishers}, odom={odom_publishers}, landmarks={landmarks_publishers}, trajectory={trajectory_publishers}; "
+            f"snapshot_writes={self.snapshot_write_count}"
+        )
 
     def flush_if_dirty(self) -> None:
         if not self.dirty:
@@ -188,7 +230,14 @@ class VslamReferenceSnapshotRecorder(Node):
             encoding="utf-8",
         )
         tmp_path.replace(self.output_path)
+        self.snapshot_write_count += 1
         return True
+
+    def summary_text(self) -> str:
+        return (
+            f"messages path={self.path_count}, odom={self.odom_count}, landmarks={self.landmarks_count}, trajectory={self.trajectory_count}; "
+            f"snapshot_writes={self.snapshot_write_count}; output={self.output_path}"
+        )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -198,6 +247,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--landmarks-topic", default="")
     parser.add_argument("--trajectory-topic", default="")
     parser.add_argument("--output", required=True)
+    parser.add_argument("--status-interval-sec", type=float, default=5.0)
     return parser
 
 
@@ -217,6 +267,7 @@ def main() -> None:
             print(f"[vslam_reference_snapshot_recorder]: Saved VSLAM reference snapshot to {node.output_path}", flush=True)
         else:
             print("[vslam_reference_snapshot_recorder]: Warning: No VSLAM path/odometry messages were received; snapshot file was not written.", flush=True)
+        print(f"[vslam_reference_snapshot_recorder]: Summary: {node.summary_text()}", flush=True)
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
