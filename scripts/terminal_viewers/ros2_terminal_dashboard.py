@@ -16,7 +16,7 @@ import termios
 import time
 import tty
 from dataclasses import dataclass
-from pathlib import Path
+import pathlib
 from typing import Optional
 
 import cv2
@@ -186,8 +186,8 @@ class TerminalDashboard(Node):
             "sections": True,
             "gates": True,
             "particles": False,
-            "path": True,
-            "vo_path": True,
+            "path": False,
+            "vo_path": False,
             "global_path": True,
             "local_path": True,
         }
@@ -219,7 +219,7 @@ class TerminalDashboard(Node):
             self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         if args.hd_map_yaml:
-            self.load_hd_map_background(Path(args.hd_map_yaml).expanduser().resolve())
+            self.load_hd_map_background(pathlib.Path(args.hd_map_yaml).expanduser().resolve())
 
         map_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -380,33 +380,47 @@ class TerminalDashboard(Node):
             image_bgr=np.flipud(image),
         )
 
-    def load_hd_map_background(self, hd_map_yaml: Path) -> None:
+    def load_hd_map_background(self, hd_map_yaml: pathlib.Path) -> None:
         try:
             import yaml  # type: ignore
+
+            if hd_map_yaml.is_dir():
+                candidates = list(hd_map_yaml.glob("*_hd_map.yaml"))
+                if len(candidates) == 1:
+                    hd_map_yaml = candidates[0]
+                else:
+                    raise ValueError(f"HD map YAML is a directory and does not contain exactly one *_hd_map.yaml: {hd_map_yaml}")
+            elif hd_map_yaml.is_file() and not hd_map_yaml.name.endswith("_hd_map.yaml"):
+                hd_candidate = hd_map_yaml.with_name(hd_map_yaml.stem + "_hd_map.yaml")
+                if hd_candidate.is_file():
+                    hd_map_yaml = hd_candidate
 
             data = yaml.safe_load(hd_map_yaml.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("HD map YAML root must be a mapping")
             source = data.get("source_raster")
             if not isinstance(source, dict):
-                raise ValueError("HD map YAML has no source_raster block")
-            image_path = Path(str(source.get("image", ""))).expanduser()
+                # Fallback to standard ROS 2 map yaml format
+                source = data
+
+            image_path = pathlib.Path(str(source.get("image", ""))).expanduser()
             if not image_path.is_absolute():
                 image_path = (hd_map_yaml.parent / image_path).resolve()
             image_bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
             if image_bgr is None:
                 raise ValueError(f"could not read source raster image: {image_path}")
-            origin = source.get("origin_xy_yaw", [0.0, 0.0, 0.0])
+            origin = source.get("origin_xy_yaw", source.get("origin", [0.0, 0.0, 0.0]))
             if not isinstance(origin, (list, tuple)) or len(origin) < 2:
-                raise ValueError("source_raster.origin_xy_yaw must be [x, y, yaw]")
+                raise ValueError("origin must be [x, y, yaw]")
             height, width = image_bgr.shape[:2]
             image_size = source.get("image_size_px")
             if isinstance(image_size, (list, tuple)) and len(image_size) >= 2:
                 width = int(image_size[0])
                 height = int(image_size[1])
+            resolution = float(source.get("resolution_m_per_px", source.get("resolution", 0.05)))
             self.state.map_state = MapState(
                 frame_id=str(data.get("frame_id") or self.args.map_frame),
-                resolution=float(source.get("resolution_m_per_px", 0.02)),
+                resolution=resolution,
                 origin_x=float(origin[0]),
                 origin_y=float(origin[1]),
                 origin_yaw=float(origin[2]) if len(origin) >= 3 else 0.0,

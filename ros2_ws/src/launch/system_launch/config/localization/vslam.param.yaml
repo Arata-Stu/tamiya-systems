@@ -42,7 +42,7 @@
     #   [false, false] ドローン、3D環境（ドリフト注意）
     #   [true,  false] 非推奨（矛盾した設定）
     # ============================================
-    enable_ground_constraint_in_odometry: false
+    enable_ground_constraint_in_odometry: true
     enable_ground_constraint_in_slam: true
     
     # ============================================
@@ -81,7 +81,7 @@
     # より正確に設定する場合は
     # https://github.com/ethz-asl/kalibr
     # ============================================
-    enable_imu_fusion: true
+    enable_imu_fusion: false
     gyro_noise_density: 0.000244
     gyro_random_walk: 0.000019393
     accel_noise_density: 0.001862

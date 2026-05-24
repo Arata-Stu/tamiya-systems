@@ -1,12 +1,23 @@
 Panels:
   - Class: rviz_common/Displays
+    Help Height: 70
     Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /VSLAM Odometry1/Shape1
+      Splitter Ratio: 0.5
+    Tree Height: 213
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
+    Expanded: ~
     Name: Tool Properties
+    Splitter Ratio: 0.5
   - Class: rviz_common/Views
+    Expanded:
+      - /Current View1
     Name: Views
+    Splitter Ratio: 0.5
 Visualization Manager:
   Class: ""
   Displays:
@@ -15,12 +26,20 @@ Visualization Manager:
       Class: rviz_default_plugins/Grid
       Color: 160; 160; 164
       Enabled: true
+      Line Style:
+        Line Width: 0.029999999329447746
+        Value: Lines
       Name: Grid
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
       Plane: XY
       Plane Cell Count: 20
       Reference Frame: <Fixed Frame>
       Value: true
-    - Alpha: 0.8
+    - Alpha: 0.800000011920929
       Class: rviz_default_plugins/Map
       Color Scheme: map
       Draw Behind: true
@@ -29,6 +48,7 @@ Visualization Manager:
       Topic:
         Depth: 5
         Durability Policy: Transient Local
+        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /map
@@ -41,8 +61,8 @@ Visualization Manager:
       Use Timestamp: false
       Value: true
     - Alpha: 1
-      Axes Length: 0.8
-      Axes Radius: 0.06
+      Axes Length: 0.800000011920929
+      Axes Radius: 0.05999999865889549
       Class: rviz_default_plugins/PoseWithCovariance
       Color: 255; 25; 0
       Covariance:
@@ -62,59 +82,261 @@ Visualization Manager:
         Value: true
       Enabled: true
       Head Length: 0.25
-      Head Radius: 0.08
+      Head Radius: 0.07999999821186066
       Name: Localization Result
-      Shaft Length: 0.7
-      Shaft Radius: 0.04
+      Shaft Length: 0.699999988079071
+      Shaft Radius: 0.03999999910593033
       Shape: Axes
       Topic:
         Depth: 5
         Durability Policy: Volatile
+        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /localization_result
       Value: true
     - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
       Class: rviz_default_plugins/LaserScan
       Color: 20; 220; 120
+      Color Transformer: Intensity
+      Decay Time: 0
       Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 53
+      Min Color: 0; 0; 0
+      Min Intensity: 0
       Name: Scan
-      Queue Size: 10
+      Position Transformer: XYZ
       Selectable: true
-      Size (m): 0.05
+      Size (Pixels): 3
+      Size (m): 0.05000000074505806
       Style: Points
       Topic:
         Depth: 5
         Durability Policy: Volatile
+        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
         Value: /scan
+      Use Fixed Frame: true
+      Use rainbow: true
       Value: true
-    - Angle Tolerance: 0.1
+    - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
-      Color: 80; 160; 255
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
       Enabled: true
       Keep: 100
       Name: VSLAM Odometry
-      Position Tolerance: 0.1
-      Shape: Arrow
+      Position Tolerance: 0.10000000149011612
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.30000001192092896
+        Head Radius: 0.10000000149011612
+        Shaft Length: 0.30000001192092896
+        Shaft Radius: 0.05000000074505806
+        Value: Arrow
       Topic:
         Depth: 5
         Durability Policy: Volatile
+        Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /visual_slam/tracking/odometry
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: HD Map Lane Markers
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /hd_map/lane_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: HD Map Section Markers
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /hd_map/section_markers
+      Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Current Section Marker
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/current_section_marker
+      Value: true
     - Class: rviz_default_plugins/TF
       Enabled: true
       Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        base_link:
+          Value: true
+        camera_accel_frame:
+          Value: true
+        camera_accel_optical_frame:
+          Value: true
+        camera_aligned_depth_to_infra1_frame:
+          Value: true
+        camera_camera_link:
+          Value: true
+        camera_camera_link_mount:
+          Value: true
+        camera_gyro_frame:
+          Value: true
+        camera_gyro_optical_frame:
+          Value: true
+        camera_imu_frame:
+          Value: true
+        camera_imu_optical_frame:
+          Value: true
+        camera_infra1_frame:
+          Value: true
+        camera_infra1_optical_frame:
+          Value: true
+        camera_infra2_frame:
+          Value: true
+        camera_infra2_optical_frame:
+          Value: true
+        laser:
+          Value: true
+        map:
+          Value: true
+        odom:
+          Value: true
+      Marker Scale: 1
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        {}
+        map:
+          odom:
+            base_link:
+              camera_camera_link_mount:
+                camera_camera_link:
+                  camera_accel_frame:
+                    camera_accel_optical_frame:
+                      {}
+                  camera_aligned_depth_to_infra1_frame:
+                    camera_infra1_optical_frame:
+                      {}
+                  camera_gyro_frame:
+                    camera_gyro_optical_frame:
+                      {}
+                    camera_imu_frame:
+                      camera_imu_optical_frame:
+                        {}
+                  camera_infra1_frame:
+                    {}
+                  camera_infra2_frame:
+                    camera_infra2_optical_frame:
+                      {}
+              laser:
+                {}
       Update Interval: 0
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.10000000149011612
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /planning/global_raceline
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: RGB8
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: PointCloud2
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.03999999910593033
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /visual_slam/vis/landmarks_cloud
+      Use Fixed Frame: true
+      Use rainbow: true
       Value: true
   Enabled: true
   Global Options:
@@ -129,7 +351,11 @@ Visualization Manager:
     - Class: rviz_default_plugins/Select
     - Class: rviz_default_plugins/FocusCamera
     - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
     - Class: rviz_default_plugins/SetInitialPose
+      Covariance x: 0.25
+      Covariance y: 0.25
+      Covariance yaw: 0.06853891909122467
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -150,12 +376,35 @@ Visualization Manager:
   Value: true
   Views:
     Current:
+      Angle: 0
       Class: rviz_default_plugins/TopDownOrtho
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Invert Z Axis: false
       Name: Current View
-      Scale: 20
+      Near Clip Distance: 0.009999999776482582
+      Scale: 63.83909606933594
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
+      X: 2.357623338699341
+      Y: 1.778252363204956
     Saved: ~
 Window Geometry:
+  Displays:
+    collapsed: false
   Height: 1000
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd00000001000000000000019b00000392fc0200000004fb000000100044006900730070006c006100790073010000003b00000156000000c700fffffffb0000001200530065006c0065006300740069006f006e0100000197000000a70000005c00fffffffb0000001e0054006f006f006c002000500072006f00700065007200740069006500730100000244000000a70000005c00fffffffb0000000a0056006900650077007301000002f1000000dc000000a000ffffff000003d70000039200000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Selection:
+    collapsed: false
+  Tool Properties:
+    collapsed: false
+  Views:
+    collapsed: false
   Width: 1400
+  X: 520
+  Y: 43
