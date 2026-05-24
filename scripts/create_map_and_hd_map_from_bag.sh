@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # One-shot local map build flow:
-#   sensor bag -> online VSLAM + Cartographer 2D map -> HD map editor
+#   sensor bag -> online cuVSLAM map + Cartographer 2D map -> HD map editor
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
@@ -20,6 +20,11 @@ usage() {
     cat <<'EOF'
 Usage:
   create_map_and_hd_map_from_bag.sh [OPTIONS]
+
+Default flow:
+  1. Pick one rosbag and one map name.
+  2. Build /map/<bag>/<map>/<map>.yaml and /map/<bag>/<map>/cuvslam_map/.
+  3. Capture the VSLAM reference snapshot and open the HD map editor.
 
 Options:
   --bag-path DIR          input rosbag2 directory (skip interactive selection)
@@ -193,6 +198,7 @@ BAG_DIR_NAME="$(basename "${BAG_PATH}")"
 MAP_DIR="/map/${BAG_DIR_NAME}/${MAP_NAME}"
 MAP_STEM="${MAP_DIR}/${MAP_NAME}"
 MAP_YAML_PATH="${MAP_STEM}.yaml"
+VSLAM_MAP_DIR="${MAP_DIR}/cuvslam_map"
 SNAPSHOT_PATH="${MAP_STEM}_vslam_reference.json"
 
 echo ""
@@ -201,6 +207,7 @@ echo "source bag : ${BAG_PATH}"
 echo "map name   : ${MAP_NAME}"
 echo "map dir    : ${MAP_DIR}"
 echo "2D mode    : ${MODE}"
+echo "VSLAM map  : ${VSLAM_MAP_DIR}"
 echo "IMU replay : ${USE_IMU}"
 echo "image prep : ${USE_IMAGE_PREPROCESSORS}"
 echo "===================================================="
@@ -242,7 +249,7 @@ if [ "${SKIP_2D_MAP}" != true ]; then
     fi
 
     echo ""
-    echo "[1/2] Build 2D map and VSLAM reference"
+    echo "[1/2] Build 2D map, cuVSLAM map, and VSLAM reference"
     printf '  %q' "${map_cmd[@]}"
     echo ""
     "${map_cmd[@]}"
@@ -253,6 +260,9 @@ fi
 
 if [ ! -f "${MAP_YAML_PATH}" ]; then
     die "2D map YAML was not created: ${MAP_YAML_PATH}"
+fi
+if [ ! -d "${VSLAM_MAP_DIR}" ] || [ -z "$(find "${VSLAM_MAP_DIR}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+    die "cuVSLAM map was not created or is empty: ${VSLAM_MAP_DIR}"
 fi
 if [ ! -f "${SNAPSHOT_PATH}" ]; then
     die "VSLAM reference snapshot was not created: ${SNAPSHOT_PATH}"
@@ -288,5 +298,6 @@ echo ""
 echo "✅ Map bundle ready:"
 echo "  - map dir    : ${MAP_DIR}"
 echo "  - 2D map     : ${MAP_YAML_PATH}"
+echo "  - VSLAM map  : ${VSLAM_MAP_DIR}"
 echo "  - snapshot   : ${SNAPSHOT_PATH}"
 echo "  - HD map     : ${MAP_STEM}_hd_map.yaml"
