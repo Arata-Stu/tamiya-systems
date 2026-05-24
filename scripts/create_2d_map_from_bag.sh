@@ -68,6 +68,7 @@ VSLAM_LANDMARK_EXPORT_SCRIPT_PATH=""
 VSLAM_MAP_ALIGNMENT_CONFIG_PATH=""
 VSLAM_MAP_ALIGNMENT_CONFIG_SET_BY_USER=false
 VSLAM_REFERENCE_SNAPSHOT_PATH=""
+SAVE_VSLAM_REFERENCE=false
 PREPARE_VSLAM_MAP_ALIGNMENT=false
 VSLAM_LIVE_ALIGNMENT_MODE="auto"
 VSLAM_LIVE_ALIGNMENT_ENABLED=false
@@ -330,6 +331,14 @@ while (($#)); do
             VSLAM_MAP_ALIGNMENT_CONFIG_PATH="$2"
             VSLAM_MAP_ALIGNMENT_CONFIG_SET_BY_USER=true
             shift 2
+            ;;
+        --save-vslam-reference)
+            SAVE_VSLAM_REFERENCE=true
+            shift
+            ;;
+        --no-save-vslam-reference)
+            SAVE_VSLAM_REFERENCE=false
+            shift
             ;;
         --prepare-vslam-map-alignment)
             PREPARE_VSLAM_MAP_ALIGNMENT=true

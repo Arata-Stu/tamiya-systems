@@ -101,7 +101,11 @@ start_vslam_reference_capture() {
     VSLAM_REFERENCE_CAPTURE_STARTED=false
     VSLAM_REFERENCE_CAPTURE_WAS_STARTED=false
 
-    if [ "${PIPELINE_MODE}" != "online" ] || [ "${PREPARE_VSLAM_MAP_ALIGNMENT}" != true ]; then
+    if [ "${PIPELINE_MODE}" != "online" ]; then
+        return 0
+    fi
+
+    if [ "${PREPARE_VSLAM_MAP_ALIGNMENT}" != true ] && [ "${SAVE_VSLAM_REFERENCE}" != true ]; then
         return 0
     fi
 

@@ -66,6 +66,10 @@ Options:
                       auto|always|never (default: never)
   --vslam-map-alignment-config PATH
                       saved map->vslam_map alignment YAML used when replaying VSLAM
+  --save-vslam-reference
+                      save VSLAM path/odom/landmarks snapshot during online mapping
+  --no-save-vslam-reference
+                      only save a VSLAM snapshot when alignment prep needs it (default)
   --prepare-vslam-map-alignment
                       after map generation, launch 2D map publishing plus saved
                       VSLAM path/odom republish for external manual_tf_alignment_node work
