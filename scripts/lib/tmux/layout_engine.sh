@@ -114,7 +114,7 @@ create_layout_from_panes() {
     fi
 
     if [[ "$window" != "${PANE_WINDOWS[0]}" ]]; then
-      tmux new-window -t "$SESSION_NAME" -n "$window"
+      tmux new-window -t "$SESSION_NAME:" -n "$window"
     fi
 
     created_windows="$created_windows$window "
