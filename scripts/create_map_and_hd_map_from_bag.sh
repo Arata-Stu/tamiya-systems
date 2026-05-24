@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # One-shot local map build flow:
-#   sensor bag -> online cuVSLAM map + Cartographer 2D map -> HD map editor
+#   sensor bag -> online cuVSLAM + Cartographer 2D map -> HD map editor/raceline
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
@@ -23,18 +23,21 @@ Usage:
 
 Default flow:
   1. Pick one rosbag and one map name.
-  2. Build /map/<bag>/<map>/<map>.yaml and /map/<bag>/<map>/cuvslam_map/.
-  3. Capture the VSLAM reference snapshot and open the HD map editor.
+  2. Replay it once while Cartographer and online cuVSLAM run together.
+  3. Save the 2D map PNG for GL use and the cuVSLAM map/reference snapshot.
+  4. Export the VSLAM landmark raster, open the HD lane editor, then generate raceline.
+  5. Optionally continue to the HD section-gate editor or scp transfer.
 
 Options:
   --bag-path DIR          input rosbag2 directory (skip interactive selection)
   --map-name NAME         output map name (skip interactive prompt)
   --record-root DIR       rosbag search root for interactive selection (default: /record)
-  --mode NAME             2D map mode (default: with_odom_online_vslam)
+  --mode NAME             online 2D mode: with_odom_online_vslam or no_odom_online_vslam
+                          (default: with_odom_online_vslam)
   --rate RATE             ros2 bag play rate for 2D/VSLAM mapping (default: 1.0)
-  --image-width PX        offline VSLAM image width (default: 424)
-  --image-height PX       offline VSLAM image height (default: 240)
-  --image-fps FPS         offline VSLAM image fps (default: 90.0)
+  --image-width PX        online VSLAM image width (default: 424)
+  --image-height PX       online VSLAM image height (default: 240)
+  --image-fps FPS         online VSLAM image fps (default: 90.0)
   --with-imu              replay /camera/imu during mapping (default)
   --no-imu                do not replay /camera/imu
   --play-all-topics       replay every source-bag topic instead of filtered topics
@@ -42,16 +45,24 @@ Options:
   --no-image-preprocessors make VSLAM subscribe to recorded camera topics directly (default)
   --launch-offline-tf     publish fallback base_link TFs instead of using only bag TFs
   --skip-2d-map           reuse existing <map_dir>/<map_name>.yaml and VSLAM snapshot
+  --allow-missing-2d-png  continue even if <map_name>.png was not generated
   --editor-scale SCALE    initial HD editor zoom; 0 fits the whole raster (default: 0)
   --no-editor             only create 2D/VSLAM/HD raster outputs; do not open HD editor
   --no-raceline           skip raceline generation after the HD editor exits
   --no-line-preview       skip centerline/raceline overlay PNG generation
+  --open-section-editor   open the HD section-gate editor after raceline generation
+  --section-editor-scale SCALE
+                          initial HD section-gate editor zoom (default: 0)
+  --scp-after             start scp transfer after raceline/section editing
+  --no-post-menu          skip the final section-gate/scp menu
   -h, --help              show this help
 
 Outputs:
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>.yaml
+  /map/<source_bag>/<MAP_NAME>/<MAP_NAME>.png
   /map/<source_bag>/<MAP_NAME>/cuvslam_map/
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_vslam_reference.json
+  /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_vslam_landmarks.png
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_vslam_landmarks.yaml
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_hd_map.yaml
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_centerline.csv
@@ -64,8 +75,150 @@ die() {
     exit 1
 }
 
+ensure_online_2d_mode() {
+    case "${MODE}" in
+        2d_slam)
+            MODE="no_odom_online_vslam"
+            ;;
+        with_odom_online_vslam|no_odom_online_vslam)
+            ;;
+        *)
+            die "this integrated flow runs 2D SLAM and VSLAM together online. Use --mode with_odom_online_vslam or no_odom_online_vslam."
+            ;;
+    esac
+}
+
+run_hd_section_gate_editor() {
+    local hd_map_yaml_path="${MAP_STEM}_hd_map.yaml"
+    local -a section_cmd
+
+    if [ ! -f "${hd_map_yaml_path}" ]; then
+        echo "Warning: HD map YAML not found for section-gate editor: ${hd_map_yaml_path}" >&2
+        return 0
+    fi
+    if [ ! -f "${EDIT_HD_MAP_SECTIONS_SH}" ]; then
+        echo "Warning: HD section-gate editor launcher not found: ${EDIT_HD_MAP_SECTIONS_SH}" >&2
+        return 0
+    fi
+
+    section_cmd=(
+        bash "${EDIT_HD_MAP_SECTIONS_SH}"
+        --hd-map-yaml "${hd_map_yaml_path}"
+        --scale "${SECTION_EDITOR_SCALE}"
+    )
+
+    echo ""
+    echo "[post] Open HD section-gate editor"
+    printf '  %q' "${section_cmd[@]}"
+    echo ""
+    "${section_cmd[@]}" || echo "Warning: HD section-gate editor failed." >&2
+}
+
+run_scp_transfer() {
+    local remote_user
+    local ip_choice
+    local remote_ip
+    local remote_dir
+    local final_confirm
+    local i
+
+    if [ ! -t 0 ]; then
+        echo "Warning: no interactive TTY is available. Skip scp transfer." >&2
+        return 0
+    fi
+
+    echo ""
+    read -r -p "相手のユーザー名 (Enterで '${DEFAULT_REMOTE_USER}'): " remote_user
+    remote_user=${remote_user:-$DEFAULT_REMOTE_USER}
+
+    echo ""
+    echo "相手のIPアドレスを選択、または直接入力してください:"
+    i=1
+    for ip in "${DEFAULT_REMOTE_IPS[@]}"; do
+        if [ "${i}" -eq 1 ]; then
+            echo "  ${i}) ${ip} (Enterのデフォルト)"
+        else
+            echo "  ${i}) ${ip}"
+        fi
+        ((i++))
+    done
+    echo ""
+
+    read -r -p "番号、またはIPを直接入力 (Enterで '${DEFAULT_REMOTE_IPS[0]}'): " ip_choice
+
+    if [ -z "${ip_choice}" ]; then
+        remote_ip="${DEFAULT_REMOTE_IPS[0]}"
+    elif [[ "${ip_choice}" =~ ^[0-9]+$ ]] && \
+         [ "${ip_choice}" -ge 1 ] && \
+         [ "${ip_choice}" -le "${#DEFAULT_REMOTE_IPS[@]}" ]; then
+        remote_ip="${DEFAULT_REMOTE_IPS[$((ip_choice-1))]}"
+    else
+        remote_ip="${ip_choice}"
+    fi
+
+    echo ""
+    read -r -p "送信先ディレクトリ (Enterで '${DEFAULT_REMOTE_DIR}'): " remote_dir
+    remote_dir=${remote_dir:-$DEFAULT_REMOTE_DIR}
+
+    echo ""
+    echo "================ 転送内容確認 ================"
+    echo "送信元 : ${MAP_DIR}"
+    echo "送信先 : ${remote_user}@${remote_ip}:${remote_dir%/}/${BAG_DIR_NAME}/"
+    echo "=============================================="
+    echo ""
+
+    read -r -p "この内容でscp転送しますか？ (Y/n, Enterで実行): " final_confirm
+    final_confirm=${final_confirm:-y}
+
+    if [[ ! "${final_confirm}" =~ ^[Yy]$ ]]; then
+        echo "転送をキャンセルしました。"
+        return 0
+    fi
+
+    echo "scp転送を開始します..."
+    ssh "${remote_user}@${remote_ip}" "mkdir -p '${remote_dir%/}/${BAG_DIR_NAME}'"
+    scp -r "${MAP_DIR}" "${remote_user}@${remote_ip}:${remote_dir%/}/${BAG_DIR_NAME}/"
+
+    echo ""
+    echo "✅ scp転送が完了しました！"
+}
+
+run_post_menu() {
+    local action_choice
+
+    if [ "${POST_MENU_ENABLED}" != true ] || [ ! -t 0 ]; then
+        return 0
+    fi
+
+    while true; do
+        echo ""
+        echo "次の操作を選んでください:"
+        echo "  1) HD section-gate editor を開く"
+        echo "  2) scp 転送へ進む"
+        echo "  3) 終了"
+        read -r -p "選択 [3]: " action_choice
+
+        case "${action_choice:-3}" in
+            1|section|sections|gate|edit|s)
+                run_hd_section_gate_editor
+                ;;
+            2|transfer|scp|t)
+                run_scp_transfer
+                return 0
+                ;;
+            3|skip|exit|quit|q)
+                return 0
+                ;;
+            *)
+                echo "無効な選択です: ${action_choice}" >&2
+                ;;
+        esac
+    done
+}
+
 CREATE_2D_MAP_SH="${SCRIPT_DIR}/create_2d_map_from_bag.sh"
 CREATE_HD_MAP_SH="${SCRIPT_DIR}/create_hd_map_from_vslam_bag.sh"
+EDIT_HD_MAP_SECTIONS_SH="${SCRIPT_DIR}/edit_hd_map_sections.sh"
 
 BAG_PATH=""
 MAP_NAME=""
@@ -80,13 +233,22 @@ PLAY_ALL_TOPICS=false
 USE_IMAGE_PREPROCESSORS=false
 LAUNCH_OFFLINE_TF=false
 SKIP_2D_MAP=false
+REQUIRE_2D_PNG=true
 OPEN_EDITOR=true
 GENERATE_RACELINE=true
 GENERATE_LINE_PREVIEW=true
 EDITOR_SCALE="0"
+SECTION_EDITOR_SCALE="0"
+POST_MENU_ENABLED=true
+OPEN_SECTION_EDITOR_AFTER=false
+SCP_AFTER=false
 ROSBAG_CANDIDATES=()
 SCAN_TOPIC="/scan"
 SOURCE_PLAY_TOPICS=()
+
+DEFAULT_REMOTE_USER="tamiya"
+DEFAULT_REMOTE_IPS=("10.42.0.1" "192.168.55.1" "192.168.11.190")
+DEFAULT_REMOTE_DIR="/home/tamiya/workspaces/tamiya-systems/map/"
 
 while (($#)); do
     case "$1" in
@@ -150,6 +312,10 @@ while (($#)); do
             SKIP_2D_MAP=true
             shift
             ;;
+        --allow-missing-2d-png)
+            REQUIRE_2D_PNG=false
+            shift
+            ;;
         --editor-scale)
             EDITOR_SCALE="$2"
             shift 2
@@ -164,6 +330,24 @@ while (($#)); do
             ;;
         --no-line-preview)
             GENERATE_LINE_PREVIEW=false
+            shift
+            ;;
+        --open-section-editor)
+            OPEN_SECTION_EDITOR_AFTER=true
+            POST_MENU_ENABLED=false
+            shift
+            ;;
+        --section-editor-scale)
+            SECTION_EDITOR_SCALE="$2"
+            shift 2
+            ;;
+        --scp-after)
+            SCP_AFTER=true
+            POST_MENU_ENABLED=false
+            shift
+            ;;
+        --no-post-menu)
+            POST_MENU_ENABLED=false
             shift
             ;;
         -h|--help)
@@ -193,11 +377,15 @@ fi
 if [[ "${MAP_NAME}" == *"/"* ]]; then
     die "map name must not contain '/'"
 fi
+if [ "${SKIP_2D_MAP}" != true ]; then
+    ensure_online_2d_mode
+fi
 
 BAG_DIR_NAME="$(basename "${BAG_PATH}")"
 MAP_DIR="/map/${BAG_DIR_NAME}/${MAP_NAME}"
 MAP_STEM="${MAP_DIR}/${MAP_NAME}"
 MAP_YAML_PATH="${MAP_STEM}.yaml"
+MAP_PNG_PATH="${MAP_STEM}.png"
 VSLAM_MAP_DIR="${MAP_DIR}/cuvslam_map"
 SNAPSHOT_PATH="${MAP_STEM}_vslam_reference.json"
 
@@ -261,6 +449,9 @@ fi
 if [ ! -f "${MAP_YAML_PATH}" ]; then
     die "2D map YAML was not created: ${MAP_YAML_PATH}"
 fi
+if [ "${REQUIRE_2D_PNG}" = true ] && [ ! -f "${MAP_PNG_PATH}" ]; then
+    die "2D map PNG was not created: ${MAP_PNG_PATH}. Install ImageMagick/ffmpeg/Pillow or rerun with --allow-missing-2d-png."
+fi
 if [ ! -d "${VSLAM_MAP_DIR}" ] || [ -z "$(find "${VSLAM_MAP_DIR}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
     die "cuVSLAM map was not created or is empty: ${VSLAM_MAP_DIR}"
 fi
@@ -298,6 +489,18 @@ echo ""
 echo "✅ Map bundle ready:"
 echo "  - map dir    : ${MAP_DIR}"
 echo "  - 2D map     : ${MAP_YAML_PATH}"
+if [ -f "${MAP_PNG_PATH}" ]; then
+    echo "  - 2D PNG     : ${MAP_PNG_PATH}"
+fi
 echo "  - VSLAM map  : ${VSLAM_MAP_DIR}"
 echo "  - snapshot   : ${SNAPSHOT_PATH}"
 echo "  - HD map     : ${MAP_STEM}_hd_map.yaml"
+echo "  - raceline   : ${MAP_STEM}_raceline.csv"
+
+if [ "${OPEN_SECTION_EDITOR_AFTER}" = true ]; then
+    run_hd_section_gate_editor
+fi
+if [ "${SCP_AFTER}" = true ]; then
+    run_scp_transfer
+fi
+run_post_menu
