@@ -37,6 +37,7 @@ launch_vslam_stack() {
         "image_width:=${IMAGE_WIDTH}"
         "image_height:=${IMAGE_HEIGHT}"
         "camera_container_name:=${CAMERA_CONTAINER_NAME}"
+        "use_image_preprocessors:=${USE_IMAGE_PREPROCESSORS}"
         "enable_localization_and_mapping:=true"
         "enable_slam_visualization:=${VSLAM_VIS_ENABLED}"
         "enable_observations_view:=${VSLAM_VIS_ENABLED}"
@@ -63,12 +64,14 @@ launch_vslam_stack() {
         launch_args+=("vslam_param:=${vslam_param_path}")
     fi
 
-    build_system_launch_cmd "offline_sensor_tf.launch.xml"
-    launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
-        "${SYSTEM_LAUNCH_CMD[@]}" \
-        > "${tf_log_path}" 2>&1
+    if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
+        build_system_launch_cmd "offline_sensor_tf.launch.xml"
+        launch_background_process "OFFLINE_TF_PID" "OFFLINE_TF_USES_SETSID" \
+            "${SYSTEM_LAUNCH_CMD[@]}" \
+            > "${tf_log_path}" 2>&1
 
-    sleep 2
+        sleep 2
+    fi
 
     launch_background_process "CAMERA_CONTAINER_PID" "CAMERA_CONTAINER_USES_SETSID" \
         ros2 run rclcpp_components component_container_mt --ros-args -r "__node:=${CAMERA_CONTAINER_NAME}"
@@ -684,4 +687,3 @@ run_vslam_landmark_trace() {
         echo "Warning: traced map was not saved. Keep original map for centerline." >&2
     fi
 }
-

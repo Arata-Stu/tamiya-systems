@@ -370,6 +370,7 @@ class SectionGateEditor:
         self.pan_start_offset = (0, 0)
         self.show_help = True
         self.has_unsaved_changes = False
+        self.undo_stack: List[tuple[List[SectionGate], Optional[PointPx], bool]] = []
         if scale > 0.0:
             self._center_view()
         else:
@@ -514,7 +515,7 @@ class SectionGateEditor:
         )
         self._draw_text(
             frame,
-            "[/]:switch lane  d:delete nearest gate  Esc:cancel pending gate  s:save  i:help  q:quit",
+            "[/]:switch lane  d:delete nearest gate  u:undo  Esc:cancel pending gate  s:save  i:help  q:quit",
             (22, 112),
             0.60,
             (230, 235, 245),
@@ -540,6 +541,37 @@ class SectionGateEditor:
                 best_distance = distance
         return best_index
 
+    def _clone_gates(self) -> List[SectionGate]:
+        return [
+            SectionGate(
+                gate_id=gate.gate_id,
+                lane_id=gate.lane_id,
+                points=(gate.points[0], gate.points[1]),
+                s_m=gate.s_m,
+            )
+            for gate in self.gates
+        ]
+
+    def _push_undo_state(self) -> None:
+        self.undo_stack.append((self._clone_gates(), self.pending_gate_start, self.has_unsaved_changes))
+        if len(self.undo_stack) > 100:
+            self.undo_stack.pop(0)
+
+    def _push_gate_edit_undo_state(self) -> None:
+        self.undo_stack.append((self._clone_gates(), None, self.has_unsaved_changes))
+        if len(self.undo_stack) > 100:
+            self.undo_stack.pop(0)
+
+    def _undo(self) -> None:
+        if not self.undo_stack:
+            print("[INFO] Nothing to undo.")
+            return
+        gates, pending_gate_start, has_unsaved_changes = self.undo_stack.pop()
+        self.gates = gates
+        self.pending_gate_start = pending_gate_start
+        self.has_unsaved_changes = has_unsaved_changes
+        print("[INFO] Undid last section gate edit.")
+
     def _add_gate_endpoint(self, point: PointPx) -> None:
         if self.pending_gate_start is None:
             self.pending_gate_start = point
@@ -548,6 +580,7 @@ class SectionGateEditor:
             print("[WARN] Gate endpoints are too close.")
             self.pending_gate_start = None
             return
+        self._push_gate_edit_undo_state()
         midpoint = (
             int(round((self.pending_gate_start[0] + point[0]) * 0.5)),
             int(round((self.pending_gate_start[1] + point[1]) * 0.5)),
@@ -566,9 +599,15 @@ class SectionGateEditor:
     def _delete_gate(self) -> None:
         cursor = self._to_map_pixel(self.last_mouse_x, self.last_mouse_y)
         index = self._nearest_gate_index(cursor)
+        had_pending = self.pending_gate_start is not None
+        self.pending_gate_start = None
         if index is None:
-            print("[INFO] No nearby gate on active lane.")
+            if had_pending:
+                print("[INFO] Canceled pending gate endpoint.")
+            else:
+                print("[INFO] No nearby gate on active lane.")
             return
+        self._push_undo_state()
         gate = self.gates.pop(index)
         self.has_unsaved_changes = True
         print(f"[INFO] Removed {gate.gate_id}.")
@@ -590,6 +629,7 @@ class SectionGateEditor:
             encoding="utf-8",
         )
         self.has_unsaved_changes = False
+        self.undo_stack.clear()
         print(f"[INFO] Saved HD map section gates: {self.hd_map_path}")
         print(f"[INFO] Generated sections: {len(self.data['sections'])}")
 
@@ -631,6 +671,8 @@ class SectionGateEditor:
             self._save()
         elif low in (ord("d"), 8, 127):
             self._delete_gate()
+        elif low == ord("u"):
+            self._undo()
         elif low == ord("i"):
             self.show_help = not self.show_help
         elif low == ord("0"):

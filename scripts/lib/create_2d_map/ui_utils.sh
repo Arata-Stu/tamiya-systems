@@ -32,7 +32,13 @@ Options:
   --image-width PX    camera width for parallel VSLAM launch (default: 424)
   --image-height PX   camera height for parallel VSLAM launch (default: 240)
   --image-fps FPS     camera fps for parallel VSLAM launch (default: 90.0)
-  --with-imu          replay /camera/imu as well (default: disabled)
+  --with-imu          replay /camera/imu as well (default: enabled)
+  --no-imu            do not replay /camera/imu
+  --use-image-preprocessors
+                      run rectify/mono preprocessing before VSLAM
+  --no-image-preprocessors
+                      make VSLAM subscribe to recorded camera topics directly (default)
+  --launch-offline-tf publish fallback base_link TFs instead of using only bag TFs
   --vslam-map-dir DIR visual slam map output directory
   --pipeline-mode MODE
                       offline|online|auto
@@ -280,4 +286,3 @@ prompt_pre_transfer_action() {
         esac
     done
 }
-

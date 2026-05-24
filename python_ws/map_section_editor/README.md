@@ -141,7 +141,8 @@ cd /Users/at/project/competition/tamiya-systems
 
 - 左クリック 2 回: active lane に gate を追加
 - `[` / `]`: active lane を切替
-- `d`: カーソル近傍の gate を削除
+- `d`: カーソル近傍の gate を削除。pending の gate 始点もキャンセル
+- `u`: 直前の gate 追加/削除を undo
 - `s`: HD map YAML へ保存
 - ホイール / `+` / `-`: ズーム
 - 右ドラッグ or `H/J/K/L`: パン

@@ -111,7 +111,9 @@ ODOM_TOPIC_SET_BY_USER=false
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
 IMAGE_FPS="90.0"
-USE_IMU=false
+USE_IMU=true
+USE_IMAGE_PREPROCESSORS=false
+LAUNCH_OFFLINE_TF=false
 CAMERA_CONTAINER_NAME="offline_camera_container_$$"
 VSLAM_MAP_DIR=""
 OFFLINE_TF_PID=""
@@ -241,6 +243,22 @@ while (($#)); do
             ;;
         --with-imu)
             USE_IMU=true
+            shift
+            ;;
+        --no-imu)
+            USE_IMU=false
+            shift
+            ;;
+        --use-image-preprocessors)
+            USE_IMAGE_PREPROCESSORS=true
+            shift
+            ;;
+        --no-image-preprocessors)
+            USE_IMAGE_PREPROCESSORS=false
+            shift
+            ;;
+        --launch-offline-tf)
+            LAUNCH_OFFLINE_TF=true
             shift
             ;;
         --vslam-map-dir)
