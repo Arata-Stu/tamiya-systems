@@ -65,14 +65,10 @@ BOOL_KEYS=(
   localization
   use_lidar
   use_camera
-  use_ftg
-  use_emergency
   use_perception
   use_perception_classifier
   use_planning
   use_hd_map
-  use_magp_rl_trajectory
-  magp_rl_run_pure_pursuit
   use_pure_pursuit
   use_map_controller
   use_control_filter
@@ -86,7 +82,6 @@ BOOL_KEYS=(
   use_section_localizer
   use_hd_map_section_localizer
   section_localizer_debug_mode
-  use_drive_mode_manager
   enable_localization_and_mapping
 )
 
@@ -96,14 +91,10 @@ ARG_vslam="false"
 ARG_localization="false"
 ARG_use_lidar="false"
 ARG_use_camera="false"
-ARG_use_ftg="false"
-ARG_use_emergency="false"
 ARG_use_perception="false"
 ARG_use_perception_classifier="false"
 ARG_use_planning="false"
 ARG_use_hd_map="false"
-ARG_use_magp_rl_trajectory="false"
-ARG_magp_rl_run_pure_pursuit="false"
 ARG_use_pure_pursuit="false"
 ARG_use_map_controller="false"
 ARG_use_control_filter="false"
@@ -117,7 +108,6 @@ ARG_publish_localization_tf="false"
 ARG_use_section_localizer="false"
 ARG_use_hd_map_section_localizer="false"
 ARG_section_localizer_debug_mode="false"
-ARG_use_drive_mode_manager="false"
 ARG_enable_localization_and_mapping="false"
 
 if [[ -d "$SYSTEM_LAUNCH_SOURCE_SHARE" ]]; then
@@ -241,7 +231,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|e2e_backup|camera_e2e_backup|hd_map_eval|hd_map_debug|offline_eval|bag_eval|offline_map_eval|record_mapping|map_recording|map_record|mapping_record|record_sensors|record_mapping_debug|record_dataset|sensor_data_recording|sensor_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval|rule_base)
+    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|race_e2e|e2e_backup|camera_e2e_backup|hd_map_eval|hd_map_debug|offline_eval|bag_eval|offline_map_eval|record_mapping|map_recording|map_record|mapping_record|record_sensors|record_mapping_debug|record_dataset|sensor_data_recording|sensor_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval|rule_base)
       MODE="$1"
       shift
       ;;
@@ -296,14 +286,10 @@ ROS2_LAUNCH_CMD=(
   "localization:=${ARG_localization}"
   "use_lidar:=${ARG_use_lidar}"
   "use_camera:=${ARG_use_camera}"
-  "use_ftg:=${ARG_use_ftg}"
-  "use_emergency:=${ARG_use_emergency}"
   "use_perception:=${ARG_use_perception}"
   "use_perception_classifier:=${ARG_use_perception_classifier}"
   "use_planning:=${ARG_use_planning}"
   "use_hd_map:=${ARG_use_hd_map}"
-  "use_magp_rl_trajectory:=${ARG_use_magp_rl_trajectory}"
-  "magp_rl_run_pure_pursuit:=${ARG_magp_rl_run_pure_pursuit}"
   "use_pure_pursuit:=${ARG_use_pure_pursuit}"
   "use_map_controller:=${ARG_use_map_controller}"
   "use_control_filter:=${ARG_use_control_filter}"
@@ -317,7 +303,6 @@ ROS2_LAUNCH_CMD=(
   "use_section_localizer:=${ARG_use_section_localizer}"
   "use_hd_map_section_localizer:=${ARG_use_hd_map_section_localizer}"
   "section_localizer_debug_mode:=${ARG_section_localizer_debug_mode}"
-  "use_drive_mode_manager:=${ARG_use_drive_mode_manager}"
   "enable_localization_and_mapping:=${ARG_enable_localization_and_mapping}"
   "bag_manager_param:=${ARG_bag_manager_param}"
   "${EXTRA_ARGS[@]}"

@@ -21,17 +21,12 @@ SCRIPT_PATH="$(resolve_real_path "${BASH_SOURCE[0]}")"
 MODE_RECORD="record"
 MODE_RECORD_MAPPING="record_mapping"
 MODE_RACE="race"
-MODE_E2E="e2e"
+MODE_RACE_PP="race_pp"
+MODE_RACE_E2E="race_e2e"
 MODE_MAP="map"
 MODE_IDENTIFICATION="identification"
-
-MODE_TAMIYA="tamiya"
-MODE_PRODUCTION="production"
+MODE_E2E_TRAIN="e2e_train"
 MODE_OFFLINE_EVAL="offline_eval"
-MODE_MAPPING="mapping"
-MODE_MAP_BUILD="map_build"
-MODE_HD_MAP="hd_map"
-MODE_E2E_BACKUP="e2e_backup"
 
 WINDOW_RECORD="record"
 WINDOW_MAP="map"
@@ -68,8 +63,9 @@ TERMINAL_VSLAM_DASHBOARD_PY="${SCRIPT_DIR}/terminal_viewers/ros2_terminal_vslam_
 CMD_RECORD_MAPPING="bash ${LAUNCH_SYSTEM_SH} record_mapping"
 CMD_RECORD_MAPPING_DEBUG="bash ${LAUNCH_SYSTEM_SH} record_mapping_debug"
 CMD_RACE_MAP="bash ${LAUNCH_SYSTEM_SH} race --set map_dir=<map_dir>"
+CMD_RACE_PP="bash ${LAUNCH_SYSTEM_SH} race_pp --set map_dir=<map_dir>"
+CMD_RACE_E2E="bash ${LAUNCH_SYSTEM_SH} race_e2e --set map_dir=<map_dir>"
 CMD_OFFLINE_EVAL="bash ${LAUNCH_SYSTEM_SH} offline_eval --set map_dir=<map_dir>"
-CMD_MONITOR="bash ${MONITOR_SH}"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 CMD_CREATE_HD_MAP="bash ${CREATE_MAP_AND_HD_MAP_SH} --rate 1.0 --editor-scale 0"
 CMD_EDIT_HD_MAP_SECTIONS="bash ${EDIT_HD_MAP_SECTIONS_SH} --map-dir <map_dir> --scale 0"
@@ -78,6 +74,11 @@ CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
 CMD_E2E_CAMERA_BACKUP="bash ${LAUNCH_SYSTEM_SH} e2e_backup"
 CMD_RECORD_START='ros2 service call /bag_manager_node/start_recording std_srvs/srv/Trigger "{}"'
 CMD_RECORD_STOP='ros2 service call /bag_manager_node/stop_recording std_srvs/srv/Trigger "{}"'
+CMD_E2E_PREPROCESS="bash ${PYTHON_DIR}/camera_e2e/1_create_dataset.sh"
+CMD_E2E_TRAIN="python3 ${PYTHON_DIR}/camera_e2e/2_train.py"
+CMD_E2E_SCP="bash ${PYTHON_DIR}/camera_e2e/scp_ckpts.sh"
+CMD_E2E_DEPLOY="bash ${PYTHON_DIR}/camera_e2e/3_deploy_model.sh"
+CMD_PUSH_MAP="bash ${SCRIPT_DIR}/push_map.sh"
 CMD_BUILD_MAP_LOOKUP='python data_analysis/build_map_steering_lookup.py --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml'
 CMD_BUILD_SPEED_FEEDFORWARD="bash ${BUILD_SPEED_FEEDFORWARD_SH} --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml --map-dir <map_dir> -- --max-abs-steer 0.10"
 CMD_APPLY_SECTION_SPEEDS='python data_analysis/apply_hd_map_section_speeds.py --raceline /map/<course>/<course>_raceline.csv --hd-map /map/<course>/<course>_hd_map.yaml --output /map/<course>/<course>_raceline_section_speeds.csv'
@@ -96,7 +97,7 @@ PANE_PREPARES=()
 
 is_mode_token() {
   case "$1" in
-    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP"|"$MODE_RACE"|"$MODE_TAMIYA"|"$MODE_PRODUCTION"|"$MODE_E2E"|"$MODE_E2E_BACKUP"|"$MODE_IDENTIFICATION")
+    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL")
       return 0
       ;;
     *)
@@ -110,17 +111,29 @@ normalize_mode() {
     "$MODE_RECORD"|"$MODE_RECORD_MAPPING")
       echo "$MODE_RECORD"
       ;;
-    "$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP")
+    "$MODE_MAP")
       echo "$MODE_MAP"
       ;;
-    "$MODE_RACE"|"$MODE_TAMIYA"|"$MODE_PRODUCTION")
+    "$MODE_RACE")
       echo "$MODE_RACE"
       ;;
-    "$MODE_E2E"|"$MODE_E2E_BACKUP")
+    "$MODE_RACE_PP")
+      echo "$MODE_RACE_PP"
+      ;;
+    "$MODE_RACE_E2E")
+      echo "$MODE_RACE_E2E"
+      ;;
+    "$MODE_E2E")
       echo "$MODE_E2E"
+      ;;
+    "$MODE_E2E_TRAIN")
+      echo "$MODE_E2E_TRAIN"
       ;;
     "$MODE_IDENTIFICATION")
       echo "$MODE_IDENTIFICATION"
+      ;;
+    "$MODE_OFFLINE_EVAL")
+      echo "$MODE_OFFLINE_EVAL"
       ;;
     *)
       return 1
@@ -223,14 +236,26 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     "$MODE_RACE")
       create_race_layout
       ;;
+    "$MODE_RACE_PP")
+      create_race_pp_layout
+      ;;
+    "$MODE_RACE_E2E")
+      create_race_e2e_layout
+      ;;
     "$MODE_MAP")
       create_map_layout
       ;;
     "$MODE_IDENTIFICATION")
       create_identification_layout
       ;;
+    "$MODE_OFFLINE_EVAL")
+      create_eval_layout
+      ;;
     "$MODE_E2E")
       create_e2e_layout
+      ;;
+    "$MODE_E2E_TRAIN")
+      create_e2e_train_layout
       ;;
   esac
 fi

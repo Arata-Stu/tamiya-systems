@@ -3,7 +3,6 @@
 create_record_layout() {
   reset_panes
   add_pane "$WINDOW_RECORD" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_MAPPING"
-  add_pane "$WINDOW_RECORD" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_RECORD_MAPPING"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
   add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
@@ -17,10 +16,10 @@ create_map_layout() {
   add_pane "$WINDOW_MAP" "$WORK_DIR" "$ROS_SETUP" "$CMD_CREATE_HD_MAP"
   add_pane "$WINDOW_MAP" "$WORK_DIR" "$ROS_SETUP" "$CMD_EDIT_HD_MAP_SECTIONS"
   add_pane "$WINDOW_MAP" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_APPLY_SECTION_SPEEDS"
+  add_pane "$WINDOW_MAP" "$WORK_DIR" "$ROS_SETUP" "$CMD_PUSH_MAP"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_OFFLINE_EVAL"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_OFFLINE_EVAL"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
@@ -30,7 +29,6 @@ create_map_layout() {
 create_race_layout() {
   reset_panes
   add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_RACE_MAP"
-  add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
   add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
@@ -40,20 +38,50 @@ create_race_layout() {
   create_layout_from_panes "$WINDOW_RACE" 0
 }
 
+create_race_pp_layout() {
+  reset_panes
+  add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_RACE_PP"
+  add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_STOP"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_SPEED_DEBUG"
+  create_layout_from_panes "$WINDOW_RACE" 0
+}
+
+create_race_e2e_layout() {
+  reset_panes
+  add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_RACE_E2E"
+  add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_STOP"
+  create_layout_from_panes "$WINDOW_RACE" 0
+}
+
 create_e2e_layout() {
   reset_panes
   add_pane "$WINDOW_E2E" "$WORK_DIR" "$ROS_SETUP" "$CMD_E2E_CAMERA_BACKUP"
-  add_pane "$WINDOW_E2E" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
   add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
   add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_STOP"
   create_layout_from_panes "$WINDOW_E2E" 0
 }
 
+create_e2e_train_layout() {
+  reset_panes
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_PREPROCESS"
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_TRAIN"
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_SCP"
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_DEPLOY"
+  create_layout_from_panes "$WINDOW_TOOLS" 0
+}
+
 create_identification_layout() {
   reset_panes
   add_pane "$WINDOW_RECORD" "$WORK_DIR" "$ROS_SETUP" "$CMD_IDENTIFICATION"
-  add_pane "$WINDOW_RECORD" "$WORK_DIR" "$ROS_SETUP" "$CMD_MONITOR"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_IDENTIFICATION"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_LEFT_IMAGE_VIEWER"
   add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"

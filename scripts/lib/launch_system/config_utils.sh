@@ -19,7 +19,15 @@ apply_mode() {
   clear_extra_arg_value "vehicle_param"
 
   case "$1" in
-    race|race_map|race_map_controller)
+    race_e2e)
+      apply_mode production
+      ARG_use_hd_map="true"
+      ARG_use_e2e="true"
+      ARG_use_hd_map_section_localizer="true"
+      ARG_publish_map="true"
+      set_extra_arg_value "e2e_variant" "camera"
+      ;;
+    race)
       apply_mode production
       ARG_use_planning="true"
       ARG_use_hd_map="true"
@@ -29,12 +37,13 @@ apply_mode() {
       ARG_use_section_localizer="false"
       ARG_use_hd_map_section_localizer="true"
       ;;
-    race_pp|race_pure_pursuit)
+    race_pp)
       apply_mode race
       ARG_use_pure_pursuit="true"
       ARG_use_map_controller="false"
       ;;
-    e2e_backup|camera_e2e_backup)
+
+    e2e_backup)
       apply_mode production
       ARG_vslam="false"
       ARG_localization="false"
@@ -56,16 +65,8 @@ apply_mode() {
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[2]}"
       set_extra_arg_value "e2e_variant" "camera"
       ;;
-    hd_map_eval|hd_map_debug)
-      apply_mode vslam_eval
-      ARG_use_hd_map="true"
-      ARG_use_planning="true"
-      ARG_use_hd_map_section_localizer="true"
-      set_extra_arg_value "localize_on_startup" "true"
-      set_extra_arg_value "planning_publish_local_path" "false"
-      set_extra_arg_value "planning_publish_local_reference" "false"
-      ;;
-    offline_eval|bag_eval|offline_map_eval)
+
+    offline_eval)
       apply_mode localization_eval
       ARG_use_lidar="false"
       ARG_use_camera="false"
@@ -78,39 +79,8 @@ apply_mode() {
       ARG_use_speed_controller="false"
       set_extra_arg_value "localize_on_startup" "true"
       ;;
-    rule_base)
-      ARG_record="false"
-      ARG_use_vehicle="true"
-      ARG_vslam="true"
-      ARG_localization="true"
-      ARG_use_lidar="true"
-      ARG_use_camera="true"
-      ARG_use_ftg="false"
-      ARG_use_emergency="false"
-      ARG_use_perception="false"
-      ARG_use_perception_classifier="false"
-      ARG_use_planning="true"
-      ARG_use_hd_map="false"
-      ARG_use_magp_rl_trajectory="false"
-      ARG_magp_rl_run_pure_pursuit="false"
-      ARG_use_pure_pursuit="false"
-      ARG_use_map_controller="true"
-      ARG_use_control_filter="false"
-      ARG_use_speed_controller="false"
-      ARG_use_e2e="false"
-      ARG_use_sim_time="false"
-      ARG_publish_map="true"
-      ARG_map_server_use_sim_time="false"
-      ARG_use_localization_manager="true"
-      ARG_publish_localization_tf="true"
-      ARG_use_section_localizer="true"
-      ARG_use_hd_map_section_localizer="false"
-      ARG_section_localizer_debug_mode="false"
-      ARG_use_drive_mode_manager="false"
-      ARG_enable_localization_and_mapping="true"
-      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
-      ;;
-    production|base)
+
+    production)
       ARG_record="false"
       ARG_use_vehicle="true"
       ARG_vslam="true"
@@ -142,7 +112,7 @@ apply_mode() {
       ARG_enable_localization_and_mapping="true"
       ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
       ;;
-    record_mapping|map_recording|map_record|mapping_record|record_sensors)
+    record_mapping)
       ARG_record="true"
       ARG_use_vehicle="true"
       ARG_vslam="false"
@@ -181,11 +151,8 @@ apply_mode() {
       set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
       set_extra_arg_value "vehicle_param" "$VEHICLE_MAPPING_PARAM_PATH"
       ;;
-    sensor_data_recording|sensor_recording|record_mapping_debug|record_dataset|mapping|vslam_map)
-      apply_mode record_mapping
-      ARG_use_perception="true"
-      ;;
-    identification|map_lookup_recording|map_lookup)
+
+    identification)
       ARG_record="true"
       ARG_use_vehicle="true"
       ARG_vslam="true"
