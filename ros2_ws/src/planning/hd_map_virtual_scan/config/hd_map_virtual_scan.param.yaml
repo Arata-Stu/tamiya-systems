@@ -10,8 +10,8 @@ hd_map_virtual_scan:
     include_centerline: false
 
     scan_points: 320
-    angle_min: -3.141592653589793
-    angle_max: 3.141592653589793
+    angle_min: -2.35619 # -135 deg
+    angle_max: 2.35619 # 135 deg
     range_min: 0.02
     range_max: 12.0
     scan_time: 0.0

@@ -39,10 +39,11 @@
     <arg name="emergency_signal_topic" default="/emergency/signal" description="emergency override activation signal"/>
 
     <!-- Sensing -->
+    <arg name="system_container_name" default="system_container" />
     <arg name="lidar_model" default="t_mini_plus" />
-    <arg name="lidar_container_name" default="lidar_container" />
+    <arg name="lidar_container_name" default="$(var system_container_name)" />
     <arg name="camera_model" default="realsense" />
-    <arg name="camera_container_name" default="camera_container" />
+    <arg name="camera_container_name" default="$(var system_container_name)" />
     <arg name="isolate_vslam_container" default="false"
          description="opt in to a separate component container for VSLAM profiling"/>
     <arg name="vslam_container_name" default="vslam_container"
@@ -323,18 +324,12 @@
     <arg name="filter_param" default="$(find-pkg-share system_launch)/config/sensing/scan_filter_footprint_angle.param.yaml" />
     <arg name="localization_param" default="$(find-pkg-share system_launch)/config/localization/map_localization.param.yaml" />
 
-    <!-- system.launch owns the shared LiDAR component container.
-         sensor_kit and localization/eval consumers only load components into it. -->
-    <group if="$(eval '\'$(var use_lidar)\'.strip().lower() == \'true\' or \'$(var use_virtual_scan)\'.strip().lower() == \'true\' or \'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\'])')">
-        <node pkg="rclcpp_components"
-              exec="component_container"
-              output="screen"
-              args="--ros-args -r ComponentManager:__node:=$(var lidar_container_name)"/>
-    </group>
+    <!-- system.launch owns the shared component container.
+         sensor_kit, localization, and other consumers load components into it. -->
     <node pkg="rclcpp_components"
           exec="component_container_mt"
           output="screen"
-          args="--ros-args -r ComponentManager:__node:=$(var camera_container_name)"/>
+          args="--ros-args -r ComponentManager:__node:=$(var system_container_name)"/>
 
     <!-- Jetracer Driver Node -->
     <group if="$(var use_vehicle)">

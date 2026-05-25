@@ -8,7 +8,10 @@
 #include <utility>
 
 #include "geometry_msgs/msg/point.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "rclcpp_components/register_node_macro.hpp"
+#include "tf2/exceptions.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 #include "yaml-cpp/yaml.h"
 
@@ -55,6 +58,9 @@ HdMapVirtualScanComponent::HdMapVirtualScanComponent(
     RCLCPP_ERROR(this->get_logger(),
                  "HD map virtual scan node started without usable lane bounds.");
   }
+
+  tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+  tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   scan_pub_ =
       this->create_publisher<sensor_msgs::msg::LaserScan>("scan",
@@ -231,16 +237,38 @@ void HdMapVirtualScanComponent::OdometryCallback(
   if (segments_.empty()) {
     return;
   }
-  if (warn_on_frame_mismatch_ && !map_frame_id_.empty() &&
-      !msg->header.frame_id.empty() && msg->header.frame_id != map_frame_id_) {
-    RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 3000,
-        "Odometry frame '%s' differs from HD map frame '%s'. Virtual scan assumes "
-        "both are already aligned.",
-        msg->header.frame_id.c_str(), map_frame_id_.c_str());
+
+  nav_msgs::msg::Odometry odom_in_map = *msg;
+
+  if (!map_frame_id_.empty() && !msg->header.frame_id.empty() &&
+      msg->header.frame_id != map_frame_id_) {
+    if (warn_on_frame_mismatch_) {
+      RCLCPP_INFO_ONCE(
+          this->get_logger(),
+          "Odometry frame '%s' differs from HD map frame '%s'. Attempting to transform via tf2.",
+          msg->header.frame_id.c_str(), map_frame_id_.c_str());
+    }
+
+    geometry_msgs::msg::PoseStamped pose_in;
+    pose_in.header = msg->header;
+    pose_in.pose = msg->pose.pose;
+
+    try {
+      geometry_msgs::msg::PoseStamped pose_out = tf_buffer_->transform(
+          pose_in, map_frame_id_, tf2::durationFromSec(0.1));
+
+      odom_in_map.header.frame_id = map_frame_id_;
+      odom_in_map.pose.pose = pose_out.pose;
+    } catch (const tf2::TransformException &ex) {
+      RCLCPP_WARN_THROTTLE(
+          this->get_logger(), *this->get_clock(), 3000,
+          "Could not transform odometry from '%s' to '%s': %s",
+          msg->header.frame_id.c_str(), map_frame_id_.c_str(), ex.what());
+      // Fallback: Proceed with untransformed odometry
+    }
   }
 
-  sensor_msgs::msg::LaserScan scan = BuildScan(*msg);
+  sensor_msgs::msg::LaserScan scan = BuildScan(odom_in_map);
   scan_pub_->publish(scan);
   if (publish_debug_markers_) {
     PublishDebugMarkers(scan);

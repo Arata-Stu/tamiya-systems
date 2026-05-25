@@ -3,12 +3,15 @@
 
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "yaml-cpp/yaml.h"
 
@@ -49,6 +52,9 @@ private:
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr debug_pub_;
+
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
   std::vector<Segment2D> segments_;
 
