@@ -18,7 +18,7 @@ scan_image_projection_cropper_node:
     output_image_width_px: 64
     output_image_height_px: 64
     output_padding_value: 0.0
-    debug: true
+    debug_enabled: true
     candidate_selection_mode: "widest"
 
     # ------------------------------------------------------------------
