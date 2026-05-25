@@ -11,6 +11,7 @@ Modes:
   race_pp                 Pure Pursuit variant of race
   offline_eval            Bag replay eval: saved VSLAM + HD map + raceline + landmarks, no vehicle
   hd_map_eval             Bag replay eval: saved VSLAM + HD map + raceline + landmarks, no 2D map
+  lidar_e2e               LiDAR E2E virtual scan run: VSLAM + HD map + virtual scan publisher + E2E controller
   e2e_backup              Camera E2E fallback run without VSLAM/localization/planning
   production              Legacy base run with VSLAM + localization + 2D section localizer
   identification          VSLAM odom + final cmd_drive recording preset for MAP lookup generation
@@ -231,6 +232,7 @@ choose_mode_interactive() {
     "race_pp                                 race の Pure Pursuit 版"
     "offline_eval                            rosbag評価: saved VSLAM + HD map + raceline + landmarks"
     "hd_map_eval                             offline_eval と同じ。2D mapなしのHD map確認用"
+    "lidar_e2e                               LiDAR E2E virtual scan: VSLAM + HD map + virtual scan + E2E"
     "identification                          steering/speed identification 用rosbag収集"
     "perception_eval                         rosbagでLiDAR/カメラ知覚評価"
     "e2e_backup                              camera E2E fallback"
@@ -242,6 +244,7 @@ choose_mode_interactive() {
     "race_pp"
     "offline_eval"
     "hd_map_eval"
+    "lidar_e2e"
     "identification"
     "perception_eval"
     "e2e_backup"

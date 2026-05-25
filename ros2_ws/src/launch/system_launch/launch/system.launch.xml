@@ -88,13 +88,13 @@
     <arg name="e2e_camera_encoder_input_qos" default="SENSOR_DATA" />
     <arg name="e2e_lidar_model_name" default="tinylidarnet" />
     <arg name="e2e_lidar_trajectory_model_name" default="magp_rl_trajectory" />
-    <arg name="e2e_lidar_scan_topic" default="/scan" />
+    <arg name="e2e_lidar_scan_topic" default="/virtual_scan" />
     <arg name="e2e_lidar_scan_tensor_topic" default="/encoder/scan_tensor" />
     <arg name="emergency_param" default="$(find-pkg-share emergency_controller)/config/emergency_controller.param.yaml" />
     <arg name="magp_rl_model_name" default="magp_rl_trajectory" />
     <arg name="magp_rl_model_repository_path" default="/workspaces/isaac_ros_assets/models/" />
     <arg name="magp_rl_decoder_param" default="$(find-pkg-share isaac_ros_lidar_e2e_control)/config/rl_trajectory_decoder_node.param.yaml" />
-    <arg name="magp_rl_scan_topic" default="/scan" />
+    <arg name="magp_rl_scan_topic" default="/virtual_scan" />
     <arg name="magp_rl_scan_tensor_topic" default="/encoder/scan_tensor" />
     <arg name="map_controller_param" default="$(find-pkg-share system_launch)/config/control/map_controller.param.yaml" />
     <arg name="map_controller_reference_topic" default="/autonomous/trajectory_reference" />

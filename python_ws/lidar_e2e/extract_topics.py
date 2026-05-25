@@ -7,7 +7,7 @@ import numpy as np
 from rosbags.highlevel import AnyReader
 
 
-def extract_and_save_per_bag(bag_path, output_dir, scan_topic, cmd_topic):
+def extract_and_save_per_bag(bag_path, output_dir, scan_topic, cmd_topic, use_virtual_scan=False):
     """
     単一のrosbagファイルからLaserScanとAckermannDriveStampedデータを抽出・同期する並列ワーカー関数。
     """
@@ -64,7 +64,8 @@ def extract_and_save_per_bag(bag_path, output_dir, scan_topic, cmd_topic):
         synced_speeds.append(cmd_data[idx_cmd][1])
 
     # データの保存
-    np.save(out_dir / 'scans.npy', np.array(synced_scans))
+    scan_name = 'virtual_scans.npy' if use_virtual_scan else 'scans.npy'
+    np.save(out_dir / scan_name, np.array(synced_scans))
     np.save(out_dir / 'steers.npy', np.array(synced_steers))
     np.save(out_dir / 'speeds.npy', np.array(synced_speeds))
 
@@ -78,8 +79,9 @@ def main():
     group.add_argument('--seq_dirs', nargs='+', help='List of specific sequence directories to process')
 
     parser.add_argument('--outdir', required=True, help='Output root directory')
-    parser.add_argument('--scan_topic', default='/scan', help='LaserScan topic name')
+    parser.add_argument('--scan_topic', default='/virtual_scan', help='LaserScan topic name')
     parser.add_argument('--cmd_topic', default='/jetracer/cmd_drive', help='AckermannDriveStamped topic name')
+    parser.add_argument('--use_virtual_scan', action='store_true', help='Save extracted scans as virtual_scans.npy instead of scans.npy')
     parser.add_argument('--workers', type=int, default=None, help='Number of parallel workers')
     
     args = parser.parse_args()
@@ -103,8 +105,11 @@ def main():
 
     print(f"[INFO] Found {len(bag_dirs)} rosbag directories to process.")
 
+    # If scan_topic is /virtual_scan or contains 'virtual', default use_virtual_scan to True
+    use_virtual_scan = args.use_virtual_scan or ('virtual' in args.scan_topic)
+
     # タスクの作成
-    tasks = [(p, args.outdir, args.scan_topic, args.cmd_topic) for p in sorted(bag_dirs)]
+    tasks = [(p, args.outdir, args.scan_topic, args.cmd_topic, use_virtual_scan) for p in sorted(bag_dirs)]
 
     # 並列数の設定
     if args.workers:

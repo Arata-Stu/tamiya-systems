@@ -74,6 +74,7 @@ def main(cfg: DictConfig) -> None:
     train_dataset = MultiScanDataset(
         base_dir=os.path.join(hydra.utils.to_absolute_path(cfg.data_path), "train"),
         transform=train_transform,
+        use_virtual_scan=cfg.dataset.get("use_virtual_scan", True),
     )
     train_loader = DataLoader(
         train_dataset,
@@ -88,6 +89,7 @@ def main(cfg: DictConfig) -> None:
         val_dataset = MultiScanDataset(
             base_dir=val_path,
             transform=val_transform,
+            use_virtual_scan=cfg.dataset.get("use_virtual_scan", True),
         )
         val_loader = DataLoader(
             val_dataset,

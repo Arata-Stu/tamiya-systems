@@ -28,8 +28,10 @@ show_help() {
     echo "Options:"
     echo "  -b, --base_dir   Base directory to search for sequences (recursively)"
     echo "  -o, --outdir     Output root directory for datasets (e.g., ./datasets)"
-    echo "  --scan_topic     LaserScan topic to extract (default: /scan)"
+    echo "  --scan_topic     LaserScan topic to extract (default: /virtual_scan)"
     echo "  --cmd_topic      AckermannDriveStamped topic to extract (default: /jetracer/cmd_drive)"
+    echo "  --use_virtual_scan Force save extracted scans as virtual_scans.npy"
+    echo "  --no_use_virtual_scan Force save extracted scans as scans.npy"
     echo "  --legacy-select  Use the old number-input selector instead of checkbox TUI"
     echo "  -h, --help       Show this help message"
 }
@@ -37,9 +39,10 @@ show_help() {
 # --- 引数解析 ---
 BASE_DIR=""
 OUTDIR=""
-SCAN_TOPIC="/scan"
+SCAN_TOPIC="/virtual_scan"
 CMD_TOPIC="/jetracer/cmd_drive"
 LEGACY_SELECT="false"
+USE_VIRTUAL_SCAN="auto"
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -59,6 +62,14 @@ while [[ $# -gt 0 ]]; do
         --cmd_topic|--cmd-topic)
         CMD_TOPIC="$2"
         shift 2
+        ;;
+        --use_virtual_scan|--use-virtual-scan)
+        USE_VIRTUAL_SCAN="true"
+        shift
+        ;;
+        --no_use_virtual_scan|--no-use-virtual-scan)
+        USE_VIRTUAL_SCAN="false"
+        shift
         ;;
         --legacy-select)
         LEGACY_SELECT="true"
@@ -170,7 +181,20 @@ run_extraction() {
     echo -e "   scan_topic: ${CYAN}$SCAN_TOPIC${NC}"
     echo -e "   cmd_topic : ${CYAN}$CMD_TOPIC${NC}"
 
-    python3 "$PREPROCESS_SCRIPT_PATH" --seq_dirs "${seq_paths[@]}" --outdir "$output_dir" --scan_topic "$SCAN_TOPIC" --cmd_topic "$CMD_TOPIC"
+    local extra_args=()
+    local resolved_use_virtual_scan="$USE_VIRTUAL_SCAN"
+    if [ "$resolved_use_virtual_scan" = "auto" ]; then
+        if [[ "$SCAN_TOPIC" == *"virtual"* ]]; then
+            resolved_use_virtual_scan="true"
+        else
+            resolved_use_virtual_scan="false"
+        fi
+    fi
+    if [ "$resolved_use_virtual_scan" = "true" ]; then
+        extra_args+=("--use_virtual_scan")
+    fi
+
+    python3 "$PREPROCESS_SCRIPT_PATH" --seq_dirs "${seq_paths[@]}" --outdir "$output_dir" --scan_topic "$SCAN_TOPIC" --cmd_topic "$CMD_TOPIC" "${extra_args[@]}"
     
     if [ $? -eq 0 ]; then
         echo -e "✅ Finished preprocessing for ${GREEN}${dataset_name}${NC}."

@@ -27,6 +27,7 @@ MODE_MAP="map"
 MODE_IDENTIFICATION="identification"
 MODE_E2E="e2e"
 MODE_E2E_TRAIN="e2e_train"
+MODE_LIDAR_E2E="lidar_e2e"
 MODE_OFFLINE_EVAL="offline_eval"
 MODE_HD_MAP_EVAL="hd_map_eval"
 
@@ -81,6 +82,7 @@ CMD_CREATE_HD_MAP="bash ${CREATE_MAP_AND_HD_MAP_SH} --rate 1.0 --editor-scale 0"
 CMD_EDIT_HD_MAP_SECTIONS="bash ${EDIT_HD_MAP_SECTIONS_SH} --map-dir <map_dir> --scale 0"
 CMD_IDENTIFICATION="bash ${LAUNCH_SYSTEM_SH} identification"
 CMD_PLAY_BAG="ros2 bag play <bag_path> --clock --start-paused"
+CMD_LIDAR_E2E_RUN="bash ${LAUNCH_SYSTEM_SH} lidar_e2e --set map_dir=<map_dir>"
 CMD_E2E_CAMERA_BACKUP="bash ${LAUNCH_SYSTEM_SH} e2e_backup"
 CMD_RECORD_START='ros2 service call /bag_manager_node/start_recording std_srvs/srv/Trigger "{}"'
 CMD_RECORD_STOP='ros2 service call /bag_manager_node/stop_recording std_srvs/srv/Trigger "{}"'
@@ -111,7 +113,7 @@ PANE_PREPARES=()
 
 is_mode_token() {
   case "$1" in
-    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
+    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_LIDAR_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
       return 0
       ;;
     *)
@@ -139,6 +141,9 @@ normalize_mode() {
       ;;
     "$MODE_E2E")
       echo "$MODE_E2E"
+      ;;
+    "$MODE_LIDAR_E2E")
+      echo "$MODE_LIDAR_E2E"
       ;;
     "$MODE_E2E_TRAIN")
       echo "$MODE_E2E_TRAIN"
@@ -267,6 +272,9 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
       ;;
     "$MODE_E2E")
       create_e2e_layout
+      ;;
+    "$MODE_LIDAR_E2E")
+      create_lidar_e2e_layout
       ;;
     "$MODE_E2E_TRAIN")
       create_e2e_train_layout

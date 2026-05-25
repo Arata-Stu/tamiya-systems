@@ -3,8 +3,8 @@
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval]
-  $(basename "$0") [--session SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval]
+  $(basename "$0") [SESSION_NAME] [--mode record|map|race|e2e|lidar_e2e|identification|hd_map_eval]
+  $(basename "$0") [--session SESSION_NAME] [--mode record|map|race|e2e|lidar_e2e|identification|hd_map_eval]
 
 Notes:
   - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
@@ -12,6 +12,7 @@ Notes:
   - map is the note-PC layout for VSLAM/HD map creation, editing, and hd_map_eval.
   - race is the main VSLAM + 2D GL + HD map controller run layout.
   - e2e keeps the camera E2E fallback launch reachable.
+  - lidar_e2e runs the LiDAR E2E virtual scan pipeline.
   - identification records VSLAM odom + cmd_drive for steering/speed identification.
   - Legacy aliases still work: record_mapping, map_build, mapping, offline_eval, hd_map, e2e_backup.
 EOF
@@ -31,8 +32,9 @@ choose_mode_interactive() {
     echo "  2) $MODE_MAP (VSLAM/HD map creation, editing, and hd_map_eval)" >&2
     echo "  3) $MODE_RACE (production run)" >&2
     echo "  4) $MODE_E2E (camera E2E fallback run)" >&2
-    echo "  5) $MODE_IDENTIFICATION (steering/speed identification)" >&2
-    read -r -p "Enter 1-5: " answer
+    echo "  5) $MODE_LIDAR_E2E (LiDAR E2E virtual scan run)" >&2
+    echo "  6) $MODE_IDENTIFICATION (steering/speed identification)" >&2
+    read -r -p "Enter 1-6: " answer
 
     case "$answer" in
       "$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
@@ -55,7 +57,11 @@ choose_mode_interactive() {
         echo "$MODE_E2E"
         return
         ;;
-      5|"$MODE_IDENTIFICATION")
+      5|"$MODE_LIDAR_E2E")
+        echo "$MODE_LIDAR_E2E"
+        return
+        ;;
+      6|"$MODE_IDENTIFICATION")
         echo "$MODE_IDENTIFICATION"
         return
         ;;

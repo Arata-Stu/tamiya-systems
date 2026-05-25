@@ -8,6 +8,7 @@ ckpt_dir: ./ckpts/train/${now:%Y-%m-%d}/${now:%H-%M-%S}
 dataset:
   max_range: 12.0                  # NormalizeScanで使用する最大距離
   noise_std: 0.02                  # AddScanNoiseで使用するノイズの標準偏差
+  use_virtual_scan: true           # trueの場合、scans.npyの代わりにvirtual_scans.npyを使用
 
 # --- 学習パラメータ ---
 training:
