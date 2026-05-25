@@ -135,6 +135,11 @@ apply_mode() {
       set_extra_arg_value "planning_publish_local_path" "false"
       set_extra_arg_value "planning_publish_local_reference" "false"
       ;;
+    record_virtual_scan)
+      apply_mode offline_eval
+      ARG_record="true"
+      ARG_use_virtual_scan="true"
+      ;;
 
     production)
       ARG_record="false"

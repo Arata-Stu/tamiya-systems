@@ -233,7 +233,7 @@ while [[ $# -gt 0 ]]; do
       EXTRA_ARGS+=("$@")
       break
       ;;
-    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|race_e2e|lidar_e2e|e2e_backup|camera_e2e_backup|hd_map_eval|hd_map_debug|offline_eval|bag_eval|offline_map_eval|record_mapping|map_recording|map_record|mapping_record|record_sensors|record_mapping_debug|record_dataset|sensor_data_recording|sensor_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval|rule_base)
+    production|base|race|race_map|race_map_controller|race_pp|race_pure_pursuit|race_e2e|lidar_e2e|e2e_backup|camera_e2e_backup|hd_map_eval|hd_map_debug|offline_eval|bag_eval|offline_map_eval|record_virtual_scan|record_mapping|map_recording|map_record|mapping_record|record_sensors|record_mapping_debug|record_dataset|sensor_data_recording|sensor_recording|mapping|vslam_map|identification|map_lookup_recording|map_lookup|localization_eval|perception_eval|vslam_eval|rule_base)
       MODE="$1"
       shift
       ;;

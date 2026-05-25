@@ -35,6 +35,18 @@ create_eval_layout() {
   create_layout_from_panes "$WINDOW_EVAL" 0
 }
 
+create_record_virtual_scan_layout() {
+  reset_panes
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_VIRTUAL_SCAN_RUN"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_OFFLINE_EVAL"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_STOP"
+  create_layout_from_panes "$WINDOW_EVAL" 0
+}
+
 create_race_layout() {
   reset_panes
   add_pane "$WINDOW_RACE" "$WORK_DIR" "$ROS_SETUP" "$CMD_RACE_MAP"

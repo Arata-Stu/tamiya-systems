@@ -32,7 +32,9 @@ choose_mode_interactive() {
     echo "  3) $MODE_RACE (production run)" >&2
     echo "  4) $MODE_E2E (camera E2E fallback run)" >&2
     echo "  5) $MODE_IDENTIFICATION (steering/speed identification)" >&2
-    read -r -p "Enter 1-5: " answer
+    echo "  6) $MODE_LIDAR_E2E (LiDAR E2E run)" >&2
+    echo "  7) $MODE_RECORD_VIRTUAL_SCAN (record virtual scan offline)" >&2
+    read -r -p "Enter 1-7: " answer
 
     case "$answer" in
       "$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
@@ -57,6 +59,14 @@ choose_mode_interactive() {
         ;;
       5|"$MODE_IDENTIFICATION")
         echo "$MODE_IDENTIFICATION"
+        return
+        ;;
+      6|"$MODE_LIDAR_E2E")
+        echo "$MODE_LIDAR_E2E"
+        return
+        ;;
+      7|"$MODE_RECORD_VIRTUAL_SCAN")
+        echo "$MODE_RECORD_VIRTUAL_SCAN"
         return
         ;;
       *)
