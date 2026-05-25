@@ -80,6 +80,11 @@ private:
   double lidar_y_{0.0};
   double lidar_yaw_{0.0};
   std::size_t scan_points_{320U};
+
+  // Processing time statistics (reset on node restart only)
+  std::size_t perf_count_{0};
+  double perf_total_ms_{0.0};
+  double perf_max_ms_{0.0};
 };
 
 } // namespace hd_map_virtual_scan

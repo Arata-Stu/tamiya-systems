@@ -1,6 +1,7 @@
 #include "hd_map_virtual_scan/hd_map_virtual_scan_component.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -238,6 +239,9 @@ void HdMapVirtualScanComponent::OdometryCallback(
     return;
   }
 
+  // --- Processing time measurement start ---
+  const auto t_start = std::chrono::steady_clock::now();
+
   nav_msgs::msg::Odometry odom_in_map = *msg;
 
   if (!map_frame_id_.empty() && !msg->header.frame_id.empty() &&
@@ -273,6 +277,25 @@ void HdMapVirtualScanComponent::OdometryCallback(
   if (publish_debug_markers_) {
     PublishDebugMarkers(scan);
   }
+
+  // --- Processing time measurement end ---
+  const auto t_end = std::chrono::steady_clock::now();
+  const double elapsed_ms =
+      std::chrono::duration<double, std::milli>(t_end - t_start).count();
+
+  ++perf_count_;
+  perf_total_ms_ += elapsed_ms;
+  if (elapsed_ms > perf_max_ms_) {
+    perf_max_ms_ = elapsed_ms;
+  }
+
+  RCLCPP_INFO_THROTTLE(
+      this->get_logger(), *this->get_clock(), 5000,
+      "[virtual_scan] processing time: latest=%.3f ms  max=%.3f ms  mean=%.3f ms  "
+      "(segments=%zu, beams=%zu, calls=%zu)",
+      elapsed_ms, perf_max_ms_,
+      perf_count_ > 0 ? perf_total_ms_ / static_cast<double>(perf_count_) : 0.0,
+      segments_.size(), scan_points_, perf_count_);
 }
 
 sensor_msgs::msg::LaserScan HdMapVirtualScanComponent::BuildScan(
