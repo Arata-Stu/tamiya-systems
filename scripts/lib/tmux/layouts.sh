@@ -126,3 +126,22 @@ create_identification_layout() {
   add_pane "$WINDOW_TOOLS" "$WORK_DIR" "$ROS_SETUP" "$CMD_BUILD_SPEED_FEEDFORWARD"
   create_layout_from_panes "$WINDOW_RECORD" 0
 }
+
+create_perception_eval_layout() {
+  reset_panes
+  # Main Eval window: play bag & run perception node
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PERCEPTION_RUN"
+  
+  # Visual window: terminal image viewers & RViz
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_CROP_IMAGE_VIEWER"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DEBUG_IMAGE_VIEWER"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  
+  # Data window: echo target classification status & TF
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_ECHO_CLASSIFIER"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_TF_ECHO"
+  
+  create_layout_from_panes "$WINDOW_EVAL" 0
+}
+

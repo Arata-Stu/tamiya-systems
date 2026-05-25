@@ -3,8 +3,8 @@
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval]
-  $(basename "$0") [--session SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval]
+  $(basename "$0") [SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval|perception_eval]
+  $(basename "$0") [--session SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval|perception_eval]
 
 Notes:
   - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
@@ -34,7 +34,8 @@ choose_mode_interactive() {
     echo "  5) $MODE_IDENTIFICATION (steering/speed identification)" >&2
     echo "  6) $MODE_LIDAR_E2E (LiDAR E2E run)" >&2
     echo "  7) $MODE_RECORD_VIRTUAL_SCAN (record virtual scan offline)" >&2
-    read -r -p "Enter 1-7: " answer
+    echo "  8) $MODE_PERCEPTION_EVAL (LiDAR camera crop perception evaluation)" >&2
+    read -r -p "Enter 1-8: " answer
 
     case "$answer" in
       "$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
@@ -67,6 +68,10 @@ choose_mode_interactive() {
         ;;
       7|"$MODE_RECORD_VIRTUAL_SCAN")
         echo "$MODE_RECORD_VIRTUAL_SCAN"
+        return
+        ;;
+      8|"$MODE_PERCEPTION_EVAL")
+        echo "$MODE_PERCEPTION_EVAL"
         return
         ;;
       *)

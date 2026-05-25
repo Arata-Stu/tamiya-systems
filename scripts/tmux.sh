@@ -31,6 +31,7 @@ MODE_LIDAR_E2E="lidar_e2e"
 MODE_RECORD_VIRTUAL_SCAN="record_virtual_scan"
 MODE_OFFLINE_EVAL="offline_eval"
 MODE_HD_MAP_EVAL="hd_map_eval"
+MODE_PERCEPTION_EVAL="perception_eval"
 
 # Legacy aliases used in ui_utils.sh
 MODE_MAPPING="mapping"
@@ -107,6 +108,11 @@ CMD_DASHBOARD_VSLAM_HD="MAP_DIR=<map_dir>; MAP_NAME=\"\$(basename \"\${MAP_DIR%/
 CMD_LEFT_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /camera/left/image_raw --best-effort --max-fps 10"
 CMD_SPEED_DEBUG='ros2 topic echo /speed_controller/throttle_cmd'
 RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz --ros-args -p use_sim_time:=true'
+CMD_PERCEPTION_RUN="ros2 launch system_launch perception.launch.xml use_sim_time:=true use_classifier:=true"
+CMD_CROP_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/crop/image --best-effort --max-fps 10"
+CMD_DEBUG_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /perception/debug/image --best-effort --max-fps 10"
+CMD_ECHO_CLASSIFIER="ros2 topic echo /perception/classification/target_detected"
+CMD_TF_ECHO="ros2 run tf2_ros tf2_echo base_link camera_left_optical_frame"
 
 PANE_WINDOWS=()
 PANE_DIRS=()
@@ -115,7 +121,7 @@ PANE_PREPARES=()
 
 is_mode_token() {
   case "$1" in
-    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_LIDAR_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL"|"$MODE_RECORD_VIRTUAL_SCAN")
+    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_LIDAR_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL"|"$MODE_RECORD_VIRTUAL_SCAN"|"$MODE_PERCEPTION_EVAL")
       return 0
       ;;
     *)
@@ -158,6 +164,9 @@ normalize_mode() {
       ;;
     "$MODE_RECORD_VIRTUAL_SCAN")
       echo "$MODE_RECORD_VIRTUAL_SCAN"
+      ;;
+    "$MODE_PERCEPTION_EVAL")
+      echo "$MODE_PERCEPTION_EVAL"
       ;;
     *)
       return 1
@@ -277,6 +286,9 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
       ;;
     "$MODE_RECORD_VIRTUAL_SCAN")
       create_record_virtual_scan_layout
+      ;;
+    "$MODE_PERCEPTION_EVAL")
+      create_perception_eval_layout
       ;;
     "$MODE_E2E")
       create_e2e_layout
