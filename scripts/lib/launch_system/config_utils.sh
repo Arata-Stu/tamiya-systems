@@ -157,7 +157,7 @@ apply_mode() {
       ARG_use_vehicle="true"
       ARG_vslam="true"
       ARG_localization="false"
-      ARG_use_lidar="false"
+      ARG_use_lidar="true"
       ARG_use_camera="true"
       ARG_use_ftg="false"
       ARG_use_emergency="false"
