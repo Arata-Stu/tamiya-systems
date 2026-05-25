@@ -32,14 +32,14 @@ apply_mode() {
     lidar_e2e)
       apply_mode production
       ARG_use_hd_map="true"
-      ARG_use_virtual_scan="true"
       ARG_use_e2e="true"
       ARG_use_lidar="false"
+      ARG_use_virtual_scan="true"
       ARG_use_perception="false"
       ARG_use_perception_classifier="false"
       ARG_use_hd_map_section_localizer="true"
       ARG_publish_map="true"
-      set_extra_arg_value "e2e_variant" "lidar"
+      set_extra_arg_value "e2e_variant" "lidar_e2e"
       ;;
     race)
       apply_mode production
@@ -93,9 +93,6 @@ apply_mode() {
       ;;
     camera_e2e_backup)
       apply_mode e2e_backup
-      ;;
-    lidar_e2e_backup)
-      apply_mode lidar_e2e
       ;;
     offline_eval|bag_eval|offline_map_eval|hd_map_eval|hd_map_debug)
       ARG_record="false"

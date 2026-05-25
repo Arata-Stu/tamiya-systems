@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     # フィルタの種類: "slew_rate", "average", "none"
-    filter_type: "slew_rate"
+    filter_type: "none"
 
     # 平滑化に使用するウィンドウサイズ (filter_typeがaverageの場合のみ使用)
     window_size: 5
@@ -24,7 +24,7 @@
     straight_speed_scale_ratio: 1.0
 
     # カーブ時の速度ゲイン (減速させるには < 1.0)
-    cornering_speed_scale_ratio: 0.6
+    cornering_speed_scale_ratio: 1.0
 
     # 操舵角全体のゲイン
     steer_scale_ratio: 1.0
