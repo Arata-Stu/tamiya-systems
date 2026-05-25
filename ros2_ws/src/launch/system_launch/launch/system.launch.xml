@@ -46,6 +46,8 @@
          description="opt in to a separate component container for VSLAM profiling"/>
     <arg name="vslam_container_name" default="vslam_container"
          description="component container created for isolated VSLAM nodes"/>
+    <arg name="e2e_container_name" default="e2e_container"
+         description="component container created for isolated E2E nodes to prevent IPC CPU leaks with non-NITROS nodes"/>
     <arg name="vslam_use_image_preprocessors" default="auto"
          description="auto skips VSLAM rectification for RealSense rectified infrared input"/>
     <!-- ==================================================================== -->
@@ -331,6 +333,13 @@
           output="screen"
           args="--ros-args -r ComponentManager:__node:=$(var camera_container_name)"/>
 
+    <group if="$(var use_e2e)">
+        <node pkg="rclcpp_components"
+              exec="component_container_mt"
+              output="screen"
+              args="--ros-args -r ComponentManager:__node:=$(var e2e_container_name)"/>
+    </group>
+
     <!-- Jetracer Driver Node -->
     <group if="$(var use_vehicle)">
         <include file="$(find-pkg-share jetracer_driver)/launch/jetracer.launch.xml">
@@ -390,7 +399,7 @@
     <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'camera\', \'camera_control\', \'camera_e2e\']')">
         <include file="$(find-pkg-share isaac_ros_camera_e2e_control)/launch/isaac_ros_camera_e2e.launch.xml">
             <arg name="control_filter" value="false" />
-            <arg name="container_name" value="$(var camera_container_name)" />
+            <arg name="container_name" value="$(var e2e_container_name)" />
             <arg name="model_repository_path" value="$(var e2e_model_repository_path)" />
             <arg name="model_name" value="$(var e2e_camera_model_name)" />
             <arg name="input_image_topic" value="$(var e2e_camera_input_image_topic)" />
@@ -417,7 +426,7 @@
 
     <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'camera_trajectory\', \'camera_traj\']')">
         <include file="$(find-pkg-share isaac_ros_camera_trajectory)/launch/isaac_ros_camera_trajectory.launch.xml">
-            <arg name="container_name" value="$(var camera_container_name)" />
+            <arg name="container_name" value="$(var e2e_container_name)" />
             <arg name="model_repository_path" value="$(var e2e_model_repository_path)" />
             <arg name="model_name" value="$(var e2e_camera_trajectory_model_name)" />
             <arg name="input_image_topic" value="$(var e2e_camera_input_image_topic)" />
