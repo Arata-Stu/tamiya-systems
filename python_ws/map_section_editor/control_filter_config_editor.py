@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+import subprocess
+import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional
@@ -59,6 +61,66 @@ class EditorState:
     class_profiles: dict[str, FilterProfile]
     output_path: Path
     source_config_path: Optional[Path]
+    node_status: str = "\033[90m(Not checked)\033[0m"
+
+
+def update_node_status(state: EditorState) -> None:
+    if not shutil.which("ros2"):
+        state.node_status = "\033[91m[ROS 2: Not Sourced]\033[0m"
+        return
+    
+    try:
+        node_check = subprocess.run(
+            ["ros2", "node", "list"],
+            capture_output=True,
+            text=True,
+            timeout=1.0
+        )
+        if node_check.returncode == 0:
+            if "/control_filter_node" in node_check.stdout:
+                state.node_status = "\033[92m[ROS 2: /control_filter_node Active]\033[0m"
+            else:
+                state.node_status = "\033[93m[ROS 2: /control_filter_node Offline]\033[0m"
+        else:
+            state.node_status = "\033[91m[ROS 2: Error listing nodes]\033[0m"
+    except Exception:
+        state.node_status = "\033[91m[ROS 2: Error checking status]\033[0m"
+
+
+def sync_to_ros2(state: EditorState) -> str:
+    if not state.output_path.is_file():
+        return "\033[91mOutput file does not exist yet. Please save first.\033[0m"
+    
+    if not shutil.which("ros2"):
+        return "\033[91m'ros2' command not found. Is ROS 2 environment sourced?\033[0m"
+    
+    try:
+        node_check = subprocess.run(
+            ["ros2", "node", "list"],
+            capture_output=True,
+            text=True,
+            timeout=1.5
+        )
+        if node_check.returncode != 0:
+            return "\033[91mFailed to list ROS 2 nodes. Is ROS 2 environment sourced?\033[0m"
+        if "/control_filter_node" not in node_check.stdout:
+            return "\033[93mNode '/control_filter_node' is not running. Saved to file only.\033[0m"
+        
+        load_res = subprocess.run(
+            ["ros2", "param", "load", "/control_filter_node", str(state.output_path)],
+            capture_output=True,
+            text=True,
+            timeout=5.0
+        )
+        if load_res.returncode == 0:
+            return "\033[92mSuccessfully synced parameters to running /control_filter_node!\033[0m"
+        else:
+            stderr_msg = load_res.stderr.strip() if load_res.stderr else "unknown error"
+            return f"\033[91mFailed to load parameters: {stderr_msg}\033[0m"
+    except subprocess.TimeoutExpired:
+        return "\033[91mROS 2 parameter sync timed out.\033[0m"
+    except Exception as e:
+        return f"\033[91mError syncing parameters: {str(e)}\033[0m"
 
 
 def clear_screen() -> None:
@@ -259,6 +321,7 @@ def print_summary(state: EditorState) -> None:
     print(f"output   : {state.output_path}")
     if state.source_config_path is not None:
         print(f"base     : {state.source_config_path}")
+    print(f"status   : {state.node_status}")
     print("")
     print("Sections:")
     for index, section_name in enumerate(state.sections, start=1):
@@ -270,7 +333,8 @@ def print_summary(state: EditorState) -> None:
     print("  c : edit class parameters")
     print("  d : edit default parameters")
     print("  p : preview YAML")
-    print("  s : save")
+    print("  s : save (auto-syncs to running ROS 2 node)")
+    print("  e : dynamic sync to running ROS 2 node")
     print("  q : quit")
 
 
@@ -475,6 +539,14 @@ def save_yaml(state: EditorState) -> None:
     clear_screen()
     print(f"Saved: {state.output_path}")
     print("")
+    
+    # Auto-sync to ROS 2
+    print("Syncing parameters to running ROS 2 node...")
+    sync_status = sync_to_ros2(state)
+    print(sync_status)
+    print("")
+    update_node_status(state)
+    
     print("Use with control_filter:")
     print(f"  ros2 launch control_filter control_filter.launch.xml control_filter_param:={state.output_path}")
     print("")
@@ -495,6 +567,19 @@ def run_editor(state: EditorState) -> int:
             preview_yaml(state)
         elif command == "s":
             save_yaml(state)
+        elif command == "e":
+            clear_screen()
+            print("Syncing parameters to running ROS 2 node...")
+            # Save first to ensure the yaml is updated
+            text = build_yaml_text(state)
+            state.output_path.parent.mkdir(parents=True, exist_ok=True)
+            state.output_path.write_text(text, encoding="utf-8")
+            
+            sync_status = sync_to_ros2(state)
+            print(sync_status)
+            print("")
+            update_node_status(state)
+            input("Press Enter to continue.")
         elif command == "q":
             return 0
 
@@ -534,6 +619,8 @@ def main() -> int:
         output_path=output_path,
         source_config_path=source_config_path,
     )
+    # Check node status on startup
+    update_node_status(state)
     try:
         return run_editor(state)
     except KeyboardInterrupt:
