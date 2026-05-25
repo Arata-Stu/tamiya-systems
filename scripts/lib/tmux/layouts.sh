@@ -18,11 +18,21 @@ create_map_layout() {
   add_pane "$WINDOW_MAP" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_APPLY_SECTION_SPEEDS"
   add_pane "$WINDOW_MAP" "$WORK_DIR" "$ROS_SETUP" "$CMD_PUSH_MAP"
   add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
-  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_OFFLINE_EVAL"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_HD_MAP_EVAL"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_OFFLINE_EVAL"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
   create_layout_from_panes "$WINDOW_MAP" 0
+}
+
+create_eval_layout() {
+  reset_panes
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_PLAY_BAG"
+  add_pane "$WINDOW_EVAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_HD_MAP_EVAL"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_OFFLINE_EVAL"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
+  add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
+  create_layout_from_panes "$WINDOW_EVAL" 0
 }
 
 create_race_layout() {

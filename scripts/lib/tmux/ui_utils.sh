@@ -3,13 +3,13 @@
 usage() {
   cat <<EOF
 Usage:
-  $(basename "$0") [SESSION_NAME] [--mode record|map|race|e2e|identification]
-  $(basename "$0") [--session SESSION_NAME] [--mode record|map|race|e2e|identification]
+  $(basename "$0") [SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval]
+  $(basename "$0") [--session SESSION_NAME] [--mode record|map|race|e2e|identification|hd_map_eval]
 
 Notes:
   - Replace <map_dir> and <bag_path> placeholders in the prepared commands.
   - record is the Jetson sensor-bag collection layout for map creation.
-  - map is the note-PC layout for 2D/VSLAM/HD map creation, editing, and offline eval.
+  - map is the note-PC layout for VSLAM/HD map creation, editing, and hd_map_eval.
   - race is the main VSLAM + 2D GL + HD map controller run layout.
   - e2e keeps the camera E2E fallback launch reachable.
   - identification records VSLAM odom + cmd_drive for steering/speed identification.
@@ -28,18 +28,22 @@ choose_mode_interactive() {
   while true; do
     echo "Select mode:" >&2
     echo "  1) $MODE_RECORD (sensor record: camera + LiDAR + TF + cmd)" >&2
-    echo "  2) $MODE_MAP (2D/VSLAM/HD map creation, editing, and eval)" >&2
+    echo "  2) $MODE_MAP (VSLAM/HD map creation, editing, and hd_map_eval)" >&2
     echo "  3) $MODE_RACE (production run)" >&2
     echo "  4) $MODE_E2E (camera E2E fallback run)" >&2
     echo "  5) $MODE_IDENTIFICATION (steering/speed identification)" >&2
     read -r -p "Enter 1-5: " answer
 
     case "$answer" in
+      "$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
+        echo "$MODE_OFFLINE_EVAL"
+        return
+        ;;
       1|"$MODE_RECORD"|"$MODE_RECORD_MAPPING")
         echo "$MODE_RECORD"
         return
         ;;
-      2|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP")
+      2|"$MODE_MAP"|"$MODE_MAPPING"|"$MODE_MAP_BUILD"|"$MODE_HD_MAP")
         echo "$MODE_MAP"
         return
         ;;

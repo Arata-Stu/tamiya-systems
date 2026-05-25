@@ -28,6 +28,7 @@ MODE_IDENTIFICATION="identification"
 MODE_E2E="e2e"
 MODE_E2E_TRAIN="e2e_train"
 MODE_OFFLINE_EVAL="offline_eval"
+MODE_HD_MAP_EVAL="hd_map_eval"
 
 # Legacy aliases used in ui_utils.sh
 MODE_MAPPING="mapping"
@@ -74,7 +75,7 @@ CMD_RECORD_MAPPING_DEBUG="bash ${LAUNCH_SYSTEM_SH} record_mapping_debug"
 CMD_RACE_MAP="bash ${LAUNCH_SYSTEM_SH} race --set map_dir=<map_dir>"
 CMD_RACE_PP="bash ${LAUNCH_SYSTEM_SH} race_pp --set map_dir=<map_dir>"
 CMD_RACE_E2E="bash ${LAUNCH_SYSTEM_SH} race_e2e --set map_dir=<map_dir>"
-CMD_OFFLINE_EVAL="bash ${LAUNCH_SYSTEM_SH} offline_eval --set map_dir=<map_dir>"
+CMD_HD_MAP_EVAL="bash ${LAUNCH_SYSTEM_SH} hd_map_eval --set map_dir=<map_dir>"
 CMD_LOCALIZATION_TRIGGER='ros2 topic pub --once /localization/trigger std_msgs/msg/Bool "{data: true}"'
 CMD_CREATE_HD_MAP="bash ${CREATE_MAP_AND_HD_MAP_SH} --rate 1.0 --editor-scale 0"
 CMD_EDIT_HD_MAP_SECTIONS="bash ${EDIT_HD_MAP_SECTIONS_SH} --map-dir <map_dir> --scale 0"
@@ -93,8 +94,8 @@ CMD_BUILD_SPEED_FEEDFORWARD="bash ${BUILD_SPEED_FEEDFORWARD_SH} --bag /record/<s
 CMD_APPLY_SECTION_SPEEDS='python data_analysis/apply_hd_map_section_speeds.py --raceline /map/<course>/<course>_raceline.csv --hd-map /map/<course>/<course>_hd_map.yaml --output /map/<course>/<course>_raceline_section_speeds.csv'
 CMD_DASHBOARD_IDENTIFICATION="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --scan-topic '' --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --best-effort"
 CMD_DASHBOARD_RECORD_MAPPING="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --amcl-pose-topic '' --initial-pose-topic '' --scan-topic /scan --odom-topic '' --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --crop-image-topic '' --particles-topic '' --path-topic '' --vo-path-topic '' --global-path-topic '' --local-path-topic '' --section-markers-topic '' --hd-lane-markers-topic '' --hd-section-markers-topic '' --current-section-marker-topic '' --current-section-topic '' --best-effort"
-CMD_DASHBOARD_OFFLINE_EVAL="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --scan-topic /scan --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --global-path-topic /planning/global_raceline --local-path-topic /autonomous/trajectory --section-markers-topic /localization/section_markers --hd-lane-markers-topic /hd_map/lane_markers --hd-section-markers-topic /hd_map/section_markers --current-section-marker-topic /localization/current_section_marker --current-section-topic /localization/current_section --best-effort"
-CMD_DASHBOARD_VSLAM_HD="python3 ${TERMINAL_VSLAM_DASHBOARD_PY} --hd-map-yaml <hd_map_yaml>"
+CMD_DASHBOARD_OFFLINE_EVAL="python3 ${TERMINAL_DASHBOARD_PY} --map-topic '' --localization-topic '' --scan-topic /scan --odom-topic /visual_slam/tracking/odometry --image-topic /camera/left/image_raw --camera-info-topic /camera/left/camera_info --global-path-topic /planning/global_raceline --local-path-topic /autonomous/trajectory --section-markers-topic '' --hd-lane-markers-topic /hd_map/lane_markers --hd-section-markers-topic /hd_map/section_markers --current-section-marker-topic /localization/current_section_marker --current-section-topic /localization/current_section --best-effort"
+CMD_DASHBOARD_VSLAM_HD="MAP_DIR=<map_dir>; MAP_NAME=\"\$(basename \"\${MAP_DIR%/}\")\"; python3 ${TERMINAL_VSLAM_DASHBOARD_PY} --hd-map-yaml \"\${MAP_DIR%/}/\${MAP_NAME}_hd_map.yaml\""
 CMD_LEFT_IMAGE_VIEWER="python3 ${TERMINAL_IMAGE_VIEWER_PY} --topic /camera/left/image_raw --best-effort --max-fps 10"
 CMD_SPEED_DEBUG='ros2 topic echo /speed_controller/throttle_cmd'
 RVIZ_LOCALIZATION_EVAL='rviz2 -d $(ros2 pkg prefix system_launch)/share/system_launch/rviz/localization_eval.rviz --ros-args -p use_sim_time:=true'
@@ -106,7 +107,7 @@ PANE_PREPARES=()
 
 is_mode_token() {
   case "$1" in
-    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL")
+    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
       return 0
       ;;
     *)
@@ -141,7 +142,7 @@ normalize_mode() {
     "$MODE_IDENTIFICATION")
       echo "$MODE_IDENTIFICATION"
       ;;
-    "$MODE_OFFLINE_EVAL")
+    "$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL")
       echo "$MODE_OFFLINE_EVAL"
       ;;
     *)
