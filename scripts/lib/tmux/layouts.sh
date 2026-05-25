@@ -104,15 +104,27 @@ create_lidar_e2e_layout() {
 
 create_e2e_train_layout() {
   reset_panes
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_PREPROCESS"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_TRAIN"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_SCP"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_DEPLOY"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_PREPROCESS"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_TRAIN"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_SCP"
-  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_DEPLOY"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_PREPROCESS"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_TRAIN"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_SCP"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_DEPLOY"
+  add_pane "$WINDOW_TOOLS" "$CAMERA_E2E_DIR" "$ROS_SETUP" "$CMD_E2E_PREPROCESS"
+  add_pane "$WINDOW_TOOLS" "$CAMERA_E2E_DIR" "$ROS_SETUP" "$CMD_E2E_TRAIN"
+  add_pane "$WINDOW_TOOLS" "$CAMERA_E2E_DIR" "$ROS_SETUP" "$CMD_E2E_SCP"
+  add_pane "$WINDOW_TOOLS" "$CAMERA_E2E_DIR" "$ROS_SETUP" "$CMD_E2E_DEPLOY"
   create_layout_from_panes "$WINDOW_TOOLS" 0
+}
+
+create_lidar_e2e_train_layout() {
+  reset_panes
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_GENERATE_VIRTUAL_SCAN"
+  add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_CHECK_TOPICS"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_PREPROCESS"
+  add_pane "$WINDOW_TRAIN" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_TRAIN"
+  add_pane "$WINDOW_TRAIN" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_TENSORBOARD"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_SCP"
+  add_pane "$WINDOW_TOOLS" "$LIDAR_E2E_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_DEPLOY"
+  create_layout_from_panes "$WINDOW_DATA" 0
 }
 
 create_identification_layout() {
@@ -144,4 +156,3 @@ create_perception_eval_layout() {
   
   create_layout_from_panes "$WINDOW_EVAL" 0
 }
-

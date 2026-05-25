@@ -28,6 +28,7 @@ MODE_IDENTIFICATION="identification"
 MODE_E2E="e2e"
 MODE_E2E_TRAIN="e2e_train"
 MODE_LIDAR_E2E="lidar_e2e"
+MODE_LIDAR_E2E_TRAIN="lidar_e2e_train"
 MODE_RECORD_VIRTUAL_SCAN="record_virtual_scan"
 MODE_OFFLINE_EVAL="offline_eval"
 MODE_HD_MAP_EVAL="hd_map_eval"
@@ -49,6 +50,7 @@ WINDOW_VISUAL="visual"
 WINDOW_TOOLS="tools"
 WINDOW_RACE="race"
 WINDOW_E2E="e2e"
+WINDOW_TRAIN="train"
 
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
 REPO_ROOT="$(resolve_repo_root)"
@@ -63,10 +65,13 @@ fi
 
 WORK_DIR="$(resolve_existing_dir "$REPO_ROOT" /workspaces)"
 PYTHON_DIR="$(resolve_existing_dir "${REPO_ROOT}/python_ws" /python_ws "$WORK_DIR")"
+CAMERA_E2E_DIR="$(resolve_existing_dir "${PYTHON_DIR}/camera_e2e" /python_ws/camera_e2e "$PYTHON_DIR")"
+LIDAR_E2E_DIR="$(resolve_existing_dir "${PYTHON_DIR}/lidar_e2e" /python_ws/lidar_e2e "$PYTHON_DIR")"
 
 LAUNCH_SYSTEM_SH="${SCRIPT_DIR}/launch_system.sh"
 MONITOR_SH="${SCRIPT_DIR}/monitor.sh"
 CREATE_MAP_AND_HD_MAP_SH="${SCRIPT_DIR}/create_map_and_hd_map_from_bag.sh"
+CREATE_VIRTUAL_SCAN_SH="${SCRIPT_DIR}/create_virtual_scan_from_bag.sh"
 EDIT_HD_MAP_SECTIONS_SH="${SCRIPT_DIR}/edit_hd_map_sections.sh"
 BUILD_SPEED_FEEDFORWARD_SH="${SCRIPT_DIR}/build_speed_feedforward_from_bag.sh"
 TERMINAL_DASHBOARD_PY="${SCRIPT_DIR}/terminal_viewers/ros2_terminal_dashboard.py"
@@ -93,10 +98,13 @@ CMD_E2E_PREPROCESS="bash ${PYTHON_DIR}/camera_e2e/1_create_dataset.sh"
 CMD_E2E_TRAIN="python3 ${PYTHON_DIR}/camera_e2e/2_train.py"
 CMD_E2E_SCP="bash ${PYTHON_DIR}/camera_e2e/scp_ckpts.sh"
 CMD_E2E_DEPLOY="bash ${PYTHON_DIR}/camera_e2e/3_deploy_model.sh"
-CMD_LIDAR_E2E_PREPROCESS="bash ${PYTHON_DIR}/lidar_e2e/1_create_dataset.sh -b /record/<session_timestamp> -o ${PYTHON_DIR}/lidar_e2e/datasets --scan_topic /virtual_scan"
-CMD_LIDAR_E2E_TRAIN="python3 ${PYTHON_DIR}/lidar_e2e/2_train.py"
-CMD_LIDAR_E2E_SCP="bash ${PYTHON_DIR}/lidar_e2e/scp_ckpts.sh"
-CMD_LIDAR_E2E_DEPLOY="bash ${PYTHON_DIR}/lidar_e2e/3_deploy_model.sh"
+CMD_LIDAR_E2E_GENERATE_VIRTUAL_SCAN="bash ${CREATE_VIRTUAL_SCAN_SH} --bag-path <source_bag_path> --map-dir <map_dir> --output-root /record/virtual_scan --virtual-scan-topic /virtual_scan --cmd-topic /jetracer/cmd_drive"
+CMD_LIDAR_E2E_CHECK_TOPICS="ros2 bag info /record/virtual_scan/<generated_run>/virtual_scan_bag"
+CMD_LIDAR_E2E_PREPROCESS="bash ./1_create_dataset.sh -b /record/virtual_scan -o ./datasets --scan_topic /virtual_scan --cmd_topic /jetracer/cmd_drive --use_virtual_scan"
+CMD_LIDAR_E2E_TRAIN="python3 ./2_train.py data_path=./datasets dataset.use_virtual_scan=true"
+CMD_LIDAR_E2E_TENSORBOARD="tensorboard --logdir ./logs/train --bind_all --port 6006"
+CMD_LIDAR_E2E_SCP="bash ./scp_ckpts.sh"
+CMD_LIDAR_E2E_DEPLOY="bash ./3_deploy_model.sh ./ckpts --precision fp16 --scan-points 320"
 CMD_PUSH_MAP="bash ${SCRIPT_DIR}/push_map.sh"
 CMD_BUILD_MAP_LOOKUP='python data_analysis/build_map_steering_lookup.py --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml'
 CMD_BUILD_SPEED_FEEDFORWARD="bash ${BUILD_SPEED_FEEDFORWARD_SH} --bag /record/<session_timestamp>/<take_timestamp>/metadata.yaml --map-dir <map_dir> -- --max-abs-steer 0.10"
@@ -121,7 +129,7 @@ PANE_PREPARES=()
 
 is_mode_token() {
   case "$1" in
-    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_LIDAR_E2E"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL"|"$MODE_RECORD_VIRTUAL_SCAN"|"$MODE_PERCEPTION_EVAL")
+    "$MODE_RECORD"|"$MODE_RECORD_MAPPING"|"$MODE_MAP"|"$MODE_RACE"|"$MODE_RACE_PP"|"$MODE_RACE_E2E"|"$MODE_E2E"|"$MODE_LIDAR_E2E"|"$MODE_LIDAR_E2E_TRAIN"|"$MODE_IDENTIFICATION"|"$MODE_E2E_TRAIN"|"$MODE_OFFLINE_EVAL"|"$MODE_HD_MAP_EVAL"|"$MODE_RECORD_VIRTUAL_SCAN"|"$MODE_PERCEPTION_EVAL")
       return 0
       ;;
     *)
@@ -152,6 +160,9 @@ normalize_mode() {
       ;;
     "$MODE_LIDAR_E2E")
       echo "$MODE_LIDAR_E2E"
+      ;;
+    "$MODE_LIDAR_E2E_TRAIN")
+      echo "$MODE_LIDAR_E2E_TRAIN"
       ;;
     "$MODE_E2E_TRAIN")
       echo "$MODE_E2E_TRAIN"
@@ -248,7 +259,7 @@ fi
 
 if ! MODE="$(normalize_mode "$MODE")"; then
   echo "Invalid mode: $MODE" >&2
-  echo "Use --mode record, map, race, e2e, or identification" >&2
+  echo "Use --mode record, map, race, e2e, lidar_e2e_train, or identification" >&2
   exit 1
 fi
 
@@ -295,6 +306,9 @@ if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
       ;;
     "$MODE_LIDAR_E2E")
       create_lidar_e2e_layout
+      ;;
+    "$MODE_LIDAR_E2E_TRAIN")
+      create_lidar_e2e_train_layout
       ;;
     "$MODE_E2E_TRAIN")
       create_e2e_train_layout

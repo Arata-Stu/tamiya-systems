@@ -38,6 +38,16 @@ CAMERA_CONTAINER_NAME="offline_camera_container_$$"
 OFFLINE_TF_PID=""
 OFFLINE_TF_USES_SETSID=false
 
+BAG_PATH=""
+MAP_NAME=""
+BAG_DIR_NAME=""
+MAP_DIR=""
+VSLAM_MAP_DIR=""
+LIGHTWEIGHT_BAG_DIR=""
+EXPLICIT_LIGHTWEIGHT_BAG_DIR=""
+VSLAM_LOG_PATH=""
+TF_LOG_PATH=""
+
 CAMERA_CONTAINER_PID=""
 CAMERA_CONTAINER_USES_SETSID=false
 VSLAM_LAUNCH_PID=""
@@ -120,24 +130,6 @@ done
 
 apply_mode "${MODE}"
 
-BAG_PATH=""
-MAP_NAME=""
-BAG_DIR_NAME=""
-MAP_DIR=""
-VSLAM_MAP_DIR=""
-LIGHTWEIGHT_BAG_DIR=""
-EXPLICIT_LIGHTWEIGHT_BAG_DIR=""
-VSLAM_LOG_PATH=""
-TF_LOG_PATH=""
-
-
-
-
-
-
-
-
-
 trap cleanup_all EXIT INT TERM
 
 if [ -z "${BAG_PATH}" ]; then
@@ -182,9 +174,13 @@ sleep 2
 
 launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
     ros2 launch system_launch vslam.launch.xml \
+    "use_sim_time:=true" \
     "image_width:=${IMAGE_WIDTH}" \
     "image_height:=${IMAGE_HEIGHT}" \
     "camera_container_name:=${CAMERA_CONTAINER_NAME}" \
+    "vslam_map_frame:=map" \
+    "vslam_map_parent_frame:=map" \
+    "publish_vslam_map_identity_tf:=false" \
     "enable_localization_and_mapping:=true" \
     "save_map_path:=${VSLAM_MAP_DIR}" \
     > "${VSLAM_LOG_PATH}" 2>&1
