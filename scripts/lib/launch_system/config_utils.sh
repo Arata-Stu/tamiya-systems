@@ -23,6 +23,8 @@ apply_mode() {
       apply_mode production
       ARG_use_hd_map="true"
       ARG_use_e2e="true"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
       ARG_use_hd_map_section_localizer="true"
       ARG_publish_map="true"
       set_extra_arg_value "e2e_variant" "camera"
@@ -49,6 +51,8 @@ apply_mode() {
       ARG_localization="false"
       ARG_use_lidar="false"
       ARG_use_camera="true"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
       ARG_use_planning="false"
       ARG_use_hd_map="false"
       ARG_use_pure_pursuit="false"
