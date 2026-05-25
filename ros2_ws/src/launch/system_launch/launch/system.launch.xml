@@ -20,11 +20,11 @@
     <arg name="use_speed_controller" default="false" description="convert final target speed [m/s] into closed-loop JetRacer throttle"/>
     <arg name="use_e2e" default="false" description="run one of the unified end-to-end controller pipelines selected by e2e_variant"/>
     <arg name="use_sim_time" default="false" />
-    <arg name="publish_map" default="false" />
+    <arg name="publish_map" default="$(var localization)" />
     <arg name="map_server_use_sim_time" default="false" />
-    <arg name="use_localization_manager" default="false" />
-    <arg name="publish_localization_tf" default="false" />
-    <arg name="use_section_localizer" default="false" />
+    <arg name="use_localization_manager" default="$(var localization)" />
+    <arg name="publish_localization_tf" default="$(var localization)" />
+    <arg name="use_section_localizer" default="$(var localization)" />
     <arg name="use_hd_map_section_localizer" default="false" />
     <arg name="section_localizer_debug_mode" default="false" />
     <arg name="use_drive_mode_manager" default="false" />
