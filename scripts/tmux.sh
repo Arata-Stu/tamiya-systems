@@ -25,8 +25,17 @@ MODE_RACE_PP="race_pp"
 MODE_RACE_E2E="race_e2e"
 MODE_MAP="map"
 MODE_IDENTIFICATION="identification"
+MODE_E2E="e2e"
 MODE_E2E_TRAIN="e2e_train"
 MODE_OFFLINE_EVAL="offline_eval"
+
+# Legacy aliases used in ui_utils.sh
+MODE_MAPPING="mapping"
+MODE_MAP_BUILD="map_build"
+MODE_HD_MAP="hd_map"
+MODE_TAMIYA="tamiya"
+MODE_PRODUCTION="production"
+MODE_E2E_BACKUP="e2e_backup"
 
 WINDOW_RECORD="record"
 WINDOW_MAP="map"
