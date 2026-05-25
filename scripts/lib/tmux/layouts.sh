@@ -82,7 +82,6 @@ create_e2e_layout() {
 create_lidar_e2e_layout() {
   reset_panes
   add_pane "$WINDOW_E2E" "$WORK_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_RUN"
-  add_pane "$WINDOW_E2E" "$WORK_DIR" "$ROS_SETUP" "$CMD_LOCALIZATION_TRIGGER"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$CMD_DASHBOARD_VSLAM_HD"
   add_pane "$WINDOW_VISUAL" "$WORK_DIR" "$ROS_SETUP" "$RVIZ_LOCALIZATION_EVAL"
   add_pane "$WINDOW_DATA" "$WORK_DIR" "$ROS_SETUP" "$CMD_RECORD_START"
