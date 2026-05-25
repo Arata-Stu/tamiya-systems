@@ -9,7 +9,8 @@ Modes:
   record_mapping          Jetson map-data recording: camera + LiDAR + TF + command topics
   race                    Main race run: VSLAM + 2D GL + HD map + MAP controller + speed controller
   race_pp                 Pure Pursuit variant of race
-  offline_eval            Bag replay eval: VSLAM + 2D GL + HD map + sections, no vehicle
+  offline_eval            Bag replay eval: saved VSLAM + HD map + raceline + landmarks, no vehicle
+  hd_map_eval             Bag replay eval: saved VSLAM + HD map + raceline + landmarks, no 2D map
   e2e_backup              Camera E2E fallback run without VSLAM/localization/planning
   production              Legacy base run with VSLAM + localization + 2D section localizer
   identification          VSLAM odom + final cmd_drive recording preset for MAP lookup generation
@@ -226,7 +227,8 @@ choose_mode_interactive() {
     "record_mapping                          Jetsonでmap用rosbag収集: camera + LiDAR + TF + cmd"
     "race                                    Jetson本番候補: VSLAM + 2D GL + HD map + MAP controller + speed controller"
     "race_pp                                 race の Pure Pursuit 版"
-    "offline_eval                            rosbag評価: VSLAM + 2D GL + HD map + section, vehicleなし"
+    "offline_eval                            rosbag評価: saved VSLAM + HD map + raceline + landmarks"
+    "hd_map_eval                             offline_eval と同じ。2D mapなしのHD map確認用"
     "identification                          steering/speed identification 用rosbag収集"
     "perception_eval                         rosbagでLiDAR/カメラ知覚評価"
     "e2e_backup                              camera E2E fallback"
@@ -237,6 +239,7 @@ choose_mode_interactive() {
     "race"
     "race_pp"
     "offline_eval"
+    "hd_map_eval"
     "identification"
     "perception_eval"
     "e2e_backup"
@@ -480,7 +483,7 @@ warn_if_mode_incomplete() {
   local normalized_e2e_variant
 
   case "$MODE" in
-    production|race|race_pp|offline_eval)
+    production|race|race_pp|offline_eval|hd_map_eval|hd_map_debug|bag_eval|offline_map_eval)
       if [[ -z "$(current_map_dir)" ]]; then
         echo "Warning: ${MODE} mode expects map_dir to be set." >&2
       fi

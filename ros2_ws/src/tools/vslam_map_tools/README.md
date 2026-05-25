@@ -106,3 +106,6 @@ python3 ros2_ws/src/tools/vslam_map_tools/vslam_map_tools/export_aligned_landmar
   --resolution 0.02 \
   --padding-m 0.5
 ```
+
+HD map editor で path を表示切替したい場合は、raster には path を焼き込まず
+`--no-path` を付け、editor 側へ同じ snapshot を渡します。

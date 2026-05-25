@@ -47,9 +47,11 @@ python3 map_section_editor/hd_map_editor.py \
   --centerline-output /map/course_a/course_a_centerline.csv
 ```
 
-`export_landmarks_png.py` は既定で `/visual_slam/tracking/slam_path` も下絵へ描きます。
-下絵の灰色 path を centerline の初期目安にしつつ、landmarks のコース形状を見て
-境界と中心線を補正してください。
+`create_hd_map_from_vslam_bag.sh` から起動した場合は、saved VSLAM path を editor の
+別レイヤとして濃い青で表示します。邪魔なときは `v` で表示/非表示を切り替え、
+landmarks のコース形状を見て境界と中心線を補正してください。
+同じ出力を手動で開き直す場合は、`--vslam-snapshot <map>_vslam_reference.json` を
+追加すると同じ toggleable path overlay を使えます。
 
 操作:
 
@@ -61,6 +63,7 @@ python3 map_section_editor/hd_map_editor.py \
 - `[` / `]`: active lane を切替
 - `p`: active lane を primary lane に設定。centerline CSV は primary lane から出力
 - `o`: active lane の open / closed loop を切替
+- `v`: saved VSLAM path overlay の表示/非表示
 - `s`: HD map YAML と primary lane centerline CSV を保存
 - ホイール / `+` / `-`: ズーム
 - 右ドラッグ or `H/J/K/L`: パン

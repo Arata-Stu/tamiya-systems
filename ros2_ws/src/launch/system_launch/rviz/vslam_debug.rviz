@@ -199,7 +199,7 @@ Visualization Manager:
         {}
       Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /hd_map/lane_markers
@@ -226,7 +226,7 @@ Visualization Manager:
       Shaft Length: 0.07999999821186066
       Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -254,7 +254,7 @@ Visualization Manager:
       Shaft Length: 0.07999999821186066
       Topic:
         Depth: 5
-        Durability Policy: Volatile
+        Durability Policy: Transient Local
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
@@ -324,8 +324,8 @@ Visualization Manager:
           Axis: Z
           Channel Name: intensity
           Class: rviz_default_plugins/PointCloud2
-          Color: 255; 255; 255
-          Color Transformer: RGB8
+          Color: 90; 210; 255
+          Color Transformer: FlatColor
           Decay Time: 0
           Enabled: true
           Invert Rainbow: false
@@ -344,7 +344,7 @@ Visualization Manager:
             Durability Policy: Volatile
             Filter size: 10
             History Policy: Keep Last
-            Reliability Policy: Reliable
+            Reliability Policy: Best Effort
             Value: /visual_slam/vis/landmarks_cloud
           Use Fixed Frame: true
           Use rainbow: true
@@ -359,7 +359,7 @@ Visualization Manager:
           Channel Name: intensity
           Class: rviz_default_plugins/PointCloud2
           Color: 255; 255; 255
-          Color Transformer: RGB8
+          Color Transformer: FlatColor
           Decay Time: 0
           Enabled: true
           Invert Rainbow: false
@@ -378,7 +378,7 @@ Visualization Manager:
             Durability Policy: Volatile
             Filter size: 10
             History Policy: Keep Last
-            Reliability Policy: Reliable
+            Reliability Policy: Best Effort
             Value: /visual_slam/vis/observations_cloud
           Use Fixed Frame: true
           Use rainbow: true
@@ -392,8 +392,8 @@ Visualization Manager:
           Axis: Z
           Channel Name: intensity
           Class: rviz_default_plugins/PointCloud2
-          Color: 255; 255; 255
-          Color Transformer: RGB8
+          Color: 255; 170; 40
+          Color Transformer: FlatColor
           Decay Time: 0
           Enabled: true
           Invert Rainbow: false
@@ -412,7 +412,7 @@ Visualization Manager:
             Durability Policy: Volatile
             Filter size: 10
             History Policy: Keep Last
-            Reliability Policy: Reliable
+            Reliability Policy: Best Effort
             Value: /visual_slam/vis/loop_closure_cloud
           Use Fixed Frame: true
           Use rainbow: true
@@ -491,8 +491,8 @@ Visualization Manager:
               Axis: Z
               Channel Name: intensity
               Class: rviz_default_plugins/PointCloud2
-              Color: 255; 255; 255
-              Color Transformer: ""
+              Color: 255; 210; 80
+              Color Transformer: FlatColor
               Decay Time: 0
               Enabled: true
               Invert Rainbow: false
@@ -501,7 +501,7 @@ Visualization Manager:
               Min Color: 0; 0; 0
               Min Intensity: 0
               Name: Localizer Map
-              Position Transformer: ""
+              Position Transformer: XYZ
               Selectable: true
               Size (Pixels): 3
               Size (m): 0.009999999776482582
@@ -511,7 +511,7 @@ Visualization Manager:
                 Durability Policy: Volatile
                 Filter size: 10
                 History Policy: Keep Last
-                Reliability Policy: Reliable
+                Reliability Policy: Best Effort
                 Value: /visual_slam/vis/localizer_map_cloud
               Use Fixed Frame: true
               Use rainbow: true

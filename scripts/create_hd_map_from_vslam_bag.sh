@@ -346,6 +346,7 @@ export_landmark_raster() {
         --resolution "${LANDMARK_RESOLUTION}"
         --padding-m "${LANDMARK_PADDING_M}"
         --landmark-downsample-m "${LANDMARK_DOWNSAMPLE_M}"
+        --no-path
     )
 
     if [ -n "${REFERENCE_YAML_PATH}" ]; then
@@ -391,7 +392,12 @@ run_hd_map_editor() {
         --output "${HD_MAP_YAML_PATH}"
         --centerline-output "${CENTERLINE_CSV_PATH}"
         --scale "${EDITOR_SCALE}"
+        --vslam-snapshot "${SNAPSHOT_PATH}"
     )
+
+    if [ -n "${ALIGNMENT_PATH}" ]; then
+        editor_cmd+=(--vslam-alignment "${ALIGNMENT_PATH}")
+    fi
 
     echo "[post] Launch HD map editor"
     "${editor_cmd[@]}"

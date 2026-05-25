@@ -42,6 +42,8 @@ FIELD_COLORS = {
     "left_bound": (80, 220, 80),
     "right_bound": (230, 100, 230),
 }
+VSLAM_PATH_COLOR = (255, 96, 0)
+VSLAM_PATH_THICKNESS_PX = 2
 
 
 @dataclass
@@ -380,6 +382,134 @@ def export_centerline_csv(output_path: Path, lane: LaneDraft, geometry: RasterGe
         )
 
 
+def _find_alignment_params(data: object) -> Dict[str, object]:
+    if not isinstance(data, dict):
+        return {}
+    ros_params = data.get("ros__parameters")
+    if isinstance(ros_params, dict):
+        found = _find_alignment_params(ros_params)
+        if found:
+            return found
+    if any(key in data for key in ("x", "y", "z", "roll_rad", "pitch_rad", "yaw_rad")):
+        return data
+    for value in data.values():
+        found = _find_alignment_params(value)
+        if found:
+            return found
+    return {}
+
+
+def _rotation_translation_from_alignment(alignment_path: Optional[Path]) -> Tuple[np.ndarray, np.ndarray]:
+    params: Dict[str, object] = {}
+    if alignment_path is not None:
+        params = _find_alignment_params(load_yaml(alignment_path, allow_flat_fallback=True))
+
+    tx = float(params.get("x", 0.0) or 0.0)
+    ty = float(params.get("y", 0.0) or 0.0)
+    tz = float(params.get("z", 0.0) or 0.0)
+    roll = float(params.get("roll_rad", 0.0) or 0.0)
+    pitch = float(params.get("pitch_rad", 0.0) or 0.0)
+    yaw = float(params.get("yaw_rad", 0.0) or 0.0)
+
+    cy = math.cos(yaw)
+    sy = math.sin(yaw)
+    cp = math.cos(pitch)
+    sp = math.sin(pitch)
+    cr = math.cos(roll)
+    sr = math.sin(roll)
+    rotation = np.array(
+        [
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp, cp * sr, cp * cr],
+        ],
+        dtype=np.float64,
+    )
+    return rotation, np.array([tx, ty, tz], dtype=np.float64)
+
+
+def _transform_points(points: np.ndarray, rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
+    if points.size == 0:
+        return points
+    transformed = points @ rotation.T
+    transformed[:, 0] += translation[0]
+    transformed[:, 1] += translation[1]
+    transformed[:, 2] += translation[2]
+    return transformed
+
+
+def _snapshot_path_points(snapshot: Dict[str, Any]) -> np.ndarray:
+    for key in ("full_vslam_path", "path"):
+        path_data = snapshot.get(key)
+        if not isinstance(path_data, dict):
+            continue
+        poses = path_data.get("poses", [])
+        if not isinstance(poses, Sequence) or isinstance(poses, (str, bytes)):
+            continue
+        points: List[List[float]] = []
+        for pose in poses:
+            if not isinstance(pose, dict):
+                continue
+            position = pose.get("position")
+            if not isinstance(position, dict):
+                nested_pose = pose.get("pose")
+                if isinstance(nested_pose, dict):
+                    position = nested_pose.get("position")
+            if not isinstance(position, dict):
+                continue
+            try:
+                points.append(
+                    [
+                        float(position.get("x", 0.0)),
+                        float(position.get("y", 0.0)),
+                        float(position.get("z", 0.0)),
+                    ]
+                )
+            except (TypeError, ValueError):
+                continue
+        if points:
+            return np.asarray(points, dtype=np.float64)
+    return np.empty((0, 3), dtype=np.float64)
+
+
+def _world_xy_to_pixels(points_xy: np.ndarray, geometry: RasterGeometry) -> List[PointPx]:
+    if points_xy.size == 0:
+        return []
+    dx = points_xy[:, 0] - geometry.origin_x
+    dy = points_xy[:, 1] - geometry.origin_y
+    cos_t = math.cos(geometry.origin_yaw)
+    sin_t = math.sin(geometry.origin_yaw)
+    grid_x = (cos_t * dx + sin_t * dy) / geometry.resolution
+    grid_y = (-sin_t * dx + cos_t * dy) / geometry.resolution
+    pixels = np.column_stack(
+        [
+            np.round(grid_x).astype(np.int32),
+            np.round((geometry.height - 1) - grid_y).astype(np.int32),
+        ]
+    )
+    mask = (
+        (pixels[:, 0] >= 0)
+        & (pixels[:, 0] < geometry.width)
+        & (pixels[:, 1] >= 0)
+        & (pixels[:, 1] < geometry.height)
+    )
+    return [(int(px), int(py)) for px, py in pixels[mask]]
+
+
+def load_vslam_path_pixels(
+    snapshot_path: Path,
+    alignment_path: Optional[Path],
+    geometry: RasterGeometry,
+) -> List[PointPx]:
+    snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    path_points = _snapshot_path_points(snapshot)
+    if path_points.size == 0:
+        return []
+    rotation, translation = _rotation_translation_from_alignment(alignment_path)
+    path_points = _transform_points(path_points, rotation, translation)
+    return _world_xy_to_pixels(path_points[:, :2], geometry)
+
+
 class HdMapEditor:
     def __init__(
         self,
@@ -392,6 +522,8 @@ class HdMapEditor:
         window_width: int,
         window_height: int,
         scale: float,
+        vslam_path_points: Sequence[PointPx] = (),
+        show_vslam_path: bool = True,
     ) -> None:
         self.background = background.copy()
         self.geometry = geometry
@@ -418,6 +550,8 @@ class HdMapEditor:
         self.dragging_index: Optional[int] = None
         self.has_unsaved_changes = False
         self.show_help = True
+        self.vslam_path_points = list(vslam_path_points)
+        self.show_vslam_path = bool(show_vslam_path and len(self.vslam_path_points) >= 2)
 
         if scale > 0.0:
             self.scale = max(self.min_scale, min(self.max_scale, float(scale)))
@@ -542,10 +676,29 @@ class HdMapEditor:
                     cv2.circle(canvas, point, point_radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
                 cv2.circle(canvas, point, point_radius, color, -1, cv2.LINE_AA)
 
+    def _draw_vslam_path(self, canvas: np.ndarray) -> None:
+        if not self.show_vslam_path or len(self.vslam_path_points) < 2:
+            return
+        pts = np.asarray(self.vslam_path_points, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(
+            canvas,
+            [pts],
+            isClosed=False,
+            color=VSLAM_PATH_COLOR,
+            thickness=max(1, VSLAM_PATH_THICKNESS_PX),
+            lineType=cv2.LINE_AA,
+        )
+
+    def _vslam_path_control_text(self) -> str:
+        if len(self.vslam_path_points) < 2:
+            return "path:none"
+        return f"v:path {'on' if self.show_vslam_path else 'off'}"
+
     def _draw_map(self) -> np.ndarray:
         canvas = self.background.copy()
         shade = np.full_like(canvas, 235)
         canvas = cv2.addWeighted(canvas, 0.82, shade, 0.18, 0.0)
+        self._draw_vslam_path(canvas)
 
         for lane_index, lane in enumerate(self.lanes):
             active_lane = lane_index == self.active_lane_index
@@ -587,7 +740,10 @@ class HdMapEditor:
             self._draw_panel(frame, 72)
             self._draw_text(
                 frame,
-                f"{self.active_lane.lane_id}  {FIELD_LABELS[self.active_field]}  i:help  s:save",
+                (
+                    f"{self.active_lane.lane_id}  {FIELD_LABELS[self.active_field]}  "
+                    f"{self._vslam_path_control_text()}  i:help  s:save"
+                ),
                 (22, 48),
                 0.75,
                 (255, 255, 255),
@@ -638,7 +794,10 @@ class HdMapEditor:
         )
         self._draw_text(
             frame,
-            "Wheel +/-:zoom  Right-drag or H/J/K/L:pan  0:fit  i:help  q/Esc:quit",
+            (
+                "Wheel +/-:zoom  Right-drag/HJKL:pan  0:fit  "
+                f"{self._vslam_path_control_text()}  i:help  q/Esc:quit"
+            ),
             (22, 178),
             0.62,
             (235, 235, 235),
@@ -788,6 +947,12 @@ class HdMapEditor:
                 print("[INFO] Active polyline has no points.")
         elif low == ord("i"):
             self.show_help = not self.show_help
+        elif low == ord("v"):
+            if len(self.vslam_path_points) >= 2:
+                self.show_vslam_path = not self.show_vslam_path
+                print(f"[INFO] VSLAM path overlay: {'on' if self.show_vslam_path else 'off'}.")
+            else:
+                print("[INFO] No VSLAM path overlay was loaded.")
         elif low == ord("0"):
             self._reset_view()
         elif low in (ord("+"), ord("=")):
@@ -854,6 +1019,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Reload the HD map YAML and export the primary centerline CSV without opening the GUI.",
     )
+    parser.add_argument(
+        "--vslam-snapshot",
+        default="",
+        help="Optional VSLAM reference snapshot JSON used for a toggleable path overlay.",
+    )
+    parser.add_argument(
+        "--vslam-alignment",
+        default="",
+        help="Optional map alignment YAML applied to the VSLAM snapshot path.",
+    )
+    parser.add_argument(
+        "--hide-vslam-path",
+        action="store_true",
+        help="Start with the VSLAM path overlay hidden when --vslam-snapshot is provided.",
+    )
     return parser
 
 
@@ -870,6 +1050,18 @@ def main() -> int:
     )
     geometry, background = load_raster_geometry(Path(args.map_yaml))
     lanes, primary_lane_id = load_or_create_lanes(output_path, geometry)
+    vslam_path_points: List[PointPx] = []
+    if args.vslam_snapshot:
+        snapshot_path = Path(args.vslam_snapshot).expanduser().resolve()
+        alignment_path = Path(args.vslam_alignment).expanduser().resolve() if args.vslam_alignment else None
+        try:
+            vslam_path_points = load_vslam_path_pixels(snapshot_path, alignment_path, geometry)
+            if vslam_path_points:
+                print(f"[INFO] Loaded VSLAM path overlay: {len(vslam_path_points)} points.")
+            else:
+                print(f"[WARN] VSLAM snapshot had no path points: {snapshot_path}")
+        except Exception as exc:
+            print(f"[WARN] Could not load VSLAM path overlay from {snapshot_path}: {exc}")
 
     if args.export_only:
         primary_lane = next((lane for lane in lanes if lane.lane_id == primary_lane_id), lanes[0])
@@ -887,6 +1079,8 @@ def main() -> int:
         window_width=args.window_width,
         window_height=args.window_height,
         scale=args.scale,
+        vslam_path_points=vslam_path_points,
+        show_vslam_path=not args.hide_vslam_path,
     )
     editor.run()
     return 0

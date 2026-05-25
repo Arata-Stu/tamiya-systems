@@ -306,6 +306,7 @@ def main() -> None:
         default="255,96,0",
         help="B,G,R color for the saved VSLAM path. Empty uses --path-value grayscale.",
     )
+    parser.add_argument("--no-path", action="store_true", help="Do not draw the saved VSLAM path into the output image.")
     parser.add_argument("--point-radius-px", type=int, default=1)
     parser.add_argument("--path-thickness-px", type=int, default=2)
     parser.add_argument("--min-z", type=float, default=None)
@@ -414,7 +415,8 @@ def main() -> None:
 
     # Landmarks stay neutral while the path is colored as a tracing guide.
     draw_landmarks(canvas, landmark_pixels, args.point_radius_px, grayscale_bgr(args.landmark_value))
-    draw_path(canvas, path_pixels, args.path_thickness_px, parse_bgr(args.path_color_bgr, args.path_value))
+    if not args.no_path:
+        draw_path(canvas, path_pixels, args.path_thickness_px, parse_bgr(args.path_color_bgr, args.path_value))
 
     output_image = Path(args.output_image).expanduser().resolve()
     output_image.parent.mkdir(parents=True, exist_ok=True)
@@ -426,7 +428,10 @@ def main() -> None:
         print(f"Wrote map yaml: {output_yaml}")
 
     print(f"Successfully exported offline aligned landmarks: {output_image}")
-    print(f"Landmarks: {landmark_pixels.shape[0]}, Path points: {path_pixels.shape[0]}")
+    print(
+        f"Landmarks: {landmark_pixels.shape[0]}, Path points: {path_pixels.shape[0]}, "
+        f"path drawn: {'no' if args.no_path else 'yes'}"
+    )
 
 if __name__ == "__main__":
     main()

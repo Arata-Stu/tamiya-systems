@@ -70,18 +70,58 @@ apply_mode() {
       set_extra_arg_value "e2e_variant" "camera"
       ;;
 
-    offline_eval)
-      apply_mode localization_eval
+    base)
+      apply_mode production
+      ;;
+    race_map|race_map_controller)
+      apply_mode race
+      ;;
+    race_pure_pursuit)
+      apply_mode race_pp
+      ;;
+    camera_e2e_backup)
+      apply_mode e2e_backup
+      ;;
+    offline_eval|bag_eval|offline_map_eval|hd_map_eval|hd_map_debug)
+      ARG_record="false"
+      ARG_use_vehicle="false"
+      ARG_vslam="true"
+      ARG_localization="false"
       ARG_use_lidar="false"
       ARG_use_camera="false"
-      ARG_use_hd_map="true"
+      ARG_use_ftg="false"
+      ARG_use_emergency="false"
+      ARG_use_perception="false"
+      ARG_use_perception_classifier="false"
       ARG_use_planning="true"
-      ARG_use_hd_map_section_localizer="true"
+      ARG_use_hd_map="true"
+      ARG_use_magp_rl_trajectory="false"
+      ARG_magp_rl_run_pure_pursuit="false"
       ARG_use_pure_pursuit="false"
       ARG_use_map_controller="false"
       ARG_use_control_filter="false"
       ARG_use_speed_controller="false"
+      ARG_use_e2e="false"
+      ARG_use_sim_time="true"
+      ARG_publish_map="false"
+      ARG_map_server_use_sim_time="false"
+      ARG_use_localization_manager="false"
+      ARG_publish_localization_tf="false"
+      ARG_use_section_localizer="false"
+      ARG_use_hd_map_section_localizer="true"
+      ARG_section_localizer_debug_mode="false"
+      ARG_use_drive_mode_manager="false"
+      ARG_enable_localization_and_mapping="false"
+      ARG_bag_manager_param="${BAG_MANAGER_PATHS[0]}"
+      set_extra_arg_value "image_width" "$SENSOR_IMAGE_WIDTH"
+      set_extra_arg_value "image_height" "$SENSOR_IMAGE_HEIGHT"
+      set_extra_arg_value "image_fps" "$SENSOR_IMAGE_FPS"
+      set_extra_arg_value "publish_map_to_odom_tf" "true"
       set_extra_arg_value "localize_on_startup" "true"
+      set_extra_arg_value "enable_slam_visualization" "true"
+      set_extra_arg_value "enable_landmarks_view" "true"
+      set_extra_arg_value "planning_publish_local_path" "false"
+      set_extra_arg_value "planning_publish_local_reference" "false"
       ;;
 
     production)

@@ -7,7 +7,7 @@ directly.
 ## Main entrypoints
 
 - `run_docker.sh`: start the Isaac ROS development container.
-- `launch_system.sh`: launch system presets. 本番 flow の主入口は `record_mapping`、`offline_eval`、`race`、`race_pp`、`hd_map_eval`、`e2e_backup` です。`record_mapping` は Jetson 上で camera + LiDAR + TF + command topics を録る map 作成用 preset です。`record_mapping_debug` は perception crop/debug も同時に動かします。`offline_eval` は実機なしで rosbag replay から VSLAM + 2D GL + HD map + section/raceline を確認する preset です。`race` は VSLAM + 2D GL + HD map + MAP controller + speed controller、`race_pp` はその Pure Pursuit 版です。`hd_map_eval` は保存済み VSLAM/HD map の lane/section/path debug 用です。MAP 用の LUT / speed feedforward 収集には `identification` を使います。`use_speed_controller=true` で最終車体入力の直前に速度閉ループを入れます。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
+- `launch_system.sh`: launch system presets. 本番 flow の主入口は `record_mapping`、`offline_eval`、`race`、`race_pp`、`hd_map_eval`、`e2e_backup` です。`record_mapping` は Jetson 上で camera + LiDAR + TF + command topics を録る map 作成用 preset です。`record_mapping_debug` は perception crop/debug も同時に動かします。`offline_eval` / `hd_map_eval` は実機なしで rosbag replay から saved VSLAM + HD map + section/raceline + landmarks を確認する preset です。`race` は VSLAM + 2D GL + HD map + MAP controller + speed controller、`race_pp` はその Pure Pursuit 版です。MAP 用の LUT / speed feedforward 収集には `identification` を使います。`use_speed_controller=true` で最終車体入力の直前に速度閉ループを入れます。評価用には `localization_eval`、`perception_eval`、`vslam_eval` の lean preset もあります。D435 の mono/stereo を使うときは `--set perception_camera_source=left` または `right` を使えます。
 - `edit_control_filter_config.sh`: `sections_pixels.csv` を読み、section ごとの class 割り当てと class 別 filter/scale パラメータを対話編集して `control_filter.param.yaml` を生成します。
 - `tmux.sh`: create tmux layouts for the five active workflows: `record`, `map`, `race`, `e2e`, and `identification`. `record` is the Jetson data-collection layout. `map` is the note-PC layout for 2D/VSLAM/HD map creation, map editing, section/raceline tools, and offline eval. Legacy aliases like `record_mapping`, `map_build`, `mapping`, `offline_eval`, `hd_map`, and `e2e_backup` are still accepted but normalize to those five layouts.
 - `monitor.sh`: terminal monitoring dashboard.
@@ -89,7 +89,7 @@ VSLAM odometry/path、camera/crop image、LiDAR projection をまとめて表示
 1. Jetson: `record`
    camera + LiDAR + TF + `/jetracer/cmd_drive` などの command topic を rosbag に保存します。通常はこちらを使います。crop/debug も同時に欲しいときだけ pane に置いてある `record_mapping_debug` を使います。
 2. Note PC: `map`
-   保存した rosbag から 2D map / VSLAM map / HD map / section gate / raceline を作成し、同じ tmux 内の eval pane で offline eval まで確認します。`map_build`、`mapping`、`offline_eval`、`hd_map` は互換 alias です。
+   保存した rosbag から VSLAM map / HD map / section gate / raceline を作成し、同じ tmux 内の eval pane で saved VSLAM + HD map overlay を確認します。`map_build`、`mapping`、`offline_eval`、`hd_map` は互換 alias です。
 3. Jetson: `race`
    作成済み map_dir を指定して、VSLAM loadmap + 2D global localization + HD map planning + controller で走行します。
 
@@ -104,7 +104,7 @@ VSLAM odometry/path、camera/crop image、LiDAR projection をまとめて表示
   - Jetson で map 作成用 rosbag を録る。camera / LiDAR / TF / command topic が対象
 - `map`
   - Note PC で 2D map / VSLAM map / HD map 作成、section/raceline speed 反映、offline eval をまとめた作業場
-  - `ros2 bag play <bag_path> --clock --start-paused` と `launch_system.sh offline_eval --set map_dir=<map_dir>` を並べる
+  - `ros2 bag play <bag_path> --clock --start-paused` と `launch_system.sh hd_map_eval --set map_dir=<map_dir>` を並べる
   - vehicle/controller なしで、GL、HD lane/section、current section、raceline/path、camera/LiDAR overlay を確認する
 - `race`
   - VSLAM + 2D global localization + raceline planning + MAP controller + speed controller の本番走行候補
@@ -286,7 +286,8 @@ section ごとの policy は `drive_mode_manager` の param YAML で
 `launch_system.sh` の lean preset は以下を想定しています。
 
 - `identification`: `stereo camera + VSLAM + vehicle + rosbag manager`。MAP lookup と speed feedforward 用の `odom + cmd_drive` 収録向けです。global localization や LiDAR は起動しません。
-- `localization_eval`: `LiDAR + stereo camera + VSLAM + global localization + localization_manager`。車両 driver や perception は起動しません。
+- `offline_eval` / `hd_map_eval`: `saved cuVSLAM map + HD map lane/section + raceline + VSLAM landmarks`。2D map publisher/global localization は起動せず、source bag を `ros2 bag play <bag_path> --clock --start-paused` で replay して重ね合わせを見ます。
+- `localization_eval`: `LiDAR + stereo camera + VSLAM` の lean preset。HD map/raceline を見たいときは `hd_map_eval` を使います。
 - `perception_eval`: `LiDAR + stereo left/right + perception cropper + classifier`。localization や vehicle 制御は起動しません。
 - `vslam_eval`: `stereo camera + VSLAM` のみ。global localization や perception は起動しません。
 
@@ -295,16 +296,16 @@ section ごとの policy は `drive_mode_manager` の param YAML で
 ```bash
 ./scripts/launch_system.sh identification
 ./scripts/launch_system.sh production --set use_map_controller=true
+./scripts/launch_system.sh hd_map_eval --set map_dir=/map/course_a
 ./scripts/launch_system.sh localization_eval --set map_dir=/map/course_a
 ./scripts/launch_system.sh perception_eval
 ./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a
 ./scripts/launch_system.sh vslam_eval --set map_dir=/map/course_a --set use_camera=false --set use_hd_map=true --set use_hd_map_section_localizer=true --set use_planning=true --set localize_on_startup=true --set planning_publish_local_path=false --set planning_publish_local_reference=false
 ```
 
-最後の `vslam_eval` 例は source bag を `ros2 bag play <bag_path> --clock --start-paused`
-で replay し、saved cuVSLAM map 上の VSLAM pose と HD lane/raceline を
-offline で重ねて見る用途です。landmarks が必要な回だけ
-`--set enable_slam_visualization=true --set enable_landmarks_view=true` を足します。
+`hd_map_eval` は source bag を `ros2 bag play <bag_path> --clock --start-paused`
+で replay し、saved cuVSLAM map 上の VSLAM pose、landmarks、HD lane/raceline を
+offline で重ねて見る用途です。
 `map_dir` があると cuVSLAM は `<map_dir>/cuvslam_map` を load path に使います。
 `localize_on_startup=true` は同じ start 付近から bag を replay する saved map
 確認向けです。
