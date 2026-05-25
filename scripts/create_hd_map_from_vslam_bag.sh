@@ -152,7 +152,7 @@ launch_hdmap_vslam_stack() {
             ;;
         saved_reference)
             launch_args+=(
-                "enable_localization_and_mapping:=false"
+                "enable_localization_and_mapping:=true"
                 "load_map_path:=${VSLAM_MAP_DIR}"
                 "localize_on_startup:=true"
                 "publish_map_to_odom_tf:=true"
