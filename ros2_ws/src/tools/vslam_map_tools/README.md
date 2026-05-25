@@ -70,11 +70,10 @@ ros2 run vslam_map_tools export_landmarks_png.py -- \
 ## record_vslam_reference_snapshot.py / publish_saved_vslam_reference.py
 
 `/visual_slam/tracking/slam_path` と `/visual_slam/tracking/odometry` の最後の状態を JSON に保存し、
-必要なら `/visual_slam/vis/landmarks_cloud` や `/visual_slam/vis/localizer_map_cloud` も同じ JSON に含めます。
+必要なら `/visual_slam/vis/landmarks_cloud` も同じ JSON に含めます。
 後で current time 付きで再 publish する補助です。`create_2d_map_from_bag.sh --prepare-vslam-map-alignment`
 ではこの組み合わせを使って、2D map と saved path を見ながら `map -> vslam_map` を後追い調整できます。
-HD map 作成 flow では保存済み cuVSLAM map を読み直した後の `localizer_map_cloud`
-を記録し、editor と `hd_map_eval` の VSLAM 座標がずれないようにしています。
+HD map 作成 flow では mapping 中の landmarks と path を記録し、editor の下絵と path overlay に使います。
 
 保存:
 
@@ -82,7 +81,7 @@ HD map 作成 flow では保存済み cuVSLAM map を読み直した後の `loca
 ros2 run vslam_map_tools record_vslam_reference_snapshot.py -- \
   --path-topic /visual_slam/tracking/slam_path \
   --odom-topic /visual_slam/tracking/odometry \
-  --landmarks-topic /visual_slam/vis/localizer_map_cloud \
+  --landmarks-topic /visual_slam/vis/landmarks_cloud \
   --output /tmp/vslam_reference.json
 ```
 

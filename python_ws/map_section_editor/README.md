@@ -47,8 +47,8 @@ python3 map_section_editor/hd_map_editor.py \
   --centerline-output /map/course_a/course_a_centerline.csv
 ```
 
-`create_hd_map_from_vslam_bag.sh` から起動した場合は、保存済み cuVSLAM map を
-読み直して作った VSLAM path を editor の
+`create_hd_map_from_vslam_bag.sh` から起動した場合は、offline VSLAM 中に保存した
+VSLAM path を editor の
 別レイヤとして濃い青で表示します。邪魔なときは `v` で表示/非表示を切り替え、
 landmarks のコース形状を見て境界と中心線を補正してください。
 同じ出力を手動で開き直す場合は、`--vslam-snapshot <map>_vslam_reference.json` を

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Local HD map experiment flow:
-#   sensor bag -> saved cuVSLAM reference snapshot -> landmark raster -> HD map editor
+#   sensor bag -> offline VSLAM reference snapshot -> landmark raster -> HD map editor
 
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
@@ -42,10 +42,6 @@ Options:
   --snapshot PATH         VSLAM reference snapshot path
   --skip-vslam            reuse --snapshot instead of replaying the bag
   --no-save-vslam-map     do not save cuVSLAM native map after replay
-  --no-saved-map-reference do not reload the saved cuVSLAM map for the editor snapshot
-  --saved-reference-landmarks-topic TOPIC
-                          PointCloud2 topic used after reloading cuVSLAM map
-                          (default: /visual_slam/vis/localizer_map_cloud)
   --reference-yaml PATH   optional raster geometry from an existing 2D map YAML
   --alignment PATH        optional vslam_map_alignment.yaml for snapshot export
   --landmark-resolution M auto-raster resolution without --reference-yaml (default: 0.02)
@@ -82,11 +78,10 @@ Default outputs:
 
 Typical flow:
   1) bag and map name are selected interactively unless options provide them
-  2) offline VSLAM creates and saves the native cuVSLAM map
-  3) the saved cuVSLAM map is reloaded and recorded as the editor reference
-  4) snapshot data is rasterized into a PNG+YAML HD editor background
-  5) hd_map_editor.py opens for left/right/centerline editing
-  6) a centerline CSV, raceline CSV, and debug overlay PNG are produced when saved
+  2) offline VSLAM runs in the local map frame and records final landmarks/path
+  3) snapshot data is rasterized into a PNG+YAML HD editor background
+  4) hd_map_editor.py opens for left/right/centerline editing
+  5) a centerline CSV, raceline CSV, and debug overlay PNG are produced when saved
 EOF
 }
 
@@ -129,7 +124,6 @@ cleanup_all() {
 }
 
 launch_hdmap_vslam_stack() {
-    local mode="${1:-mapping}"
     local -a launch_args=(
         "use_sim_time:=true"
         "image_width:=${IMAGE_WIDTH}"
@@ -139,29 +133,14 @@ launch_hdmap_vslam_stack() {
         "vslam_map_parent_frame:=map"
         "publish_vslam_map_identity_tf:=false"
         "use_image_preprocessors:=${USE_IMAGE_PREPROCESSORS}"
+        "enable_localization_and_mapping:=true"
         "enable_slam_visualization:=true"
         "enable_landmarks_view:=true"
     )
 
-    case "${mode}" in
-        mapping)
-            launch_args+=("enable_localization_and_mapping:=true")
-            if [ "${SAVE_VSLAM_MAP}" = true ]; then
-                launch_args+=("save_map_path:=${VSLAM_MAP_DIR}")
-            fi
-            ;;
-        saved_reference)
-            launch_args+=(
-                "enable_localization_and_mapping:=true"
-                "load_map_path:=${VSLAM_MAP_DIR}"
-                "localize_on_startup:=true"
-                "publish_map_to_odom_tf:=true"
-            )
-            ;;
-        *)
-            die "Unknown VSLAM launch mode: ${mode}"
-            ;;
-    esac
+    if [ "${SAVE_VSLAM_MAP}" = true ]; then
+        launch_args+=("save_map_path:=${VSLAM_MAP_DIR}")
+    fi
 
     if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
         build_system_launch_cmd "offline_sensor_tf.launch.xml"
@@ -181,7 +160,7 @@ launch_hdmap_vslam_stack() {
     launch_background_process "VSLAM_LAUNCH_PID" "VSLAM_LAUNCH_USES_SETSID" \
         "${SYSTEM_LAUNCH_CMD[@]}" \
         "${launch_args[@]}" \
-        > "${CURRENT_VSLAM_LOG_PATH}" 2>&1
+        > "${VSLAM_LOG_PATH}" 2>&1
 }
 
 start_vslam_snapshot_recorder() {
@@ -200,15 +179,6 @@ start_vslam_snapshot_recorder() {
     launch_background_process "VSLAM_REFERENCE_PID" "VSLAM_REFERENCE_USES_SETSID" \
         "${recorder_cmd[@]}" \
         > "${log_path}" 2>&1
-}
-
-snapshot_has_landmarks() {
-    local snapshot_path="$1"
-
-    python3 -c 'import json, sys
-data = json.load(open(sys.argv[1], encoding="utf-8"))
-landmarks = data.get("landmarks") or {}
-raise SystemExit(0 if landmarks.get("data") else 1)' "${snapshot_path}"
 }
 
 append_topic_info() {
@@ -267,13 +237,7 @@ run_vslam_diagnostics() {
         append_topic_info "/camera/imu"
         append_topic_info "/visual_slam/tracking/odometry"
         append_topic_info "/visual_slam/tracking/slam_path"
-        append_topic_info "${CURRENT_VSLAM_LANDMARKS_TOPIC}"
-        if [ "${CURRENT_VSLAM_LANDMARKS_TOPIC}" != "/visual_slam/vis/landmarks_cloud" ]; then
-            append_topic_info "/visual_slam/vis/landmarks_cloud"
-        fi
-        if [ "${CURRENT_VSLAM_LANDMARKS_TOPIC}" != "${SAVED_REFERENCE_LANDMARKS_TOPIC}" ]; then
-            append_topic_info "${SAVED_REFERENCE_LANDMARKS_TOPIC}"
-        fi
+        append_topic_info "/visual_slam/vis/landmarks_cloud"
 
         echo ""
         echo "----- ros2 param get use_sim_time -----"
@@ -328,16 +292,7 @@ play_vslam_source_bag() {
 }
 
 run_vslam_snapshot_capture() {
-    local mapping_snapshot_path="${SNAPSHOT_PATH}"
-    local saved_snapshot_capture_path="${SAVED_REFERENCE_SNAPSHOT_CAPTURE_PATH}"
-    local native_vslam_map_ready=false
-
-    if [ "${SAVE_VSLAM_MAP}" = true ] && [ "${USE_SAVED_VSLAM_REFERENCE}" = true ]; then
-        mapping_snapshot_path="${MAPPING_SNAPSHOT_PATH}"
-    fi
-
-    echo "[1/5] Launch offline VSLAM to build native cuVSLAM map"
-    CURRENT_VSLAM_LOG_PATH="${VSLAM_LOG_PATH}"
+    echo "[1/4] Launch offline VSLAM for HD map reference"
     echo "  - VSLAM log : ${VSLAM_LOG_PATH}"
     echo "  - diag log  : ${VSLAM_DIAGNOSTICS_LOG_PATH}"
     echo "  - sim time  : true (rosbag replay uses --clock)"
@@ -347,105 +302,42 @@ run_vslam_snapshot_capture() {
     else
         echo "  - TF source : rosbag /tf_static during replay"
     fi
-    CURRENT_VSLAM_LANDMARKS_TOPIC="/visual_slam/vis/landmarks_cloud"
-    launch_hdmap_vslam_stack "mapping"
+    launch_hdmap_vslam_stack
 
-    echo "[2/5] Wait for visual_slam/save_map"
+    echo "[2/4] Wait for visual_slam/save_map"
     if ! wait_for_service "/visual_slam/save_map" 60; then
-        die "Visual SLAM service did not become ready. Check ${CURRENT_VSLAM_LOG_PATH}"
+        die "Visual SLAM service did not become ready. Check ${VSLAM_LOG_PATH}"
     fi
     run_vslam_diagnostics "after visual_slam service became ready"
 
-    echo "[3/5] Record mapping snapshot while replaying bag"
-    if [ "${mapping_snapshot_path}" != "${SNAPSHOT_PATH}" ]; then
-        echo "  - mapping snapshot : ${mapping_snapshot_path}"
-    fi
-    start_vslam_snapshot_recorder "/visual_slam/vis/landmarks_cloud" "${mapping_snapshot_path}" "${SNAPSHOT_LOG_PATH}"
+    echo "[3/4] Record VSLAM landmarks/path snapshot while replaying bag"
+    start_vslam_snapshot_recorder "/visual_slam/vis/landmarks_cloud" "${SNAPSHOT_PATH}" "${SNAPSHOT_LOG_PATH}"
     sleep 2
     run_vslam_diagnostics "after snapshot recorder start, before rosbag replay"
 
-    play_vslam_source_bag "${PLAYER_LOG_PATH}" "during mapping rosbag replay"
+    play_vslam_source_bag "${PLAYER_LOG_PATH}" "during rosbag replay"
 
     sleep 2
     run_vslam_diagnostics "after rosbag replay, before snapshot recorder stop"
     stop_snapshot_recorder
 
-    if [ ! -f "${mapping_snapshot_path}" ]; then
+    if [ ! -f "${SNAPSHOT_PATH}" ]; then
         run_vslam_diagnostics "snapshot missing after recorder stop"
         die "VSLAM snapshot was not written. Check ${SNAPSHOT_LOG_PATH} and ${VSLAM_DIAGNOSTICS_LOG_PATH}"
     fi
 
-    echo "[4/5] Save native cuVSLAM map and stop mapping stack"
+    echo "[4/4] Save native cuVSLAM map and stop stack"
     if [ "${SAVE_VSLAM_MAP}" = true ]; then
         mkdir -p "${VSLAM_MAP_DIR}"
         if ! ros2 service call /visual_slam/save_map \
             isaac_ros_visual_slam_interfaces/srv/FilePath \
             "$(printf "{file_path: '%s'}" "${VSLAM_MAP_DIR}")" > /dev/null; then
-            if [ "${USE_SAVED_VSLAM_REFERENCE}" = true ]; then
-                echo "Warning: visual_slam/save_map failed. Saved-map reference cannot be recorded." >&2
-            else
-                echo "Warning: visual_slam/save_map failed. Mapping snapshot export can still continue." >&2
-            fi
-        else
-            native_vslam_map_ready=true
+            echo "Warning: visual_slam/save_map failed. Snapshot export can still continue." >&2
         fi
     else
         echo "  - native map save disabled"
     fi
     stop_vslam_stack
-
-    if [ "${SAVE_VSLAM_MAP}" != true ]; then
-        echo "[5/5] Use mapping snapshot for editor reference because native map save is disabled"
-        return 0
-    fi
-
-    if [ "${USE_SAVED_VSLAM_REFERENCE}" != true ]; then
-        echo "[5/5] Use mapping snapshot for editor reference (--no-saved-map-reference)"
-        if [ "${mapping_snapshot_path}" != "${SNAPSHOT_PATH}" ]; then
-            mv "${mapping_snapshot_path}" "${SNAPSHOT_PATH}"
-        fi
-        return 0
-    fi
-
-    if [ "${native_vslam_map_ready}" != true ]; then
-        die "Native cuVSLAM map was not saved, so the saved-map editor reference cannot be recorded."
-    fi
-
-    echo "[5/5] Reload saved cuVSLAM map and record final editor reference"
-    echo "  - saved map         : ${VSLAM_MAP_DIR}"
-    echo "  - landmark topic    : ${SAVED_REFERENCE_LANDMARKS_TOPIC}"
-    echo "  - VSLAM log         : ${VSLAM_SAVED_REFERENCE_LOG_PATH}"
-    echo "  - snapshot log      : ${SAVED_REFERENCE_SNAPSHOT_LOG_PATH}"
-    echo "  - replay log        : ${SAVED_REFERENCE_PLAYER_LOG_PATH}"
-    CURRENT_VSLAM_LOG_PATH="${VSLAM_SAVED_REFERENCE_LOG_PATH}"
-    CURRENT_VSLAM_LANDMARKS_TOPIC="${SAVED_REFERENCE_LANDMARKS_TOPIC}"
-    launch_hdmap_vslam_stack "saved_reference"
-
-    if ! wait_for_service "/visual_slam/save_map" 60; then
-        die "Visual SLAM service did not become ready after loading saved map. Check ${CURRENT_VSLAM_LOG_PATH}"
-    fi
-    run_vslam_diagnostics "after saved cuVSLAM map load"
-
-    start_vslam_snapshot_recorder "${SAVED_REFERENCE_LANDMARKS_TOPIC}" "${saved_snapshot_capture_path}" "${SAVED_REFERENCE_SNAPSHOT_LOG_PATH}"
-    sleep 2
-    run_vslam_diagnostics "after saved-map snapshot recorder start, before rosbag replay"
-
-    play_vslam_source_bag "${SAVED_REFERENCE_PLAYER_LOG_PATH}" "during saved-map rosbag replay"
-
-    sleep 2
-    run_vslam_diagnostics "after saved-map rosbag replay, before snapshot recorder stop"
-    stop_snapshot_recorder
-    stop_vslam_stack
-
-    if [ ! -f "${saved_snapshot_capture_path}" ]; then
-        run_vslam_diagnostics "saved-map snapshot missing after recorder stop"
-        die "Saved-map VSLAM snapshot was not written. Check ${SAVED_REFERENCE_SNAPSHOT_LOG_PATH} and ${VSLAM_DIAGNOSTICS_LOG_PATH}"
-    fi
-    if ! snapshot_has_landmarks "${saved_snapshot_capture_path}"; then
-        die "Saved-map VSLAM snapshot has no landmarks from ${SAVED_REFERENCE_LANDMARKS_TOPIC}. Check ${SAVED_REFERENCE_SNAPSHOT_LOG_PATH}, or retry with --saved-reference-landmarks-topic /visual_slam/vis/landmarks_cloud."
-    fi
-    mv "${saved_snapshot_capture_path}" "${SNAPSHOT_PATH}"
-    echo "  - final VSLAM snapshot: ${SNAPSHOT_PATH}"
 }
 
 export_landmark_raster() {
@@ -605,9 +497,6 @@ print_summary() {
     echo "HD map experiment outputs:"
     echo "  - directory       : ${MAP_DIR}"
     echo "  - VSLAM snapshot  : ${SNAPSHOT_PATH}"
-    if [ -f "${MAPPING_SNAPSHOT_PATH}" ] && [ "${MAPPING_SNAPSHOT_PATH}" != "${SNAPSHOT_PATH}" ]; then
-        echo "  - mapping snapshot: ${MAPPING_SNAPSHOT_PATH}"
-    fi
     echo "  - landmark raster : ${LANDMARK_YAML_PATH}"
     echo "  - HD map YAML     : ${HD_MAP_YAML_PATH}"
     echo "  - centerline CSV  : ${CENTERLINE_CSV_PATH}"
@@ -635,7 +524,6 @@ USE_IMAGE_PREPROCESSORS=false
 LAUNCH_OFFLINE_TF=false
 ENABLE_VSLAM_DIAGNOSTICS=true
 SAVE_VSLAM_MAP=true
-USE_SAVED_VSLAM_REFERENCE=true
 SKIP_VSLAM=false
 OPEN_EDITOR=true
 GENERATE_RACELINE=true
@@ -661,12 +549,9 @@ EDITOR_SCALE="1.0"
 HD_MAP_EDITOR_SCRIPT_PATH=""
 RACELINE_SCRIPT_PATH=""
 LINE_PREVIEW_SCRIPT_PATH=""
-SAVED_REFERENCE_LANDMARKS_TOPIC="/visual_slam/vis/localizer_map_cloud"
-CURRENT_VSLAM_LANDMARKS_TOPIC="/visual_slam/vis/landmarks_cloud"
 ROSBAG_CANDIDATES=()
 SOURCE_PLAY_TOPICS=()
 SYSTEM_LAUNCH_CMD=()
-CURRENT_VSLAM_LOG_PATH=""
 
 OFFLINE_TF_PID=""
 OFFLINE_TF_USES_SETSID=false
@@ -753,14 +638,6 @@ while (($#)); do
         --no-save-vslam-map)
             SAVE_VSLAM_MAP=false
             shift
-            ;;
-        --no-saved-map-reference)
-            USE_SAVED_VSLAM_REFERENCE=false
-            shift
-            ;;
-        --saved-reference-landmarks-topic)
-            SAVED_REFERENCE_LANDMARKS_TOPIC="$2"
-            shift 2
             ;;
         --reference-yaml)
             REFERENCE_YAML_PATH="$2"
@@ -922,13 +799,8 @@ LINE_PREVIEW_PNG_PATH="${LINE_PREVIEW_PNG_OVERRIDE_PATH:-${MAP_STEM}_lines.png}"
 RUN_STAMP="$(date +%Y%m%d_%H%M%S)"
 TF_LOG_PATH="/tmp/create_hd_map_vslam_tf_${RUN_STAMP}.log"
 VSLAM_LOG_PATH="/tmp/create_hd_map_vslam_${RUN_STAMP}.log"
-VSLAM_SAVED_REFERENCE_LOG_PATH="/tmp/create_hd_map_vslam_saved_reference_${RUN_STAMP}.log"
 PLAYER_LOG_PATH="/tmp/create_hd_map_vslam_player_${RUN_STAMP}.log"
-SAVED_REFERENCE_PLAYER_LOG_PATH="/tmp/create_hd_map_vslam_saved_reference_player_${RUN_STAMP}.log"
 SNAPSHOT_LOG_PATH="${MAP_DIR}/hd_map_vslam_snapshot_${RUN_STAMP}.log"
-SAVED_REFERENCE_SNAPSHOT_LOG_PATH="${MAP_DIR}/hd_map_vslam_saved_reference_snapshot_${RUN_STAMP}.log"
-MAPPING_SNAPSHOT_PATH="${MAP_STEM}_vslam_mapping_reference.json"
-SAVED_REFERENCE_SNAPSHOT_CAPTURE_PATH="${MAP_STEM}_vslam_saved_reference_capture_${RUN_STAMP}.json"
 VSLAM_DIAGNOSTICS_LOG_PATH="${MAP_DIR}/hd_map_vslam_diagnostics_${RUN_STAMP}.log"
 EXPORT_LOG_PATH="${MAP_DIR}/hd_map_landmark_export_${RUN_STAMP}.log"
 RACELINE_LOG_PATH="${MAP_DIR}/hd_map_raceline_${RUN_STAMP}.log"
