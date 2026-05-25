@@ -17,6 +17,7 @@
   <exec_depend>speed_controller</exec_depend>
   <exec_depend>drive_mode_manager</exec_depend>
   <exec_depend>hd_map_publisher</exec_depend>
+  <exec_depend>hd_map_virtual_scan</exec_depend>
   <exec_depend>vslam_map_tools</exec_depend>
 
   <export>

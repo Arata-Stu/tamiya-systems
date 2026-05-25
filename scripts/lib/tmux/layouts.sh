@@ -81,6 +81,10 @@ create_e2e_layout() {
 
 create_e2e_train_layout() {
   reset_panes
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_PREPROCESS"
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_TRAIN"
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_SCP"
+  add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_LIDAR_E2E_DEPLOY"
   add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_PREPROCESS"
   add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_TRAIN"
   add_pane "$WINDOW_TOOLS" "$PYTHON_DIR" "$ROS_SETUP" "$CMD_E2E_SCP"

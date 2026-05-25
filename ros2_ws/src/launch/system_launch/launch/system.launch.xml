@@ -5,6 +5,7 @@
     <arg name="vslam" default="false" description="run vslam node"/>
     <arg name="localization" default="false" description="run localization node"/>
     <arg name="use_lidar" default="false" description="use lidar"/>
+    <arg name="use_virtual_scan" default="false" description="generate LaserScan from HD map lane boundaries and VSLAM odometry"/>
     <arg name="use_camera" default="false" description="use camera"/>
     <arg name="use_ftg" default="false" description="run FTG controller in lidar component container"/>
     <arg name="use_emergency" default="false" description="run emergency override controller"/>
@@ -103,6 +104,10 @@
     <arg name="pure_pursuit_odometry_topic" default="/visual_slam/tracking/odometry" />
     <arg name="speed_controller_param" default="$(find-pkg-share system_launch)/config/control/speed_controller.param.yaml" />
     <arg name="speed_controller_odometry_topic" default="/visual_slam/tracking/odometry" />
+    <arg name="virtual_scan_param" default="$(find-pkg-share hd_map_virtual_scan)/config/hd_map_virtual_scan.param.yaml" />
+    <arg name="virtual_scan_topic" default="/virtual_scan" />
+    <arg name="virtual_scan_odometry_topic" default="/visual_slam/tracking/odometry" />
+    <arg name="virtual_scan_debug_markers_topic" default="/virtual_scan/debug_markers" />
 
     <!-- Perception -->
     <arg name="perception_param" default="$(find-pkg-share system_launch)/config/perception/scan_image_projection_cropper.param.yaml" />
@@ -320,7 +325,7 @@
 
     <!-- system.launch owns the shared LiDAR component container.
          sensor_kit and localization/eval consumers only load components into it. -->
-    <group if="$(eval '\'$(var use_lidar)\'.strip().lower() == \'true\' or \'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\'])')">
+    <group if="$(eval '\'$(var use_lidar)\'.strip().lower() == \'true\' or \'$(var use_virtual_scan)\'.strip().lower() == \'true\' or \'$(var localization)\'.strip().lower() == \'true\' or \'$(var use_ftg)\'.strip().lower() == \'true\' or \'$(var use_magp_rl_trajectory)\'.strip().lower() == \'true\' or (\'$(var use_e2e)\'.strip().lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'lidar\', \'lidar_control\', \'lidar_e2e\', \'lidar_trajectory\', \'lidar_traj\', \'magp_rl_trajectory\'])')">
         <node pkg="rclcpp_components"
               exec="component_container"
               output="screen"
@@ -385,6 +390,20 @@
         <arg name="realsense_base_frame" value="$(var resolved_vehicle_camera_frame)"/>
         <arg name="publish_realsense_mount_tf" value="false"/>
     </include>
+
+    <!-- Virtual LaserScan from HD map lane boundaries -->
+    <group if="$(var use_virtual_scan)">
+        <include file="$(find-pkg-share hd_map_virtual_scan)/launch/hd_map_virtual_scan.launch.xml">
+            <arg name="param_file" value="$(var virtual_scan_param)"/>
+            <arg name="container_name" value="$(var lidar_container_name)"/>
+            <arg name="create_container" value="false"/>
+            <arg name="hd_map_yaml_path" value="$(var resolved_hd_map_yaml_path)"/>
+            <arg name="use_sim_time" value="$(var use_sim_time)"/>
+            <arg name="odometry_topic" value="$(var virtual_scan_odometry_topic)"/>
+            <arg name="scan_topic" value="$(var virtual_scan_topic)"/>
+            <arg name="debug_markers_topic" value="$(var virtual_scan_debug_markers_topic)"/>
+        </include>
+    </group>
 
     <!-- Unified E2E Pipelines -->
     <group if="$(eval '\'$(var use_e2e)\'.lower() == \'true\' and \'$(var e2e_variant)\'.strip().lower() in [\'camera\', \'camera_control\', \'camera_e2e\']')">

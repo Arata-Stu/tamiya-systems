@@ -1,0 +1,29 @@
+<launch>
+  <arg name="param_file" default="$(find-pkg-share hd_map_virtual_scan)/config/hd_map_virtual_scan.param.yaml"/>
+  <arg name="container_name" default="lidar_container"/>
+  <arg name="create_container" default="true"/>
+  <arg name="hd_map_yaml_path" default=""/>
+  <arg name="use_sim_time" default="false"/>
+  <arg name="odometry_topic" default="/visual_slam/tracking/odometry"/>
+  <arg name="scan_topic" default="/virtual_scan"/>
+  <arg name="debug_markers_topic" default="/virtual_scan/debug_markers"/>
+
+  <node pkg="rclcpp_components"
+        exec="component_container_mt"
+        output="screen"
+        args="--ros-args -r ComponentManager:__node:=$(var container_name)"
+        if="$(var create_container)"/>
+
+  <load_composable_node target="$(var container_name)">
+    <composable_node pkg="hd_map_virtual_scan"
+                     plugin="hd_map_virtual_scan::HdMapVirtualScanComponent"
+                     name="hd_map_virtual_scan">
+      <param from="$(var param_file)"/>
+      <param name="hd_map_yaml_path" value="$(var hd_map_yaml_path)"/>
+      <param name="use_sim_time" value="$(var use_sim_time)"/>
+      <remap from="odometry" to="$(var odometry_topic)"/>
+      <remap from="scan" to="$(var scan_topic)"/>
+      <remap from="debug_markers" to="$(var debug_markers_topic)"/>
+    </composable_node>
+  </load_composable_node>
+</launch>

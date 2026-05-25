@@ -1,0 +1,25 @@
+hd_map_virtual_scan:
+  ros__parameters:
+    hd_map_yaml_path: ""
+    frame_id_override: ""
+    scan_frame_id: laser
+    lane_id: ""
+    use_primary_lane_only: false
+    include_left_bound: true
+    include_right_bound: true
+    include_centerline: false
+
+    scan_points: 320
+    angle_min: -3.141592653589793
+    angle_max: 3.141592653589793
+    range_min: 0.02
+    range_max: 12.0
+    scan_time: 0.0
+    publish_inf_for_miss: false
+
+    lidar_x: 0.2725
+    lidar_y: 0.0
+    lidar_yaw: 0.0
+
+    publish_debug_markers: false
+    warn_on_frame_mismatch: true

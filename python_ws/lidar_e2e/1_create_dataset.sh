@@ -21,13 +21,15 @@ NC='\033[0m' # No Color
 
 # --- ヘルプ関数 ---
 show_help() {
-    echo "Usage: $0 -b <path> -o <path>"
+    echo "Usage: $0 -b <path> -o <path> [--scan_topic <topic>] [--cmd_topic <topic>]"
     echo ""
     echo "Interactively select sequences and preprocess them to create train/test datasets."
     echo ""
     echo "Options:"
     echo "  -b, --base_dir   Base directory to search for sequences (recursively)"
     echo "  -o, --outdir     Output root directory for datasets (e.g., ./datasets)"
+    echo "  --scan_topic     LaserScan topic to extract (default: /scan)"
+    echo "  --cmd_topic      AckermannDriveStamped topic to extract (default: /jetracer/cmd_drive)"
     echo "  --legacy-select  Use the old number-input selector instead of checkbox TUI"
     echo "  -h, --help       Show this help message"
 }
@@ -35,6 +37,8 @@ show_help() {
 # --- 引数解析 ---
 BASE_DIR=""
 OUTDIR=""
+SCAN_TOPIC="/scan"
+CMD_TOPIC="/jetracer/cmd_drive"
 LEGACY_SELECT="false"
 
 while [[ $# -gt 0 ]]; do
@@ -46,6 +50,14 @@ while [[ $# -gt 0 ]]; do
         ;;
         -o|--outdir)
         OUTDIR="$2"
+        shift 2
+        ;;
+        --scan_topic|--scan-topic)
+        SCAN_TOPIC="$2"
+        shift 2
+        ;;
+        --cmd_topic|--cmd-topic)
+        CMD_TOPIC="$2"
         shift 2
         ;;
         --legacy-select)
@@ -155,8 +167,10 @@ run_extraction() {
     mkdir -p "$output_dir"
     echo -e "\n🚀 Starting preprocessing for ${GREEN}${dataset_name}${NC} dataset..."
     echo -e "   Outputting to: ${CYAN}$output_dir${NC}"
+    echo -e "   scan_topic: ${CYAN}$SCAN_TOPIC${NC}"
+    echo -e "   cmd_topic : ${CYAN}$CMD_TOPIC${NC}"
 
-    python3 "$PREPROCESS_SCRIPT_PATH" --seq_dirs "${seq_paths[@]}" --outdir "$output_dir"
+    python3 "$PREPROCESS_SCRIPT_PATH" --seq_dirs "${seq_paths[@]}" --outdir "$output_dir" --scan_topic "$SCAN_TOPIC" --cmd_topic "$CMD_TOPIC"
     
     if [ $? -eq 0 ]; then
         echo -e "✅ Finished preprocessing for ${GREEN}${dataset_name}${NC}."

@@ -64,6 +64,7 @@ BOOL_KEYS=(
   vslam
   localization
   use_lidar
+  use_virtual_scan
   use_camera
   use_perception
   use_perception_classifier
@@ -90,6 +91,7 @@ ARG_use_vehicle="true"
 ARG_vslam="false"
 ARG_localization="false"
 ARG_use_lidar="false"
+ARG_use_virtual_scan="false"
 ARG_use_camera="false"
 ARG_use_perception="false"
 ARG_use_perception_classifier="false"
@@ -285,6 +287,7 @@ ROS2_LAUNCH_CMD=(
   "vslam:=${ARG_vslam}"
   "localization:=${ARG_localization}"
   "use_lidar:=${ARG_use_lidar}"
+  "use_virtual_scan:=${ARG_use_virtual_scan}"
   "use_camera:=${ARG_use_camera}"
   "use_perception:=${ARG_use_perception}"
   "use_perception_classifier:=${ARG_use_perception_classifier}"

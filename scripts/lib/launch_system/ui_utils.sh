@@ -41,6 +41,8 @@ Examples:
   ${SCRIPT_NAME} sensor_data_recording -i
   ${SCRIPT_NAME} sensor_data_recording --bag-manager mapping
   ${SCRIPT_NAME} sensor_data_recording --set record=false --dry-run
+  ${SCRIPT_NAME} hd_map_eval --set map_dir=/map/mybag/mycourse --set use_virtual_scan=true
+  ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse --e2e lidar --set use_lidar=false --set use_virtual_scan=true --set e2e_lidar_scan_topic=/virtual_scan
   ${SCRIPT_NAME} production --set map_dir=/map/mybag/mycourse
   ${SCRIPT_NAME} production --set use_perception=true
   ${SCRIPT_NAME} production --set use_perception=true --set use_perception_classifier=true
@@ -502,8 +504,8 @@ warn_if_mode_incomplete() {
         fi
         ;;
       lidar|lidar_control|lidar_e2e|lidar_trajectory|lidar_traj|magp_rl_trajectory)
-        if [[ "$(get_arg use_lidar)" != "true" ]]; then
-          echo "Warning: e2e_variant=${e2e_variant} expects use_lidar=true." >&2
+        if [[ "$(get_arg use_lidar)" != "true" && "$(get_arg use_virtual_scan)" != "true" ]]; then
+          echo "Warning: e2e_variant=${e2e_variant} expects use_lidar=true or use_virtual_scan=true." >&2
         fi
         ;;
     esac

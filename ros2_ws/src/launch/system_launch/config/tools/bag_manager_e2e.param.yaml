@@ -6,6 +6,7 @@
     topics:
       - /scan
       - /scan_raw
+      - /virtual_scan
       - /camera/left/image_raw
       - /camera/left/camera_info
       - /camera/right/image_raw
