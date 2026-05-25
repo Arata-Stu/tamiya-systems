@@ -47,7 +47,8 @@ python3 map_section_editor/hd_map_editor.py \
   --centerline-output /map/course_a/course_a_centerline.csv
 ```
 
-`create_hd_map_from_vslam_bag.sh` から起動した場合は、saved VSLAM path を editor の
+`create_hd_map_from_vslam_bag.sh` から起動した場合は、保存済み cuVSLAM map を
+読み直して作った VSLAM path を editor の
 別レイヤとして濃い青で表示します。邪魔なときは `v` で表示/非表示を切り替え、
 landmarks のコース形状を見て境界と中心線を補正してください。
 同じ出力を手動で開き直す場合は、`--vslam-snapshot <map>_vslam_reference.json` を
@@ -102,8 +103,8 @@ python3 data_analysis/visualize_race_lines.py \
 
 この HD map wrapper の raceline 既定値も `race-stacks` / `global-opt` /
 `mincurv` です。global optimizer 依存が未導入なら raceline 生成だけ warning にして、
-HD map YAML と centerline CSV は残します。下絵 raster は landmarks を黒寄り、
-saved VSLAM path を濃い青で描きます。
+HD map YAML と centerline CSV は残します。下絵 raster は landmarks を黒寄りに描き、
+VSLAM path は editor の toggleable overlay として表示します。
 
 YAML を手で編集したあと CSV だけ作り直す場合:
 
