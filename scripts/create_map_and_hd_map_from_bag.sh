@@ -23,31 +23,26 @@ Usage:
 
 Default flow:
   1. Pick one rosbag and one map name.
-  2. Replay it once while Cartographer and online cuVSLAM run together.
-  3. Save the 2D map PNG for GL use and the cuVSLAM map/reference snapshot.
-  4. Export the VSLAM landmark raster, open the HD lane editor, then generate raceline.
-  5. Optionally continue to the HD section-gate editor or scp transfer.
+  2. Replay the bag and generate a cuVSLAM map and reference snapshot (Cartographer 2D mapping is skipped).
+  3. Export the VSLAM landmark raster, open the HD lane editor, then generate raceline.
+  4. Optionally continue to the HD section-gate editor or scp transfer.
 
 Options:
   --bag-path DIR          input rosbag2 directory (skip interactive selection)
   --map-name NAME         output map name (skip interactive prompt)
   --record-root DIR       rosbag search root for interactive selection (default: /record)
-  --mode NAME             online 2D mode: with_odom_online_vslam or no_odom_online_vslam
-                          (default: with_odom_online_vslam)
-  --rate RATE             ros2 bag play rate for 2D/VSLAM mapping (default: 1.0)
+  --rate RATE             ros2 bag play rate for VSLAM mapping (default: 1.0)
   --image-width PX        online VSLAM image width (default: 424)
   --image-height PX       online VSLAM image height (default: 240)
-  --image-fps FPS         online VSLAM image fps (default: 90.0)
   --with-imu              replay /camera/imu during mapping (default)
   --no-imu                do not replay /camera/imu
   --play-all-topics       replay every source-bag topic instead of filtered topics
   --use-image-preprocessors run rectify/mono preprocessing before VSLAM
   --no-image-preprocessors make VSLAM subscribe to recorded camera topics directly (default)
   --launch-offline-tf     publish fallback base_link TFs instead of using only bag TFs
-  --skip-2d-map           reuse existing <map_dir>/<map_name>.yaml and VSLAM snapshot
-  --allow-missing-2d-png  continue even if <map_name>.png was not generated
+  --skip-vslam            reuse existing VSLAM snapshot
   --editor-scale SCALE    initial HD editor zoom; 0 fits the whole raster (default: 0)
-  --no-editor             only create 2D/VSLAM/HD raster outputs; do not open HD editor
+  --no-editor             only create VSLAM/HD raster outputs; do not open HD editor
   --no-raceline           skip raceline generation after the HD editor exits
   --no-line-preview       skip centerline/raceline overlay PNG generation
   --open-section-editor   open the HD section-gate editor after raceline generation
@@ -58,8 +53,6 @@ Options:
   -h, --help              show this help
 
 Outputs:
-  /map/<source_bag>/<MAP_NAME>/<MAP_NAME>.yaml
-  /map/<source_bag>/<MAP_NAME>/<MAP_NAME>.png
   /map/<source_bag>/<MAP_NAME>/cuvslam_map/
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_vslam_reference.json
   /map/<source_bag>/<MAP_NAME>/<MAP_NAME>_vslam_landmarks.png
@@ -73,19 +66,6 @@ EOF
 die() {
     echo "Error: $*" >&2
     exit 1
-}
-
-ensure_online_2d_mode() {
-    case "${MODE}" in
-        2d_slam)
-            MODE="no_odom_online_vslam"
-            ;;
-        with_odom_online_vslam|no_odom_online_vslam)
-            ;;
-        *)
-            die "this integrated flow runs 2D SLAM and VSLAM together online. Use --mode with_odom_online_vslam or no_odom_online_vslam."
-            ;;
-    esac
 }
 
 run_hd_section_gate_editor() {
@@ -223,17 +203,14 @@ EDIT_HD_MAP_SECTIONS_SH="${SCRIPT_DIR}/edit_hd_map_sections.sh"
 BAG_PATH=""
 MAP_NAME=""
 RECORD_ROOT="/record"
-MODE="with_odom_online_vslam"
 PLAY_RATE="1.0"
 IMAGE_WIDTH="424"
 IMAGE_HEIGHT="240"
-IMAGE_FPS="90.0"
 USE_IMU=true
 PLAY_ALL_TOPICS=false
 USE_IMAGE_PREPROCESSORS=false
 LAUNCH_OFFLINE_TF=false
-SKIP_2D_MAP=false
-REQUIRE_2D_PNG=true
+SKIP_VSLAM=false
 OPEN_EDITOR=true
 GENERATE_RACELINE=true
 GENERATE_LINE_PREVIEW=true
@@ -264,10 +241,6 @@ while (($#)); do
             RECORD_ROOT="$2"
             shift 2
             ;;
-        --mode)
-            MODE="$2"
-            shift 2
-            ;;
         --rate)
             PLAY_RATE="$2"
             shift 2
@@ -278,10 +251,6 @@ while (($#)); do
             ;;
         --image-height)
             IMAGE_HEIGHT="$2"
-            shift 2
-            ;;
-        --image-fps)
-            IMAGE_FPS="$2"
             shift 2
             ;;
         --with-imu)
@@ -308,12 +277,8 @@ while (($#)); do
             LAUNCH_OFFLINE_TF=true
             shift
             ;;
-        --skip-2d-map)
-            SKIP_2D_MAP=true
-            shift
-            ;;
-        --allow-missing-2d-png)
-            REQUIRE_2D_PNG=false
+        --skip-vslam)
+            SKIP_VSLAM=true
             shift
             ;;
         --editor-scale)
@@ -377,98 +342,49 @@ fi
 if [[ "${MAP_NAME}" == *"/"* ]]; then
     die "map name must not contain '/'"
 fi
-if [ "${SKIP_2D_MAP}" != true ]; then
-    ensure_online_2d_mode
-fi
-
 BAG_DIR_NAME="$(basename "${BAG_PATH}")"
 MAP_DIR="/map/${BAG_DIR_NAME}/${MAP_NAME}"
 MAP_STEM="${MAP_DIR}/${MAP_NAME}"
-MAP_YAML_PATH="${MAP_STEM}.yaml"
-MAP_PNG_PATH="${MAP_STEM}.png"
 VSLAM_MAP_DIR="${MAP_DIR}/cuvslam_map"
 SNAPSHOT_PATH="${MAP_STEM}_vslam_reference.json"
 
 echo ""
-echo "================ One-shot map build ================"
+echo "================ One-shot HD map build ================"
 echo "source bag : ${BAG_PATH}"
 echo "map name   : ${MAP_NAME}"
 echo "map dir    : ${MAP_DIR}"
-echo "2D mode    : ${MODE}"
 echo "VSLAM map  : ${VSLAM_MAP_DIR}"
 echo "IMU replay : ${USE_IMU}"
 echo "image prep : ${USE_IMAGE_PREPROCESSORS}"
-echo "===================================================="
-
-if [ "${SKIP_2D_MAP}" != true ]; then
-    map_cmd=(
-        bash "${CREATE_2D_MAP_SH}"
-        --mode "${MODE}"
-        --bag-path "${BAG_PATH}"
-        --map-name "${MAP_NAME}"
-        --rate "${PLAY_RATE}"
-        --image-width "${IMAGE_WIDTH}"
-        --image-height "${IMAGE_HEIGHT}"
-        --image-fps "${IMAGE_FPS}"
-        --record-root "${RECORD_ROOT}"
-        --save-vslam-reference
-        --vslam-vis
-        --no-live-vslam-map-align
-        --no-centerline
-        --no-raceline
-        --no-line-preview
-        --no-scp
-    )
-    if [ "${USE_IMU}" = true ]; then
-        map_cmd+=(--with-imu)
-    else
-        map_cmd+=(--no-imu)
-    fi
-    if [ "${PLAY_ALL_TOPICS}" = true ]; then
-        map_cmd+=(--play-all-topics)
-    fi
-    if [ "${USE_IMAGE_PREPROCESSORS}" = true ]; then
-        map_cmd+=(--use-image-preprocessors)
-    else
-        map_cmd+=(--no-image-preprocessors)
-    fi
-    if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
-        map_cmd+=(--launch-offline-tf)
-    fi
-
-    echo ""
-    echo "[1/2] Build 2D map, cuVSLAM map, and VSLAM reference"
-    printf '  %q' "${map_cmd[@]}"
-    echo ""
-    "${map_cmd[@]}"
-else
-    echo ""
-    echo "[1/2] Reuse existing 2D map and VSLAM reference"
-fi
-
-if [ ! -f "${MAP_YAML_PATH}" ]; then
-    die "2D map YAML was not created: ${MAP_YAML_PATH}"
-fi
-if [ "${REQUIRE_2D_PNG}" = true ] && [ ! -f "${MAP_PNG_PATH}" ]; then
-    die "2D map PNG was not created: ${MAP_PNG_PATH}. Install ImageMagick/ffmpeg/Pillow or rerun with --allow-missing-2d-png."
-fi
-if [ ! -d "${VSLAM_MAP_DIR}" ] || [ -z "$(find "${VSLAM_MAP_DIR}" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
-    die "cuVSLAM map was not created or is empty: ${VSLAM_MAP_DIR}"
-fi
-if [ ! -f "${SNAPSHOT_PATH}" ]; then
-    die "VSLAM reference snapshot was not created: ${SNAPSHOT_PATH}"
-fi
+echo "======================================================="
 
 hd_cmd=(
     bash "${CREATE_HD_MAP_SH}"
-    --skip-vslam
     --bag-path "${BAG_PATH}"
     --map-name "${MAP_NAME}"
     --map-dir "${MAP_DIR}"
     --snapshot "${SNAPSHOT_PATH}"
-    --reference-yaml "${MAP_YAML_PATH}"
     --editor-scale "${EDITOR_SCALE}"
+    --rate "${PLAY_RATE}"
+    --image-width "${IMAGE_WIDTH}"
+    --image-height "${IMAGE_HEIGHT}"
 )
+
+if [ "${SKIP_VSLAM}" = true ]; then
+    hd_cmd+=(--skip-vslam)
+fi
+if [ "${USE_IMU}" = false ]; then
+    hd_cmd+=(--no-imu)
+fi
+if [ "${PLAY_ALL_TOPICS}" = true ]; then
+    hd_cmd+=(--play-all-topics)
+fi
+if [ "${USE_IMAGE_PREPROCESSORS}" = true ]; then
+    hd_cmd+=(--use-image-preprocessors)
+fi
+if [ "${LAUNCH_OFFLINE_TF}" = true ]; then
+    hd_cmd+=(--launch-offline-tf)
+fi
 if [ "${OPEN_EDITOR}" != true ]; then
     hd_cmd+=(--no-editor)
 fi
@@ -480,7 +396,7 @@ if [ "${GENERATE_LINE_PREVIEW}" != true ]; then
 fi
 
 echo ""
-echo "[2/2] Open HD map editor from VSLAM reference"
+echo "[1/1] Build VSLAM map and open HD map editor"
 printf '  %q' "${hd_cmd[@]}"
 echo ""
 "${hd_cmd[@]}"
@@ -488,10 +404,6 @@ echo ""
 echo ""
 echo "✅ Map bundle ready:"
 echo "  - map dir    : ${MAP_DIR}"
-echo "  - 2D map     : ${MAP_YAML_PATH}"
-if [ -f "${MAP_PNG_PATH}" ]; then
-    echo "  - 2D PNG     : ${MAP_PNG_PATH}"
-fi
 echo "  - VSLAM map  : ${VSLAM_MAP_DIR}"
 echo "  - snapshot   : ${SNAPSHOT_PATH}"
 echo "  - HD map     : ${MAP_STEM}_hd_map.yaml"
